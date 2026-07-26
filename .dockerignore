@@ -1,0 +1,43 @@
+# Build context hygiene: everything here is either rebuilt inside the image,
+# secret, or irrelevant. A lean context makes `docker build` much faster and
+# stops local state leaking into the image.
+
+node_modules
+.next
+out
+build
+
+# secrets — the container gets its config from compose / the environment
+.env
+.env.*.local
+!.env.example
+
+# local database + user uploads: container state lives in Postgres
+*.db
+*.db-journal
+prisma/dev.db
+prisma/dev.db-journal
+public/uploads/*
+!public/uploads/.gitkeep
+
+# design reference export, not part of the app
+_design
+
+# vcs + editor + os
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# docs & docker meta (not needed at build time)
+README.md
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# misc
+npm-debug.log*
+tsconfig.tsbuildinfo
+next-env.d.ts

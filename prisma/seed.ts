@@ -1,0 +1,478 @@
+/**
+ * Seed script — `npm run db:seed`
+ *
+ * Creates:
+ *   • the single admin user (from ADMIN_EMAIL / ADMIN_PASSWORD)
+ *   • the site-settings row (from SITE_NAME / WHATSAPP_NUMBER / CONTACT_EMAIL)
+ *   • 8 sample استراحات with amenities, gallery placeholders, blocked dates
+ *   • a handful of reviews and booking requests so the admin dashboard has data
+ *
+ * Idempotent: safe to re-run. Listings are matched by slug and updated rather
+ * than duplicated, so re-seeding after editing this file refreshes the samples.
+ * Re-running does NOT wipe listings you created yourself in the dashboard.
+ */
+
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
+
+const prisma = new PrismaClient();
+
+/* -------------------------------------------------------------------------- */
+/* helpers (duplicated from src/lib so the seed has no bundler dependency)     */
+/* -------------------------------------------------------------------------- */
+
+const TASHKEEL = /[ً-ٰٟۖ-ۭ]/g;
+
+function slugify(input: string): string {
+  return (
+    input
+      .trim()
+      .replace(TASHKEEL, "")
+      .replace(/[أإآٱ]/g, "ا")
+      .replace(/ى/g, "ي")
+      .replace(/ة/g, "ه")
+      .toLowerCase()
+      .replace(/[^ء-غف-يa-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "listing"
+  );
+}
+
+function toISO(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** Today in Gulf time, so seeded "future" dates are future for a UAE viewer. */
+function todayISO(): string {
+  return toISO(new Date(Date.now() + 4 * 3600_000));
+}
+
+function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return toISO(dt);
+}
+
+/**
+ * Blocked days are generated as offsets from *today* rather than fixed dates,
+ * so the calendar always demonstrates the booked/available states no matter
+ * when the project is cloned. (The design's prototype hardcoded July 2026 and
+ * would have shown an all-past calendar a month later.)
+ */
+function blockedDates(offsets: number[]): string[] {
+  const base = todayISO();
+  return offsets.map((o) => addDays(base, o));
+}
+
+/* -------------------------------------------------------------------------- */
+/* sample data                                                                */
+/* -------------------------------------------------------------------------- */
+
+type SeedListing = {
+  name: string;
+  city: string;
+  area: string;
+  pricePerNight: number;
+  weekendPrice: number;
+  capacity: number;
+  rating: number;
+  reviewsCount: number;
+  bookingsCount: number;
+  categories: string[];
+  amenities: string[];
+  verified: boolean;
+  featured: boolean;
+  lat: number;
+  lng: number;
+  blocked: number[];
+  description: string;
+  ownerName: string;
+};
+
+const LISTINGS: SeedListing[] = [
+  {
+    name: "استراحة الرمال الذهبية",
+    city: "dubai",
+    area: "لهباب – دبي",
+    pricePerNight: 1800,
+    weekendPrice: 2300,
+    capacity: 60,
+    rating: 4.9,
+    reviewsCount: 128,
+    bookingsCount: 214,
+    categories: ["family", "swim", "lux"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "majlis", "kids", "wc", "cctv", "palm", "fire"],
+    verified: true,
+    featured: true,
+    lat: 24.7614,
+    lng: 55.534,
+    blocked: [3, 4, 10, 11, 17, 18, 24, 25],
+    description:
+      "استراحة واسعة على أطراف كثبان لهباب، تجمع بين المجلس العربي التقليدي ومساحات خارجية مضاءة بعناية. مثالية للتجمعات العائلية والمناسبات الهادئة، مع مسبح خاص مسوَّر ومطبخ تحضيري مستقل يسهّل استضافة الولائم الكبيرة.",
+    ownerName: "أبو سلطان",
+  },
+  {
+    name: "استراحة واحة ليوا",
+    city: "liwa",
+    area: "ليوا – الظفرة",
+    pricePerNight: 2400,
+    weekendPrice: 3000,
+    capacity: 80,
+    rating: 4.8,
+    reviewsCount: 96,
+    bookingsCount: 167,
+    categories: ["wedding", "lux", "family"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "majlis", "sound", "screen", "wc", "palm", "tent"],
+    verified: true,
+    featured: true,
+    lat: 23.13,
+    lng: 53.78,
+    blocked: [1, 2, 8, 9, 15, 16, 22, 23, 29, 30],
+    description:
+      "إطلالة مباشرة على كثبان ليوا الحمراء، مع صالة مناسبات مغلقة تتسع لثمانين ضيفًا وخيمة شتوية مجهزة بالكامل. الموقع هادئ تمامًا بعد المغرب وسماؤه صافية لرصد النجوم.",
+    ownerName: "سالم المنصوري",
+  },
+  {
+    name: "استراحة نجوم الصحراء",
+    city: "dubai",
+    area: "الفقع – دبي",
+    pricePerNight: 1250,
+    weekendPrice: 1600,
+    capacity: 40,
+    rating: 4.7,
+    reviewsCount: 74,
+    bookingsCount: 132,
+    categories: ["small", "camp", "family"],
+    amenities: ["wifi", "ac", "park", "bbq", "majlis", "tent", "wc", "fire", "kids"],
+    verified: true,
+    featured: true,
+    lat: 24.75,
+    lng: 55.65,
+    blocked: [5, 6, 12, 13, 19, 20],
+    description:
+      "مخيم شتوي بطابع بدوي معاصر، بعيد عن التلوث الضوئي — الخيار الأمثل لأمسيات رصد النجوم والتجمعات الصغيرة. يشمل وجارًا للنار وجلسات أرضية تقليدية.",
+    ownerName: "راشد الكعبي",
+  },
+  {
+    name: "استراحة القصر الرملي",
+    city: "alain",
+    area: "العين – الهيلي",
+    pricePerNight: 3200,
+    weekendPrice: 3900,
+    capacity: 120,
+    rating: 5.0,
+    reviewsCount: 52,
+    bookingsCount: 88,
+    categories: ["wedding", "lux"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "majlis", "sound", "screen", "cctv", "wc", "palm", "pitch"],
+    verified: true,
+    featured: true,
+    lat: 24.2075,
+    lng: 55.7447,
+    blocked: [7, 8, 9, 14, 21, 22, 28],
+    description:
+      "أفخم ما في العين: قاعة أعراس مكيفة، مسبح لامتناهٍ، ومجلس رجالي ونسائي منفصلان مع خدمة ضيافة كاملة. مواقف تتسع لأربعين سيارة وبوابة دخول مستقلة للعرائس.",
+    ownerName: "أم خالد",
+  },
+  {
+    name: "استراحة سدرة",
+    city: "sharjah",
+    area: "البدائر – الشارقة",
+    pricePerNight: 950,
+    weekendPrice: 1200,
+    capacity: 30,
+    rating: 4.6,
+    reviewsCount: 61,
+    bookingsCount: 145,
+    categories: ["small", "camp"],
+    amenities: ["wifi", "ac", "park", "bbq", "majlis", "wc", "fire"],
+    verified: false,
+    featured: false,
+    lat: 24.93,
+    lng: 55.73,
+    blocked: [2, 3, 16, 17, 26],
+    description:
+      "استراحة اقتصادية أنيقة قرب كثبان البدائر، مناسبة للتجمعات الصغيرة ورحلات نهاية الأسبوع. بسيطة ونظيفة، وقريبة من الطريق الرئيسي.",
+    ownerName: "محمد البلوشي",
+  },
+  {
+    name: "استراحة الظفرة",
+    city: "abudhabi",
+    area: "الظفرة – أبوظبي",
+    pricePerNight: 2100,
+    weekendPrice: 2600,
+    capacity: 70,
+    rating: 4.8,
+    reviewsCount: 43,
+    bookingsCount: 71,
+    categories: ["family", "swim", "wedding"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "majlis", "sound", "wc", "palm"],
+    verified: true,
+    featured: false,
+    lat: 23.65,
+    lng: 53.7,
+    blocked: [4, 5, 11, 12, 18, 19, 25, 26],
+    description:
+      "مساحات خضراء واسعة ومسبح مُدفّأ، مع مطبخ تحضيري مستقل يسهّل استضافة الولائم الكبيرة. إضاءة خارجية كاملة تجعل الجلسات الليلية مريحة صيفًا وشتاءً.",
+    ownerName: "خليفة الحمادي",
+  },
+  {
+    name: "استراحة نخيل الوادي",
+    city: "alain",
+    area: "وادي العين",
+    pricePerNight: 1650,
+    weekendPrice: 2050,
+    capacity: 50,
+    rating: 4.9,
+    reviewsCount: 88,
+    bookingsCount: 159,
+    categories: ["family", "small", "swim"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "kids", "wc", "palm", "pitch"],
+    verified: true,
+    featured: false,
+    lat: 24.12,
+    lng: 55.8,
+    blocked: [6, 13, 20, 27],
+    description:
+      "محاطة بمزرعة نخيل مثمرة، بمسبح أطفال منفصل وملعب كرة قدم بأرضية عشبية. اختيار مثالي للعائلات التي معها أطفال صغار.",
+    ownerName: "عبدالله النعيمي",
+  },
+  {
+    name: "استراحة الكثبان الحمراء",
+    city: "dubai",
+    area: "لهباب – دبي",
+    pricePerNight: 2900,
+    weekendPrice: 3500,
+    capacity: 100,
+    rating: 4.9,
+    reviewsCount: 115,
+    bookingsCount: 203,
+    categories: ["wedding", "lux", "swim"],
+    amenities: ["pool", "wifi", "ac", "park", "bbq", "kitchen", "majlis", "sound", "screen", "cctv", "wc", "palm", "tent", "fire"],
+    verified: true,
+    featured: false,
+    lat: 24.7,
+    lng: 55.58,
+    blocked: [1, 7, 8, 14, 15, 21, 28, 29],
+    description:
+      "تصميم معماري معاصر مستوحى من الطين والحجر، مع سطح مفتوح يطل على أعلى كثبان لهباب. نظام صوتي وشاشة عرض كبيرة للمناسبات، وكاميرات مراقبة على كامل المحيط.",
+    ownerName: "سيف الظاهري",
+  },
+];
+
+const REVIEWS = [
+  {
+    authorName: "أم عبدالله",
+    rating: 5,
+    daysAgo: 6,
+    body: "المكان نظيف جدًا والمجلس واسع. استقبال المالك كان راقيًا وردّه على الواتساب فوري. سنكرر الحجز بإذن الله.",
+  },
+  {
+    authorName: "سيف الحمادي",
+    rating: 5,
+    daysAgo: 14,
+    body: "حجزنا لمناسبة عائلية لأربعين شخصًا. المسبح مُدفّأ والإضاءة الخارجية جميلة ليلًا. التسعير واضح بلا رسوم مخفية.",
+  },
+  {
+    authorName: "نورة القبيسي",
+    rating: 4,
+    daysAgo: 30,
+    body: "الاستراحة ممتازة والموقع سهل الوصول. الملاحظة الوحيدة أن مواقف السيارات تمتلئ بسرعة عند التجمعات الكبيرة.",
+  },
+];
+
+/* -------------------------------------------------------------------------- */
+/* seed                                                                       */
+/* -------------------------------------------------------------------------- */
+
+async function main() {
+  console.log("🌱 بدء تهيئة قاعدة البيانات…\n");
+
+  /* --- admin user ------------------------------------------------------- */
+  const adminEmail = (process.env.ADMIN_EMAIL || "admin@example.ae").toLowerCase();
+  const adminPassword = process.env.ADMIN_PASSWORD || "ChangeMe123!";
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
+
+  await prisma.user.upsert({
+    where: { email: adminEmail },
+    update: { passwordHash, name: process.env.ADMIN_NAME || "المشرف" },
+    create: {
+      email: adminEmail,
+      name: process.env.ADMIN_NAME || "المشرف",
+      passwordHash,
+      role: "ADMIN",
+    },
+  });
+  console.log(`✅ حساب المشرف: ${adminEmail}`);
+  if (adminPassword === "ChangeMe123!") {
+    console.log("   ⚠️  كلمة المرور هي الافتراضية — غيّر ADMIN_PASSWORD في .env");
+  }
+
+  /* --- site settings ---------------------------------------------------- */
+  const siteName = process.env.SITE_NAME || "استراحات الرمال";
+  const whatsapp = process.env.WHATSAPP_NUMBER || "+971500000000";
+  const email = process.env.CONTACT_EMAIL || "hello@example.ae";
+
+  await prisma.siteSettings.upsert({
+    where: { id: 1 },
+    // Only fill identity/contact on create; on re-seed we leave whatever the
+    // owner has since edited in /admin/settings untouched.
+    update: {},
+    create: {
+      id: 1,
+      siteName,
+      whatsappNumber: whatsapp,
+      phone: whatsapp,
+      email,
+      instagram: "https://instagram.com/",
+      addressLine: "دبي — الإمارات العربية المتحدة",
+    },
+  });
+  console.log(`✅ إعدادات الموقع: «${siteName}» — واتساب ${whatsapp}`);
+
+  /* --- listings --------------------------------------------------------- */
+  let created = 0;
+  let updated = 0;
+
+  for (const [index, item] of LISTINGS.entries()) {
+    const slug = slugify(item.name);
+    const existing = await prisma.listing.findUnique({ where: { slug } });
+
+    const data = {
+      slug,
+      name: item.name,
+      description: item.description,
+      city: item.city,
+      area: item.area,
+      lat: item.lat,
+      lng: item.lng,
+      pricePerNight: item.pricePerNight,
+      weekendPrice: item.weekendPrice,
+      capacity: item.capacity,
+      amenities: JSON.stringify(item.amenities),
+      categories: JSON.stringify(item.categories),
+      verified: item.verified,
+      featured: item.featured,
+      published: true,
+      rating: item.rating,
+      reviewsCount: item.reviewsCount,
+      bookingsCount: item.bookingsCount,
+      ownerName: item.ownerName,
+    };
+
+    const listing = existing
+      ? await prisma.listing.update({ where: { slug }, data })
+      : await prisma.listing.create({ data });
+
+    existing ? updated++ : created++;
+
+    /* gallery — replaced wholesale so re-seeding can't accumulate duplicates.
+       These are Unsplash desert photos, allowed in next.config.ts. Replace them
+       with real uploads from /admin as soon as you have the owner's photos. */
+    await prisma.listingImage.deleteMany({ where: { listingId: listing.id } });
+    const photoIds = [
+      "photo-1509316785289-025f5b846b35",
+      "photo-1547234935-80c7145ec969",
+      "photo-1682686581362-796145f0e123",
+      "photo-1518623489648-a173ef7824f3",
+      "photo-1600585154340-be6161a56a0c",
+    ];
+    await prisma.listingImage.createMany({
+      data: photoIds.map((id, i) => ({
+        listingId: listing.id,
+        // Offset the crop per listing so cards don't all look identical.
+        url: `https://images.unsplash.com/${id}?auto=format&fit=crop&w=1600&q=80&sat=-10&ix=${index}`,
+        alt: `${item.name} — صورة ${i + 1}`,
+        sortOrder: i,
+      })),
+    });
+
+    /* availability — wiped and rebuilt from the offsets above */
+    await prisma.availability.deleteMany({ where: { listingId: listing.id } });
+    const dates = blockedDates(item.blocked);
+    await prisma.availability.createMany({
+      data: dates.map((date, i) => ({
+        listingId: listing.id,
+        date,
+        // Mix the two states so the admin calendar shows both.
+        status: i % 3 === 0 ? "BOOKED" : "BLOCKED",
+      })),
+    });
+
+    /* reviews — only for listings the sample data says have them */
+    await prisma.review.deleteMany({ where: { listingId: listing.id } });
+    if (item.reviewsCount > 0) {
+      await prisma.review.createMany({
+        data: REVIEWS.map((r) => ({
+          listingId: listing.id,
+          authorName: r.authorName,
+          rating: r.rating,
+          body: r.body,
+          published: true,
+          createdAt: new Date(Date.now() - r.daysAgo * 86_400_000),
+        })),
+      });
+    }
+  }
+  console.log(`✅ الاستراحات: ${created} جديدة، ${updated} محدّثة`);
+
+  /* --- sample booking requests ----------------------------------------- */
+  const all = await prisma.listing.findMany({ orderBy: { createdAt: "asc" } });
+  const base = todayISO();
+
+  const sampleRequests = [
+    { i: 0, name: "خالد المنصوري", phone: "+971502148890", from: 3, nights: 2, guests: 45, status: "NEW", note: "نرغب بتجهيز المجلس قبل المغرب." },
+    { i: 3, name: "موزة الكعبي", phone: "+971559034471", from: 8, nights: 1, guests: 110, status: "NEW", note: "حفل زفاف — نحتاج تأكيد قاعة النساء." },
+    { i: 1, name: "سالم الشامسي", phone: "+971527712210", from: 11, nights: 2, guests: 70, status: "CONFIRMED", note: "تم تحويل العربون." },
+    { i: 6, name: "عائشة النعيمي", phone: "+971561186633", from: 7, nights: 1, guests: 24, status: "CONFIRMED", note: "" },
+    { i: 2, name: "راشد البلوشي", phone: "+971504420097", from: 2, nights: 1, guests: 18, status: "REJECTED", note: "التاريخ محجوز مسبقًا." },
+    { i: 7, name: "حمدان الظاهري", phone: "+971586601284", from: 15, nights: 2, guests: 88, status: "CONFIRMED", note: "يحتاج نظام صوتي إضافي." },
+  ];
+
+  let reqNo = 2414;
+  for (const r of sampleRequests) {
+    const listing = all[r.i];
+    if (!listing) continue;
+
+    const reference = `RQ-${reqNo++}`;
+    const checkIn = addDays(base, r.from);
+    const checkOut = addDays(base, r.from + r.nights);
+    const subtotal = listing.pricePerNight * r.nights;
+    const serviceFee = Math.round(subtotal * 0.05);
+    const total = subtotal + serviceFee;
+
+    await prisma.bookingRequest.upsert({
+      where: { reference },
+      update: {},
+      create: {
+        reference,
+        listingId: listing.id,
+        customerName: r.name,
+        customerPhone: r.phone,
+        notes: r.note || null,
+        checkIn,
+        checkOut,
+        nights: r.nights,
+        guests: r.guests,
+        subtotal,
+        serviceFee,
+        total,
+        depositDue: Math.round(total * 0.3),
+        status: r.status,
+      },
+    });
+  }
+  console.log(`✅ طلبات الحجز: ${sampleRequests.length} طلبًا تجريبيًا`);
+
+  console.log("\n🎉 تمت التهيئة. شغّل  npm run dev  ثم افتح http://localhost:3000");
+  console.log(`   لوحة التحكم: http://localhost:3000/admin  (${adminEmail})`);
+}
+
+main()
+  .catch((e) => {
+    console.error("❌ فشلت التهيئة:", e);
+    process.exit(1);
+  })
+  .finally(() => prisma.$disconnect());

@@ -1,0 +1,28 @@
+node_modules/
+.next/
+out/
+build/
+.DS_Store
+*.pem
+
+# env
+.env
+.env*.local
+!.env.example
+
+# database (SQLite dev file)
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
+
+# uploaded media — user content, not source
+public/uploads/*
+!public/uploads/.gitkeep
+
+# design reference export (not part of the app build)
+_design/
+
+# misc
+next-env.d.ts
+tsconfig.tsbuildinfo

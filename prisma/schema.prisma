@@ -1,0 +1,296 @@
+// ---------------------------------------------------------------------------
+// Prisma schema — منصة حجز الاستراحات
+// ---------------------------------------------------------------------------
+// PORTABILITY NOTE
+// The default provider is SQLite so you can clone + run with zero services.
+// To move to PostgreSQL (self-hosted, Neon, Supabase, RDS…) switch the provider
+// in the datasource block below and point DATABASE_URL at your server:
+//
+//   node scripts/set-db-provider.mjs postgresql
+//   DATABASE_URL="postgresql://user:pass@host:5432/desert_chalets?schema=public"
+//
+// (the Docker build runs that script automatically — see the Dockerfile), then
+// run `npx prisma migrate deploy`. Nothing else in this schema needs to change:
+// we deliberately avoid provider-specific features —
+//   * no native `enum` (SQLite has none) → status fields are String with the
+//     allowed values documented and validated in `src/lib/constants.ts`
+//   * no scalar lists / arrays (Postgres-only) → amenity + category id lists
+//     are stored as JSON text and parsed by `src/lib/json-list.ts`
+//   * no `DateTime` for calendar days → availability uses "YYYY-MM-DD" strings
+//     so a booked day can never shift across a UTC boundary (see below)
+// ---------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth — a single admin account (NextAuth credentials provider).
+// Seeded from ADMIN_EMAIL / ADMIN_PASSWORD; the password is bcrypt-hashed and
+// never stored in plain text. The table supports more than one row so you can
+// add extra owners later without a migration.
+// ---------------------------------------------------------------------------
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  role         String   @default("ADMIN") // ADMIN
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Site settings — a single row (id = 1) holding everything brandable.
+// Nothing that appears here should ever be hardcoded in a component: the whole
+// point is that the owner can rebrand from /admin/settings without a deploy.
+// Read it through `getSettings()` in src/lib/settings.ts (cached per request).
+// ---------------------------------------------------------------------------
+model SiteSettings {
+  id Int @id @default(1)
+
+  // Identity
+  siteName    String  @default("استراحات الرمال")
+  tagline     String  @default("استراحات وشاليهات الإمارات")
+  logoUrl     String? // uploaded via the image adapter; falls back to the "و" monogram
+  logoGlyph   String  @default("و") // single letter shown when there is no logo image
+
+  // Contact — whatsappNumber drives every wa.me deep link on the site
+  whatsappNumber String  @default("+971500000000")
+  phone          String? @default("+971500000000")
+  email          String? @default("hello@example.ae")
+
+  // Social links (empty string / null hides the icon)
+  instagram String? @default("")
+  tiktok    String? @default("")
+  snapchat  String? @default("")
+  youtube   String? @default("")
+
+  // Google Maps location used by the footer map + settings preview
+  mapLat       Float   @default(24.7614)
+  mapLng       Float   @default(55.3340)
+  mapZoom      Int     @default(10)
+  addressLine  String? @default("دبي — الإمارات العربية المتحدة")
+
+  // Theme — hex values injected as CSS custom properties on <html>.
+  // See src/app/layout.tsx and src/styles/theme.ts.
+  colorAccent     String @default("#C9A44C") // --gold-500
+  colorAccentDeep String @default("#A8873A") // --gold-600
+  colorNight      String @default("#0C1522") // --night-900
+  colorSand       String @default("#FBF7F0") // --sand-50
+
+  // Booking commercials
+  serviceFeePercent Int     @default(5)
+  depositPercent    Int     @default(30)
+  freeCancelHours   Int     @default(48)
+  checkInTime       String  @default("٤ عصرًا")
+  checkOutTime      String  @default("١٢ ظهرًا")
+
+  // Future online deposit payments. Keep false until a gateway is wired —
+  // see src/lib/payments/index.ts for the disabled stub.
+  depositPaymentsEnabled Boolean @default(false)
+
+  // SEO
+  seoTitle       String? @default("حجز الاستراحات والشاليهات في الإمارات")
+  seoDescription String? @default("استراحات وشاليهات صحراوية موثّقة في دبي وأبوظبي والعين وليوا والشارقة — أسعار واضحة وتقويم متاح لحظيًا وتأكيد مباشر عبر الواتساب.")
+  ogImageUrl     String?
+
+  // Home hero copy (editable so the front page can change without a deploy)
+  heroTitle    String  @default("استراحتك في قلب الصحراء")
+  heroTitleAlt String  @default("تبدأ بحجز واحد")
+  heroSubtitle String  @default("اختر من بين استراحات وشاليهات مختارة بعناية في لهباب وليوا والعين — أسعار واضحة، تقويم متاح لحظيًا، وتأكيد مباشر مع المالك.")
+  heroImageUrl String?
+  footerAbout  String  @default("منصّة إماراتية لحجز الاستراحات والشاليهات الصحراوية — موثّقة ميدانيًا وبأسعار واضحة.")
+
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Listing — one استراحة / chalet.
+// ---------------------------------------------------------------------------
+model Listing {
+  id   String @id @default(cuid())
+  slug String @unique // used in /listings/[slug]; generated from the Arabic name
+
+  name        String
+  description String @default("")
+
+  // Location. `city` is one of the ids in src/lib/constants.ts CITIES so the
+  // filter chips stay stable even if the Arabic label is re-worded later.
+  city String
+  area String @default("")
+  lat  Float  @default(24.7614)
+  lng  Float  @default(55.3340)
+
+  // Pricing in AED (whole dirhams — no fractional fils in this market)
+  pricePerNight Int
+  weekendPrice  Int @default(0) // 0 → falls back to pricePerNight
+  capacity      Int @default(20)
+
+  // JSON string arrays of ids — see the portability note at the top.
+  // amenities: ["pool","wifi",…]  categories: ["family","wedding",…]
+  amenities  String @default("[]")
+  categories String @default("[]")
+
+  // Presentation flags
+  verified  Boolean @default(false)
+  featured  Boolean @default(false)
+  published Boolean @default(true)
+
+  // Denormalised review aggregates, recomputed on review write
+  // (`recalcListingRating` in src/lib/reviews.ts). 0 reviews renders the
+  // design's "استراحة جديدة — لا تقييمات بعد" state.
+  rating       Float @default(0)
+  reviewsCount Int   @default(0)
+  bookingsCount Int  @default(0)
+
+  // Per-listing owner contact. Falls back to the site-wide WhatsApp number
+  // when null, so a single-owner site needs no per-listing setup.
+  ownerName     String? @default("المالك")
+  ownerWhatsapp String?
+
+  images        ListingImage[]
+  availability  Availability[]
+  bookings      BookingRequest[]
+  reviews       Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city])
+  @@index([published, featured])
+}
+
+// ---------------------------------------------------------------------------
+// Image bytes stored IN the database.
+//
+// Used when STORAGE_DRIVER="db" (the default inside the Docker image). Trading
+// disk for rows buys one specific thing: a completely stateless container. No
+// volume to mount, no bind path to get wrong, and `pg_dump` captures the site
+// *and* its photos in a single backup — restore it anywhere and the gallery
+// comes back with it.
+//
+// `Bytes` maps to BLOB on SQLite and bytea on PostgreSQL, so this stays as
+// portable as the rest of the schema.
+//
+// The trade-off, stated plainly: every image read is a database read rather than
+// a static file served by the OS. Mitigated by immutable long-lived cache
+// headers plus ETags on /api/images/[id] (a row's bytes never change — a new
+// upload is a new row), and by Next's image optimiser caching derived sizes. At
+// a few hundred photos this is a non-issue; if the catalogue reaches thousands
+// of images with heavy traffic, switch STORAGE_DRIVER to s3/cloudinary — the
+// adapter interface means no other code changes.
+// ---------------------------------------------------------------------------
+model StoredImage {
+  id        String   @id @default(cuid())
+  mimeType  String
+  data      Bytes
+  size      Int
+  folder    String   @default("listings")
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Gallery images. `url` is whatever the storage adapter returned — a local
+// /uploads/… path, an /api/images/… path when stored in the database, or a
+// remote CDN URL. See src/lib/storage.
+// ---------------------------------------------------------------------------
+model ListingImage {
+  id        String  @id @default(cuid())
+  listingId String
+  url       String
+  alt       String  @default("")
+  sortOrder Int     @default(0)
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, sortOrder])
+}
+
+// ---------------------------------------------------------------------------
+// Availability — one row per unavailable day, per listing.
+//
+// `date` is a plain "YYYY-MM-DD" string, NOT a DateTime. Storing calendar days
+// as timestamps is the classic source of off-by-one bugs: `new Date(2026,6,25)`
+// is local midnight, which serialises to the previous day in any timezone west
+// of UTC, so a day the owner blocked shows as available to some visitors.
+// A date-only string has no timezone to get wrong. Helpers: src/lib/dates.ts
+//
+// status: "BLOCKED" (owner closed the day) | "BOOKED" (confirmed reservation)
+// Both render as unavailable to visitors; the distinction is for the owner.
+// ---------------------------------------------------------------------------
+model Availability {
+  id        String  @id @default(cuid())
+  listingId String
+  date      String // YYYY-MM-DD
+  status    String  @default("BLOCKED")
+  note      String?
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date])
+  @@index([listingId])
+}
+
+// ---------------------------------------------------------------------------
+// Booking request. Saved BEFORE the WhatsApp link opens, so the owner has a
+// record even if the customer never sends the message — and so the prefilled
+// message can quote the request reference.
+// ---------------------------------------------------------------------------
+model BookingRequest {
+  id        String @id @default(cuid())
+  reference String @unique // human-friendly, e.g. "RQ-2419"
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  customerName  String
+  customerPhone String
+  customerEmail String?
+  notes         String?
+
+  checkIn  String // YYYY-MM-DD — same date-only rule as Availability
+  checkOut String // YYYY-MM-DD (exclusive: guest leaves this morning)
+  nights   Int
+  guests   Int
+
+  // Price snapshot at request time. Stored so a later price change on the
+  // listing does not silently rewrite the history of what was quoted.
+  subtotal     Int
+  serviceFee   Int
+  total        Int
+  depositDue   Int @default(0)
+
+  // "NEW" | "CONFIRMED" | "REJECTED" | "CANCELLED"
+  status String @default("NEW")
+
+  // Future online deposit: "NONE" | "PENDING" | "PAID" | "REFUNDED".
+  // Nothing writes anything but "NONE" until a gateway is enabled.
+  paymentStatus    String  @default("NONE")
+  paymentReference String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([listingId])
+}
+
+// ---------------------------------------------------------------------------
+// Guest reviews. Moderated: `published` must be true to appear on the site.
+// ---------------------------------------------------------------------------
+model Review {
+  id         String  @id @default(cuid())
+  listingId  String
+  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  authorName String
+  rating     Int     @default(5) // 1..5
+  body       String
+  published  Boolean @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([listingId, published])
+}

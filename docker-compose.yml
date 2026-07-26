@@ -1,0 +1,111 @@
+# ============================================================================
+#  استراحات — full stack: app + PostgreSQL
+# ============================================================================
+#  Start:      docker compose up -d --build
+#  First run:  RUN_SEED=true docker compose up -d --build
+#  Logs:       docker compose logs -f app
+#  Stop:       docker compose down          (data survives)
+#  Wipe:       docker compose down -v       (⚠️ deletes the database)
+#
+#  Copy .env.docker.example to .env first and set AUTH_SECRET, ADMIN_PASSWORD
+#  and POSTGRES_PASSWORD.
+#
+#  Only ONE volume, for Postgres. Uploaded photos are stored in the database
+#  (STORAGE_DRIVER=db), so the app container holds no state and can be rebuilt,
+#  replaced or scaled without losing anything.
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-desert_chalets}
+      POSTGRES_USER: ${POSTGRES_USER:-chalets}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Arabic text sorts correctly and case-insensitive search behaves sanely.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # The app's entrypoint waits for this before touching the schema.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chalets} -d ${POSTGRES_DB:-desert_chalets}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # Not published to the host by default — the app reaches it over the compose
+    # network. Uncomment only if you need a GUI client on your machine.
+    # ports:
+    #   - "5432:5432"
+
+  # One-shot job: applies the schema (and seeds on a first deploy), then exits.
+  #
+  # Built from the `build` stage, which still has the full node_modules — so the
+  # Prisma CLI and tsx are available here and can be left out of the much smaller
+  # runtime image. It also guarantees migrations run exactly once: if every app
+  # replica applied the schema on boot, scaling to two would have them racing.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+      args:
+        DATABASE_PROVIDER: postgresql
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-chalets}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-desert_chalets}?schema=public
+      RUN_SEED: ${RUN_SEED:-false}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.ae}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_NAME: ${ADMIN_NAME:-المشرف}
+      SITE_NAME: ${SITE_NAME:-استراحات الرمال}
+      WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:-+971500000000}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@example.ae}
+    # Explicit interpreter, so the script runs regardless of its shebang.
+    command: ["/bin/sh", "/app/docker/migrate.sh"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DATABASE_PROVIDER: postgresql
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      # Wait for the schema to be in place before serving a single request.
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-chalets}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-desert_chalets}?schema=public
+
+      # Photos in Postgres → nothing to mount, nothing to lose on redeploy.
+      STORAGE_DRIVER: db
+
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — openssl rand -base64 32}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.ae}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_NAME: ${ADMIN_NAME:-المشرف}
+
+      # Seed defaults — only applied on the very first seed; afterwards the
+      # settings row in the database is the source of truth (/admin/settings).
+      SITE_NAME: ${SITE_NAME:-استراحات الرمال}
+      WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:-+971500000000}
+      CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@example.ae}
+
+      # Set to "true" on a first deploy to load the sample استراحات.
+      # The entrypoint skips it automatically if listings already exist.
+      RUN_SEED: ${RUN_SEED:-false}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+
+volumes:
+  db-data:

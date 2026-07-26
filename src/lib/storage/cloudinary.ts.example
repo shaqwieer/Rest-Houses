@@ -1,0 +1,74 @@
+/* ---------------------------------------------------------------------------
+ * Cloudinary adapter — ready to use.
+ *
+ *   1. npm install cloudinary
+ *   2. rename this file to cloudinary.ts
+ *   3. in src/lib/storage/index.ts replace the `case "cloudinary":` throw with:
+ *          cached = new CloudinaryStorageAdapter();
+ *          break;
+ *   4. .env:
+ *          STORAGE_DRIVER="cloudinary"
+ *          CLOUDINARY_CLOUD_NAME="..."
+ *          CLOUDINARY_API_KEY="..."
+ *          CLOUDINARY_API_SECRET="..."
+ *   5. next.config.ts already allows res.cloudinary.com in images.remotePatterns.
+ *
+ * Existing local files keep working — their /uploads/... URLs stay valid; only
+ * new uploads go to Cloudinary.
+ * ------------------------------------------------------------------------- */
+
+import { v2 as cloudinary } from "cloudinary";
+import { assertValidImage, type StorageAdapter, type StoredFile } from "./types";
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+});
+
+export class CloudinaryStorageAdapter implements StorageAdapter {
+  readonly name = "cloudinary";
+
+  async save(file: File, opts?: { folder?: string }): Promise<StoredFile> {
+    assertValidImage(file);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
+      cloudinary.uploader
+        .upload_stream(
+          {
+            folder: `desert-chalets/${opts?.folder ?? "listings"}`,
+            resource_type: "image",
+            // Let Cloudinary do the heavy lifting: cap the stored original and
+            // strip EXIF (which often carries the owner's home GPS coords).
+            transformation: [{ width: 2400, height: 2400, crop: "limit" }],
+          },
+          (error, res) => (error ? reject(error) : resolve(res as never)),
+        )
+        .end(buffer);
+    });
+
+    return {
+      url: String(result.secure_url),
+      key: String(result.public_id),
+      width: Number(result.width) || undefined,
+      height: Number(result.height) || undefined,
+      bytes: Number(result.bytes) || undefined,
+    };
+  }
+
+  async delete(keyOrUrl: string): Promise<void> {
+    // Accept a full URL as well as a public_id.
+    const publicId = keyOrUrl.startsWith("http")
+      ? (keyOrUrl.split("/upload/")[1]?.replace(/^v\d+\//, "").replace(/\.[a-z0-9]+$/i, "") ?? keyOrUrl)
+      : keyOrUrl;
+
+    try {
+      await cloudinary.uploader.destroy(publicId);
+    } catch {
+      // Idempotent by contract.
+    }
+  }
+}

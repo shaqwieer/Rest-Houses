@@ -1,0 +1,50 @@
+import { SettingsForm } from "@/components/admin/settings-form";
+import { getSettings } from "@/lib/settings";
+import { depositPaymentStatus } from "@/lib/payments";
+
+/** Site settings — the config-driven branding surface. */
+export default async function AdminSettingsPage() {
+  const settings = await getSettings();
+
+  return (
+    <SettingsForm
+      // Nulls become empty strings so the inputs are controlled/uncontrolled
+      // consistently and React doesn't warn about a null `defaultValue`.
+      values={{
+        siteName: settings.siteName,
+        tagline: settings.tagline,
+        logoGlyph: settings.logoGlyph,
+        logoUrl: settings.logoUrl,
+        heroImageUrl: settings.heroImageUrl,
+        whatsappNumber: settings.whatsappNumber,
+        phone: settings.phone ?? "",
+        email: settings.email ?? "",
+        instagram: settings.instagram ?? "",
+        tiktok: settings.tiktok ?? "",
+        snapchat: settings.snapchat ?? "",
+        youtube: settings.youtube ?? "",
+        mapLat: settings.mapLat,
+        mapLng: settings.mapLng,
+        mapZoom: settings.mapZoom,
+        addressLine: settings.addressLine ?? "",
+        colorAccent: settings.colorAccent,
+        colorAccentDeep: settings.colorAccentDeep,
+        colorNight: settings.colorNight,
+        colorSand: settings.colorSand,
+        serviceFeePercent: settings.serviceFeePercent,
+        depositPercent: settings.depositPercent,
+        freeCancelHours: settings.freeCancelHours,
+        checkInTime: settings.checkInTime,
+        checkOutTime: settings.checkOutTime,
+        depositPaymentsEnabled: settings.depositPaymentsEnabled,
+        heroTitle: settings.heroTitle,
+        heroTitleAlt: settings.heroTitleAlt,
+        heroSubtitle: settings.heroSubtitle,
+        footerAbout: settings.footerAbout,
+        seoTitle: settings.seoTitle ?? "",
+        seoDescription: settings.seoDescription ?? "",
+      }}
+      paymentStatusText={depositPaymentStatus(settings)}
+    />
+  );
+}

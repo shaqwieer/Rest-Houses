@@ -1,0 +1,30 @@
+# Normalise line endings so a Windows clone can still build the Docker image.
+#
+# A shell script checked out with CRLF fails at exec time with the misleading
+# "no such file or directory" — the kernel reads the shebang as "/bin/sh\r" and
+# looks for a binary of that literal name. Forcing LF on anything the container
+# executes prevents it at source; the Dockerfile also strips CR as a belt-and-
+# braces measure for archives that arrive already converted.
+
+* text=auto eol=lf
+
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+*.yml         text eol=lf
+*.yaml        text eol=lf
+*.mjs         text eol=lf
+*.ts          text eol=lf
+*.tsx         text eol=lf
+*.prisma      text eol=lf
+
+# Binary — never touch these
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico  binary
+*.woff binary
+*.woff2 binary
+*.ttf  binary
+*.db   binary
