@@ -33,7 +33,7 @@ export const ALLOWED_IMAGE_TYPES = [
   "image/avif",
 ] as const;
 
-export const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8 MB
+export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
 
 export class UploadError extends Error {}
 
@@ -46,7 +46,7 @@ export function assertValidImage(file: File): void {
     throw new UploadError("الملف فارغ");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new UploadError("حجم الصورة أكبر من ٨ ميغابايت");
+    throw new UploadError("حجم الصورة أكبر من ٢٠٠ ميغابايت");
   }
   if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
     throw new UploadError("صيغة غير مدعومة — استخدم JPG أو PNG أو WebP");

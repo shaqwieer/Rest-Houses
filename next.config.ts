@@ -7,15 +7,19 @@ const nextConfig: NextConfig = {
    * Photo uploads are server actions taking a whole `File[]` (see
    * addListingImages in src/app/actions/listings.ts — the admin's multi-select
    * is sent as one call). Next caps a server action body at 1 MB by default,
-   * which is below MAX_UPLOAD_BYTES (8 MB, src/lib/storage/types.ts): every
+   * which is below MAX_UPLOAD_BYTES (200 MB, src/lib/storage/types.ts): every
    * real phone photo would be rejected by the framework before the app's own
    * validation — and far more so for a batch.
    *
-   * Keep this in step with `client_max_body_size` on any reverse proxy in
-   * front, or the proxy becomes the new invisible ceiling.
+   * Note this is a limit on the *whole request body*, not per file, so a
+   * multi-select is capped at 200 MB in total however the bytes are split.
+   *
+   * Keep this in step with the body-size limit on any reverse proxy in front
+   * (`client_max_body_size` on nginx), or the proxy becomes the new invisible
+   * ceiling.
    */
   experimental: {
-    serverActions: { bodySizeLimit: "32mb" },
+    serverActions: { bodySizeLimit: "200mb" },
   },
 
   /**

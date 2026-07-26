@@ -586,6 +586,11 @@ it without configuring a gateway can't strand a guest on a dead checkout button.
 
 ## Deploying
 
+> 📘 For the Docker path end to end on a Contabo VPS — server setup, `.env`,
+> nginx, GoDaddy DNS and HTTPS — see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+> Note it proxies to `127.0.0.1:3010`, the compose default, not the `3000` used
+> in the bare-metal walkthrough below.
+
 ### Self-hosted VPS with a custom domain (recommended)
 
 Works on any Ubuntu/Debian box. Nothing here is platform-specific.
@@ -624,7 +629,7 @@ ADMIN_PASSWORD="<a strong password>"
 server {
     server_name yourdomain.ae www.yourdomain.ae;
 
-    client_max_body_size 10M;   # image uploads are capped at 8 MB
+    client_max_body_size 200m;  # must match serverActions.bodySizeLimit (200mb)
 
     location / {
         proxy_pass http://127.0.0.1:3000;

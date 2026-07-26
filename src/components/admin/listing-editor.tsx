@@ -230,7 +230,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                 className="hidden"
               />
               <p className="m-0 mt-2 text-[11.5px] text-muted">
-                JPG أو PNG أو WebP — حتى ٨ ميغابايت للصورة. أول صورة هي الغلاف.
+                JPG أو PNG أو WebP — حتى ٢٠٠ ميغابايت للصورة. أول صورة هي الغلاف.
               </p>
             </>
           )}
