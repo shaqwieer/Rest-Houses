@@ -4,6 +4,21 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 
   /**
+   * Photo uploads are server actions taking a whole `File[]` (see
+   * addListingImages in src/app/actions/listings.ts — the admin's multi-select
+   * is sent as one call). Next caps a server action body at 1 MB by default,
+   * which is below MAX_UPLOAD_BYTES (8 MB, src/lib/storage/types.ts): every
+   * real phone photo would be rejected by the framework before the app's own
+   * validation — and far more so for a batch.
+   *
+   * Keep this in step with `client_max_body_size` on any reverse proxy in
+   * front, or the proxy becomes the new invisible ceiling.
+   */
+  experimental: {
+    serverActions: { bodySizeLimit: "32mb" },
+  },
+
+  /**
    * Standalone output: `next build` emits .next/standalone containing the server
    * plus only the node_modules it actually traced as reachable. That is what
    * keeps the Docker runtime image small — no devDependencies, no source tree —
