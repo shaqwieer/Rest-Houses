@@ -104,8 +104,16 @@ services:
       # Set to "true" on a first deploy to load the sample استراحات.
       # The entrypoint skips it automatically if listings already exist.
       RUN_SEED: ${RUN_SEED:-false}
+    # Published on the loopback interface only: on a shared host the app is
+    # reached through the reverse proxy (nginx terminates TLS for the real
+    # domain), so there is no reason to expose the port to the internet.
+    # Set APP_BIND_HOST=0.0.0.0 if you genuinely need it reachable from the LAN.
+    #
+    # 3010 rather than 3000 because 3000 is a crowded default — anything else
+    # already listening on the host would make `up` fail with "port is already
+    # allocated". Override APP_PORT per environment.
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_BIND_HOST:-127.0.0.1}:${APP_PORT:-3010}:3000"
 
 volumes:
   db-data:
