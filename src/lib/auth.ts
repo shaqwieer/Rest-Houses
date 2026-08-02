@@ -216,6 +216,72 @@ export async function requireApprovedOwner() {
  */
 
 /**
+ * Which dashboard the current session belongs to — the single answer both
+ * dashboards and the login page redirect on.
+ *
+ * ─── Why this exists: the /admin ⇄ /owner redirect loop ──────────────────────
+ * /admin and /owner each used to decide where a stranger belonged by assuming
+ * the other case must hold:
+ *
+ *     /admin:  "not an ADMIN?          → then you're an owner → /owner"
+ *     /owner:  "no OwnerProfile?       → then you're an admin → /admin"
+ *
+ * Both are true for the accounts anyone tests with, and neither handles
+ * **neither**. A session that is not a valid admin *and* not a valid owner
+ * bounces between the two until the browser gives up with ERR_TOO_MANY_REDIRECTS
+ * — and /login joins in, because it forwards an already-signed-in visitor to
+ * /admin, which starts the same cycle.
+ *
+ * That state is not hypothetical. Sessions are 30-day JWTs holding a user id, so
+ * the cookie long outlives the row it points at:
+ *
+ *   • the database was reset or re-seeded — new rows get new cuids, so every
+ *     cookie in every open browser now names a user that does not exist
+ *   • an account was deleted while someone was signed in
+ *   • a `User` has role "OWNER" but no `OwnerProfile` (a half-finished
+ *     registration, or a profile removed directly in the database)
+ *
+ * Returning null for all of them is what breaks the cycle: null means "this
+ * session belongs nowhere", and the only correct destination for nowhere is the
+ * login form, which — see `login/page.tsx` — renders rather than redirecting
+ * when this returns null.
+ *
+ * Note "/owner" is returned for an owner in *any* state. Pending, rejected,
+ * suspended and expired owners all belong there; the owner layout shows them the
+ * status panel. Sending them elsewhere is what would loop.
+ */
+export async function dashboardForSession(): Promise<Dashboard | null> {
+  const session = await auth();
+  if (!session?.user?.id) return null;
+
+  const user = await prisma.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, ownerProfile: { select: { id: true } } },
+  });
+
+  return dashboardForAccount(user);
+}
+
+export type Dashboard = "/admin" | "/owner";
+
+/**
+ * The decision itself, separated from the session and the query so it can be
+ * tested exhaustively — including the two cases that used to loop, which are
+ * awkward to stage through a real cookie. See `tests/owner-workflow.test.ts`.
+ *
+ * `null` is the load-bearing return value: it means "belongs to no dashboard",
+ * and every caller must send it to /login rather than guessing.
+ */
+export function dashboardForAccount(
+  user: { role: string; ownerProfile: { id: string } | null } | null,
+): Dashboard | null {
+  if (!user) return null; // valid signature, vanished row
+  if (user.role === "ADMIN") return "/admin";
+  if (user.ownerProfile) return "/owner";
+  return null; // an OWNER with no profile, or a role nothing serves
+}
+
+/**
  * Admin guard for a page. Redirects rather than throwing.
  *
  * `redirect()` throws a control-flow signal Next.js understands, so this is a
@@ -227,13 +293,23 @@ export async function requireAdminPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, email: true, name: true, role: true },
+    // `ownerProfile` is selected only to tell "wrong dashboard" apart from
+    // "belongs to no dashboard" without a second query.
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      ownerProfile: { select: { id: true } },
+    },
   });
 
   // A signed-in owner is not lost — they are on the wrong dashboard, so send
-  // them to their own rather than to a login form they don't need.
+  // them to their own rather than to a login form they don't need. Anyone who
+  // is neither goes to /login, which is what stops the loop described on
+  // `dashboardForSession` above.
   if (!user) redirect("/login?next=/admin");
-  if (user.role !== "ADMIN") redirect("/owner");
+  if (user.role !== "ADMIN") redirect(user.ownerProfile ? "/owner" : "/login");
 
   return user;
 }

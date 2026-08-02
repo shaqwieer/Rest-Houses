@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { LoginForm } from "@/components/admin/login-form";
 import { Brand } from "@/components/site/brand";
 import { Icon } from "@/components/ui/icon";
-import { auth } from "@/lib/auth";
+import { auth, dashboardForSession } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { getI18n } from "@/lib/i18n/server";
 
@@ -31,14 +31,38 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const session = await auth();
   const sp = await searchParams;
-  const next = typeof sp.next === "string" ? sp.next : "/admin";
 
-  // Already signed in — skip the form.
-  if (session?.user) redirect(next.startsWith("/") ? next : "/admin");
+  /**
+   * The page the middleware was trying to reach, if any — and *only* if any.
+   *
+   * This used to default to "/admin", which made the login page the third
+   * participant in the /admin ⇄ /owner redirect loop: an owner opening /login
+   * was sent to /admin purely because no `?next=` was present, and an account
+   * belonging to neither dashboard was fed straight into the cycle. Empty when
+   * absent, so the destination comes from the account instead.
+   */
+  const requestedNext =
+    typeof sp.next === "string" && sp.next.startsWith("/") && !sp.next.startsWith("//")
+      ? sp.next
+      : "";
 
+  /**
+   * null means the visitor is signed out **or** their session belongs to no
+   * dashboard — a cookie outliving a reset database, a deleted account, an owner
+   * with no profile. Both answers are the same: render the form. Redirecting a
+   * dead session anywhere is what looped.
+   */
+  const home = await dashboardForSession();
+  if (home) redirect(requestedNext || home);
+
+  const session = await auth();
   const [settings, { t }] = await Promise.all([getSettings(), getI18n()]);
+
+  // A signature that still verifies against an account that no longer resolves.
+  // Saying so beats silently showing the form to someone who believes they are
+  // already signed in.
+  const staleSession = Boolean(session?.user);
 
   return (
     <main className="flex min-h-screen flex-wrap items-stretch bg-sand-50">
@@ -94,7 +118,20 @@ export default async function LoginPage({
             {t.auth.loginHint}
           </p>
 
-          <LoginForm next={next} />
+          {staleSession && (
+            <p
+              role="status"
+              className="m-0 mb-5 flex items-start gap-2 rounded-xl bg-gold-100 px-3.5 py-3 text-[13px] font-semibold text-bronze"
+            >
+              <Icon name="info" size={18} className="mt-px shrink-0" />
+              {t.auth.sessionExpired}
+            </p>
+          )}
+
+          {/* Empty when there is no explicit `?next=`, so `loginAction` falls
+              through to `landingFor()` and routes by role instead of sending
+              every account to /admin. */}
+          <LoginForm next={requestedNext} />
 
           <Link
             href="/"

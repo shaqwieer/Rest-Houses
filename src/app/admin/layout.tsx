@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { AdminShell } from "@/components/admin/admin-shell";
-import { auth, currentRole } from "@/lib/auth";
+import { auth, dashboardForSession } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 import { getI18n } from "@/lib/i18n/server";
@@ -38,8 +38,12 @@ export default async function AdminLayout({
   const session = await auth();
   if (!session?.user) redirect("/login?next=/admin");
 
-  const role = await currentRole();
-  if (role !== "ADMIN") redirect("/owner");
+  // `dashboardForSession()` rather than a bare role check: an account that is
+  // neither a valid admin nor a valid owner has to end up at /login, not at
+  // /owner, or the two dashboards bounce it between them forever. See the long
+  // note on that function in src/lib/auth.ts.
+  const home = await dashboardForSession();
+  if (home !== "/admin") redirect(home ?? "/login?expired=1");
 
   const [settings, newRequestCount, pendingOwnerCount] = await Promise.all([
     getSettings(),

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { OwnerShell } from "@/components/owner/owner-shell";
 import { OwnerStatusPanel } from "@/components/owner/status-panel";
-import { auth, getOwnerProfileForSession } from "@/lib/auth";
+import { auth, dashboardForSession, getOwnerProfileForSession } from "@/lib/auth";
 import { ownerAccessState } from "@/lib/owners";
 import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
@@ -43,8 +43,18 @@ export default async function OwnerLayout({
   const session = await auth();
   if (!session?.user) redirect("/login?next=/owner");
 
+  // The mirror of the check in the admin layout, and it has to use the same
+  // helper for the same reason: "no owner profile" does not imply "is an admin".
+  // Assuming it did is half of the /admin ⇄ /owner redirect loop — see the note
+  // on `dashboardForSession` in src/lib/auth.ts.
+  const home = await dashboardForSession();
+  if (home !== "/owner") redirect(home ?? "/login?expired=1");
+
   const account = await getOwnerProfileForSession();
-  if (!account?.ownerProfile) redirect("/admin");
+  // Unreachable given the check above; kept so TypeScript narrows the type and
+  // so a future change to `dashboardForSession` cannot silently render the
+  // dashboard for an account with no profile.
+  if (!account?.ownerProfile) redirect("/login?expired=1");
 
   const settings = await getSettings();
   const state = ownerAccessState(account.ownerProfile);

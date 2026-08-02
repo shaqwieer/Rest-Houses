@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { OwnerRegisterForm } from "@/components/owner/register-form";
 import { PageHeader } from "@/components/site/page-shell";
-import { auth } from "@/lib/auth";
+import { dashboardForSession } from "@/lib/auth";
 import { getI18n } from "@/lib/i18n/server";
 
 /**
@@ -36,11 +36,15 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function OwnerRegisterPage() {
-  const [{ t }, session] = await Promise.all([getI18n(), auth()]);
+  const [{ t }, home] = await Promise.all([getI18n(), dashboardForSession()]);
 
   // Already signed in: send them where they belong rather than letting them
-  // create a second account for the same person.
-  if (session?.user) redirect("/owner");
+  // create a second account for the same person. `dashboardForSession()` rather
+  // than "is there a session" — a cookie left over from a reset database has no
+  // dashboard to be sent to, and forwarding it to /owner fed the redirect loop.
+  // null falls through to the form, which is the right place for someone whose
+  // account no longer exists.
+  if (home) redirect(home);
 
   return (
     <>

@@ -605,3 +605,92 @@ describe("owner listing publishing", () => {
     expect((await prisma.listing.findFirst({ where: { name: "Blank" } }))!.depositPercent).toBeNull();
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* dashboard routing — the /admin ⇄ /owner redirect loop                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * `/admin` and `/owner` each used to infer where a stranger belonged from the
+ * other's absence — "not an ADMIN, so you must be an owner" and "no profile, so
+ * you must be an admin". Both hold for every account anyone tests with, and
+ * neither handles an account that is *neither*, which bounced between the two
+ * dashboards until the browser gave up with ERR_TOO_MANY_REDIRECTS. /login was
+ * pulled in too, because it forwarded any signed-in visitor to /admin.
+ *
+ * `dashboardForSession()` is now the single answer all three redirect on, and
+ * returning null — "belongs to no dashboard, send them to the login form" — is
+ * the case that breaks the cycle. These tests exist for the two null branches;
+ * the others are here so a future "simplification" that drops them fails loudly.
+ */
+describe("dashboard routing", () => {
+  it("sends an admin to /admin", async () => {
+    const admin = await createAdmin();
+    signInAs(admin.id);
+    const { dashboardForSession } = await import("@/lib/auth");
+    expect(await dashboardForSession()).toBe("/admin");
+  });
+
+  it("sends an owner to /owner in every account state, not just APPROVED", async () => {
+    const { dashboardForSession } = await import("@/lib/auth");
+
+    // A pending, rejected, suspended or expired owner still *belongs* on
+    // /owner — the layout shows them the status panel there. Routing them
+    // anywhere else is what the loop was made of.
+    for (const status of ["APPROVED", "PENDING", "REJECTED", "SUSPENDED"]) {
+      const { user } = await createOwner({ email: `${status.toLowerCase()}@test.ae`, status });
+      signInAs(user.id);
+      expect(await dashboardForSession()).toBe("/owner");
+    }
+
+    const { user: lapsed } = await createOwner({
+      email: "lapsed@test.ae",
+      status: "APPROVED",
+      membershipExpiresAt: daysFromNow(-1),
+    });
+    signInAs(lapsed.id);
+    expect(await dashboardForSession()).toBe("/owner");
+  });
+
+  it("sends a session whose user row is gone to neither dashboard", async () => {
+    // A 30-day JWT outliving the row it names: the database was reset or
+    // re-seeded (new cuids), or the account was deleted while signed in.
+    const admin = await createAdmin();
+    signInAs(admin.id);
+    await prisma.user.delete({ where: { id: admin.id } });
+
+    const { dashboardForSession } = await import("@/lib/auth");
+    expect(await dashboardForSession()).toBeNull();
+  });
+
+  it("sends an OWNER with no profile to neither dashboard", async () => {
+    const { user } = await createOwner({ email: "orphan@test.ae" });
+    await prisma.ownerProfile.delete({ where: { userId: user.id } });
+    signInAs(user.id);
+
+    const { dashboardForSession } = await import("@/lib/auth");
+    expect(await dashboardForSession()).toBeNull();
+  });
+
+  it("sends a signed-out visitor to neither dashboard", async () => {
+    signInAs(null);
+    const { dashboardForSession } = await import("@/lib/auth");
+    expect(await dashboardForSession()).toBeNull();
+  });
+
+  it("never returns a dashboard that would redirect the account away again", async () => {
+    // The invariant, stated directly: whatever `dashboardForAccount` names must
+    // be somewhere that account is allowed to stay. Two destinations and a
+    // null, so an exhaustive table is cheap — and any future role added without
+    // a home defaults to null rather than to a redirect target.
+    const { dashboardForAccount } = await import("@/lib/auth");
+    const profile = { id: "profile-1" };
+
+    expect(dashboardForAccount({ role: "ADMIN", ownerProfile: null })).toBe("/admin");
+    expect(dashboardForAccount({ role: "ADMIN", ownerProfile: profile })).toBe("/admin");
+    expect(dashboardForAccount({ role: "OWNER", ownerProfile: profile })).toBe("/owner");
+    expect(dashboardForAccount({ role: "OWNER", ownerProfile: null })).toBeNull();
+    expect(dashboardForAccount({ role: "SOMETHING_NEW", ownerProfile: null })).toBeNull();
+    expect(dashboardForAccount(null)).toBeNull();
+  });
+});

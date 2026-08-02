@@ -31,13 +31,22 @@ function safeRedirect(next: unknown): string | null {
  * page depending on whether they are approved. Sending every account to /admin
  * as before would drop an owner on a page they are not authorised for and
  * bounce them straight back to the login form.
+ *
+ * The `ownerProfile` check is not redundant with the role check: a `User` with
+ * role "OWNER" and no profile belongs to neither dashboard, and naming one
+ * anyway is how a sign-in used to end in a redirect loop rather than on a page.
+ * /login is the honest answer, and it renders the form for such an account
+ * instead of forwarding it — see `dashboardForSession` in src/lib/auth.ts.
  */
 async function landingFor(email: string): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { email },
-    select: { role: true },
+    select: { role: true, ownerProfile: { select: { id: true } } },
   });
-  return user?.role === "OWNER" ? "/owner" : "/admin";
+
+  if (!user) return "/login";
+  if (user.role === "ADMIN") return "/admin";
+  return user.ownerProfile ? "/owner" : "/login";
 }
 
 export async function loginAction(formData: FormData): Promise<LoginResult> {
