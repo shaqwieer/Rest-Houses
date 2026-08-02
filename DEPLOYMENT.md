@@ -220,6 +220,21 @@ and 200 MB over a phone's upload link takes minutes — nginx would cut the
 connection mid-transfer with a 408 long before the size limit ever came into
 play.
 
+While you are in `http { }`, add this `map` too:
+
+```nginx
+http {
+    # ... existing directives ...
+
+    # Sends `Connection: upgrade` only for requests actually asking for a
+    # protocol upgrade, and `close` otherwise. Used by the vhost below.
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+}
+```
+
 Now create `/etc/nginx/sites-available/tryrihla.com`:
 
 ```nginx
@@ -243,9 +258,15 @@ server {
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket / upgrade support
+        # WebSocket / upgrade support.
+        #
+        # `$connection_upgrade` (the map above), not a hardcoded "upgrade".
+        # The hardcoded form — which most nginx guides show — stamps
+        # `Connection: upgrade` onto every proxied request, including ordinary
+        # page loads, and drops keep-alive on all of them for no benefit. This
+        # is a correctness/efficiency fix, not a fix for any known bug.
         proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
 
         # A 200 MB upload needs minutes, not the 60s default — the send timeout
         # is the one that bites while the body is still streaming to the app.
@@ -478,6 +499,58 @@ means changing the role inside Postgres — easiest on a fresh install is
 **502 Bad Gateway**
 nginx is up but the app is not. `docker compose ps` and `docker compose logs app`.
 Also confirm `proxy_pass` port matches `APP_PORT`.
+
+**"Application error: a client-side exception has occurred" — but refreshing the
+page shows it fine**
+
+That pairing is the signature of a *client-side navigation* failing while the
+ordinary page load succeeds. Clicking a rest house from the home page does not
+re-request the HTML document; it fetches a streamed React Flight payload
+(`Content-Type: text/x-component`) and renders it in the browser. Pressing
+refresh takes the completely different HTML path, which is why refresh "fixes"
+it and why nothing appears in the app log — the server rendered the page
+correctly both times.
+
+Work through these in order.
+
+1. **Is the app returning a proper Flight response at all?**
+
+   ```bash
+   curl -sD- -o /dev/null -H 'RSC: 1' https://tryrihla.com/listings/<slug>
+   ```
+
+   The `content-type` must be `text/x-component`. If it comes back
+   `text/html`, something in front of the app is answering the RSC request
+   with the cached HTML page — a `proxy_cache` whose `proxy_cache_key` omits
+   `$is_args$args`, or a CDN (Cloudflare's "Cache Everything") ignoring the
+   `?_rsc=` query string. Fix the cache key, or exclude the query from caching.
+
+   Compare it against the app directly, bypassing nginx entirely:
+
+   ```bash
+   curl -sD- -o /dev/null -H 'RSC: 1' http://127.0.0.1:3010/listings/<slug>
+   ```
+
+   Same headers from the app but not through nginx means the proxy is the
+   problem, not the code.
+
+2. **Otherwise it is most likely a stale build.** A browser holding the previous
+   deployment's page asks for a JavaScript chunk whose content hash no longer
+   exists, gets a 404, and throws. This one is self-inflicted by deploying, it
+   only affects tabs that were already open, and the site now reloads itself
+   once when it detects it (`src/app/(site)/error.tsx`). To confirm after the
+   fact, open DevTools → Network and look for a 404 on a `/_next/static/chunks/…`
+   file at the moment of the click.
+
+If the error survives both, the page now prints an **error reference**
+under the message. That string is Next's `digest`, and the same value is written
+into the app's own log for the failure that produced it:
+
+```bash
+docker compose logs app | grep <digest>
+```
+
+That gives the real stack instead of the generic sentence.
 
 **413 Request Entity Too Large when uploading photos**
 `client_max_body_size 200m;` is missing. Check the `http { }` block of
