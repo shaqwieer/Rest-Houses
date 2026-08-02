@@ -120,9 +120,11 @@ export default async function BookingConfirmationPage({
         </h1>
         <p className="m-0 mb-2 text-[15.5px] leading-[1.9] text-muted">{t.booking.confirmBody}</p>
 
-        <div className="my-4 inline-flex items-center gap-2.5 rounded-full bg-gold-100 px-5 py-2.5 text-[14px] font-bold text-bronze">
+        <div className="my-4 inline-flex flex-col items-center gap-1.5 rounded-[22px] bg-gold-100 px-5 py-2.5 text-[14px] font-bold text-bronze">
           <Icon name="confirmation_number" size={19} />
-          {t.booking.reference}: <span dir="ltr">{ref}</span>
+          <div>
+            {t.booking.reference}: <span dir="ltr">{ref}</span>
+          </div>
         </div>
 
         {/* ---- summary ---- */}
