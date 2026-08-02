@@ -1,23 +1,37 @@
 // ---------------------------------------------------------------------------
 // Prisma schema — منصة حجز الاستراحات
 // ---------------------------------------------------------------------------
-// PORTABILITY NOTE
-// The default provider is SQLite so you can clone + run with zero services.
-// To move to PostgreSQL (self-hosted, Neon, Supabase, RDS…) switch the provider
-// in the datasource block below and point DATABASE_URL at your server:
+// PostgreSQL is the one provider — local development, the test suite and
+// production all run it. Start a local server with `npm run db:up`
+// (docker-compose.dev.yml) and point DATABASE_URL at it.
 //
-//   node scripts/set-db-provider.mjs postgresql
-//   DATABASE_URL="postgresql://user:pass@host:5432/desert_chalets?schema=public"
+// ─── Why not SQLite locally ─────────────────────────────────────────────────
+// This project used to default to SQLite for zero-setup local development and
+// switch to PostgreSQL only inside the Docker build. That convenience had a
+// concrete cost: `prisma migrate dev` generated SQLite-flavoured migrations
+// (PRAGMA, table-rebuild RedefineTables blocks) which could never replay
+// against production. So `docker/migrate.sh` fell back to `prisma db push`,
+// which syncs the *schema* but reads no migration SQL at all — meaning every
+// data migration was silently skipped while the deploy logged
+// "🚀 Your database is now in sync with your Prisma schema."
 //
-// (the Docker build runs that script automatically — see the Dockerfile), then
-// run `npx prisma migrate deploy`. Nothing else in this schema needs to change:
-// we deliberately avoid provider-specific features —
-//   * no native `enum` (SQLite has none) → status fields are String with the
-//     allowed values documented and validated in `src/lib/constants.ts`
-//   * no scalar lists / arrays (Postgres-only) → amenity + category id lists
-//     are stored as JSON text and parsed by `src/lib/json-list.ts`
-//   * no `DateTime` for calendar days → availability uses "YYYY-MM-DD" strings
-//     so a booked day can never shift across a UTC boundary (see below)
+// That was found the hard way: a release whose city-id remap never ran in
+// production, leaving rows pointing at ids the application no longer knew.
+// One provider everywhere means a migration that passes locally is a migration
+// that will run in production.
+//
+// ─── Deliberate schema constraints, still worth keeping ─────────────────────
+// These were originally SQLite compatibility measures. They are retained on
+// their own merits, so changing them is a decision rather than an accident:
+//   * no native `enum` → status fields are String, validated by the guards in
+//     `src/lib/constants.ts`. Adding a value is a code change, not a migration
+//     that locks the table.
+//   * amenity + category id lists are JSON text, not `String[]`. See the note
+//     on `findListings` in src/lib/listings.ts for what that costs and why the
+//     in-memory filter is correct at this catalogue size.
+//   * calendar days are "YYYY-MM-DD" strings, never DateTime — a booked day is
+//     a calendar fact, not an instant, and must not shift across a UTC
+//     boundary. See src/lib/dates.ts.
 // ---------------------------------------------------------------------------
 
 generator client {
@@ -25,7 +39,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

@@ -132,8 +132,7 @@ ADMIN_PASSWORD=<a strong password you will change after first login>
 ADMIN_NAME=أبو سلطان
 
 # --- First-run seed ---
-RUN_SEED=true
-
+# (seeding is a separate, explicit step — see below)
 # --- Branding (applied by that first seed only; edit later at /admin/settings) ---
 SITE_NAME=استراحات الرمال
 WHATSAPP_NUMBER=+971500000000
@@ -147,11 +146,23 @@ CONTACT_EMAIL=hello@tryrihla.com
 > to `http://`; you would ship with wrong callback URLs and a sitemap full of
 > `http` links.
 
-### About `RUN_SEED`
+### About seeding
 
-`RUN_SEED=true` is **required on the very first deploy**. The admin account is
-created only by the seed, and the seed only runs when the listings table is
-empty. A first deploy with `RUN_SEED=false` gives you a site nobody can log into.
+Seeding is a **separate, explicit command** — it is not part of a deploy:
+
+```bash
+docker compose --profile seed run --rm seed
+```
+
+Run it once, on the very first deploy. The admin account is created *only* by
+`prisma/seed.ts`, together with the 8 sample استراحات — there is no way to get
+one without the other. Skip this and you have a site nobody can log into.
+
+It is guarded by a listing count, so running it again on a populated database
+is a no-op rather than a duplicate catalogue. The old `RUN_SEED` flag is gone:
+it was read on every `docker compose up`, so a value left at `true` meant the
+only thing between you and eight demo listings reappearing on a live site was
+that guard.
 The 8 sample استراحات come along with the admin user — there is no way to get one
 without the other; delete them from `/admin` afterwards.
 
@@ -340,7 +351,7 @@ Renewal is automatic via a systemd timer. Test it any time with
 
 ```bash
 cd /opt/Rest-Houses
-nano .env                # RUN_SEED=true  →  RUN_SEED=false
+# (nothing to switch off — seeding never runs unless you ask for it)
 docker compose up -d     # picks up the change
 ```
 
@@ -510,7 +521,7 @@ above still applies with three changes:
    `/etc/nginx/sites-available/`. Do not edit another site's vhost. Run certbot
    with only this domain's `-d` flags so it touches only this vhost.
 
-Everything else — `.env`, `RUN_SEED` on then off, the GoDaddy records, the
+Everything else — `.env`, the one-off seed, the GoDaddy records, the
 `client_max_body_size` line — is identical.
 
 ### If a PaaS (Dokploy, Coolify, CapRover) already owns ports 80/443

@@ -1,0 +1,52 @@
+# ============================================================================
+#  Local PostgreSQL — for development and for the test suite
+# ============================================================================
+#  Start:  npm run db:up      (docker compose -f docker-compose.dev.yml up -d)
+#  Stop:   npm run db:down
+#  Wipe:   docker compose -f docker-compose.dev.yml down -v
+#
+#  ─── Why this file exists ─────────────────────────────────────────────────
+#  The project used to default to SQLite so it would run with zero services,
+#  and switched to PostgreSQL only inside the Docker build. That convenience
+#  had a real cost: migrations were generated against SQLite, so they could
+#  never replay against production. `docker/migrate.sh` fell back to
+#  `prisma db push`, which syncs the schema but silently ignores any data
+#  migration — and reported success while doing it.
+#
+#  PostgreSQL is now the one provider, everywhere: local, tests, production.
+#  The price is this container. It is worth paying, because it means a
+#  migration that works here is a migration that works in production.
+#
+#  Two databases on one server, so the test suite can drop and recreate its
+#  own schema without touching whatever you were working on:
+#    desert_chalets       — development  (port 55433)
+#    desert_chalets_test  — `npm test`   (created by tests/global-setup.ts)
+# ============================================================================
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: rest-houses-dev-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: desert_chalets
+      POSTGRES_USER: chalets
+      POSTGRES_PASSWORD: chalets
+      # Matches production, so Arabic sorts and compares identically.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      # 55433, not 5432: developer machines usually already have Postgres or
+      # another project's container on the default port, and a collision here
+      # fails with an unhelpful "port is already allocated".
+      - "127.0.0.1:55433:5432"
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chalets -d desert_chalets"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  dev-db-data:

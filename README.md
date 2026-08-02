@@ -20,7 +20,7 @@ typography, spacing and components match it.
 7. [How the booking flow works](#how-the-booking-flow-works)
 8. [Running with Docker](#running-with-docker)
 9. [Image storage (including images in the database)](#image-storage-including-images-in-the-database)
-10. [Moving from SQLite to PostgreSQL](#moving-from-sqlite-to-postgresql)
+10. [Database and migrations](#database-and-migrations)
 11. [Enabling online deposit payments](#enabling-online-deposit-payments)
 12. [Deploying](#deploying)
 13. [Everyday tasks](#everyday-tasks)
@@ -68,7 +68,7 @@ toast; destructive ones ask first.
 - **Next.js 15** (App Router) + **React 19** + **TypeScript** (strict)
 - **Tailwind CSS v4** — CSS-first config, no `tailwind.config.js`. Design tokens
   in `src/app/globals.css`
-- **Prisma** — SQLite for local dev, PostgreSQL for production, same schema
+- **Prisma** — PostgreSQL everywhere: local, tests and production
 - **NextAuth v5** (credentials) — a single admin login, JWT sessions
 - **Almarai** (headings) + **Tajawal** (body), self-hosted via `next/font`
 - **Leaflet** + CARTO tiles for interactive maps; Google Maps embed for the
@@ -80,7 +80,7 @@ toast; destructive ones ask first.
 
 ## Quick start
 
-Requires **Node.js 20+** (tested on 22).
+Requires **Node.js 20+** (tested on 22) and **Docker**, for PostgreSQL.
 
 ```bash
 # 1. install
@@ -91,13 +91,21 @@ cp .env.example .env
 #    then edit .env — at minimum set AUTH_SECRET and ADMIN_PASSWORD
 #    generate a secret with:  openssl rand -base64 32
 
-# 3. create the database and load sample data
-npm run db:migrate      # creates prisma/dev.db and applies the schema
+# 3. start PostgreSQL (127.0.0.1:55433)
+npm run db:up
+
+# 4. apply migrations and load sample data
+npm run db:migrate      # prisma migrate deploy
 npm run db:seed         # admin user + settings + 8 sample استراحات
 
-# 4. run
+# 5. run
 npm run dev
 ```
+
+PostgreSQL rather than a local SQLite file so that development, the test suite
+and production all run the same engine — see
+[Database and migrations](#database-and-migrations) for why that stopped being
+optional.
 
 Open **http://localhost:3000**. The dashboard is at **/admin** — log in with the
 `ADMIN_EMAIL` / `ADMIN_PASSWORD` from your `.env`.
@@ -118,7 +126,7 @@ Every variable, what it does, and whether it is required.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `DATABASE_URL` | ✅ | `file:./dev.db` for SQLite, or a `postgresql://…` URL |
+| `DATABASE_URL` | ✅ | `postgresql://…` — `npm run db:up` starts a local server |
 | `AUTH_SECRET` | ✅ | Signs session cookies. `openssl rand -base64 32` |
 | `NEXTAUTH_URL` | prod | Absolute site URL, for auth callbacks |
 | `NEXT_PUBLIC_SITE_URL` | prod | Absolute site URL, for canonical tags, sitemap and OG image URLs |
@@ -150,10 +158,11 @@ prisma/
   seed.ts                admin user + settings + 8 sample استراحات
 scripts/
   verify.ts              70-check smoke test (npm run verify)
-  set-db-provider.mjs    flips the Prisma provider sqlite <-> postgresql
+tests/                   vitest suite, runs against PostgreSQL
 docker/
   entrypoint.sh          app container: validate config, exec the server
-  migrate.sh             one-shot job: apply schema, seed if empty
+  migrate.sh             one-shot job: apply migrations — no fallback
+  seed.sh                sample data, behind the `seed` compose profile
 Dockerfile               multi-stage build (standalone, non-root)
 docker-compose.yml       app + postgres + one-shot migrate job
 src/
@@ -520,37 +529,86 @@ database, silently fail, and leak the file forever.
 
 ---
 
-## Moving from SQLite to PostgreSQL
+## Database and migrations
 
-The schema deliberately avoids provider-specific features, so this is a one-line
-change:
+PostgreSQL is the only supported provider — local development, the test suite
+and production all run it.
 
-1. In `prisma/schema.prisma`:
-   ```prisma
-   datasource db {
-     provider = "postgresql"   // was "sqlite"
-     url      = env("DATABASE_URL")
-   }
-   ```
-2. In `.env`:
-   ```
-   DATABASE_URL="postgresql://user:pass@localhost:5432/desert_chalets?schema=public"
-   ```
-3. ```bash
-   rm -rf prisma/migrations   # SQLite migrations aren't Postgres-compatible
-   npx prisma migrate dev --name init
-   npm run db:seed
-   ```
+```bash
+npm run db:up        # start PostgreSQL on 127.0.0.1:55433 (docker-compose.dev.yml)
+npx prisma migrate deploy
+npm run db:seed      # optional: admin account + 8 sample استراحات
+npm run dev
+```
 
-What made this portable — worth preserving if you extend the schema:
+`DATABASE_URL` for that server:
 
-- **No native `enum`** (SQLite has none) — status fields are `String`, validated
-  in `src/lib/constants.ts`
-- **No scalar lists** (Postgres-only) — amenity and category ids are JSON text,
-  parsed by `src/lib/json-list.ts`
-- **No `DateTime` for calendar days** — availability uses `YYYY-MM-DD` strings
-- **No `skipDuplicates`** on `createMany` (unsupported on SQLite) — the code reads
-  existing rows first instead
+```
+DATABASE_URL="postgresql://chalets:chalets@127.0.0.1:55433/desert_chalets?schema=public"
+```
+
+### Changing the schema
+
+```bash
+npx prisma migrate dev --name what_changed
+```
+
+Commit the generated folder under `prisma/migrations/`. Deployment applies it
+with `prisma migrate deploy`, and nothing else.
+
+### Why there is no SQLite option any more
+
+The project used to default to SQLite locally and switch to PostgreSQL inside
+the Docker build. That produced SQLite-flavoured migrations — `PRAGMA`
+statements, table-rebuild blocks — which could never replay against production.
+`docker/migrate.sh` therefore fell back to `prisma db push`, and that is where
+the real damage was:
+
+**`db push` syncs the schema and ignores migration SQL entirely.** It diffs
+`schema.prisma` against the live database and emits DDL. Any `UPDATE` in a
+migration — a backfill for a new column, a value remap — is silently skipped,
+and the deploy still prints *"🚀 Your database is now in sync with your Prisma
+schema"* and exits 0.
+
+That shipped a release to production whose city-id remap never ran, leaving rows
+pointing at ids the application no longer recognised. The schema was right, the
+data was wrong, and the log said everything was fine.
+
+So: one provider, real migrations, and `docker/migrate.sh` has no fallback. A
+failed migration exits non-zero, and because `app` declares
+`depends_on: migrate: condition: service_completed_successfully`, the
+application does not start. Being down beats serving traffic against a
+half-migrated database.
+
+### Baselining a database that predates migrations
+
+A database previously set up with `db push` has the tables but no migration
+history, so `migrate deploy` will try to create tables that already exist.
+Record the baseline once:
+
+```bash
+npx prisma migrate diff \
+  --from-url "$DATABASE_URL" \
+  --to-schema-datamodel prisma/schema.prisma   # must report no difference
+
+npx prisma migrate resolve --applied 20260802082543_init_postgres
+npx prisma migrate status                      # up to date
+```
+
+If the diff *does* report differences, the live schema has drifted from
+`schema.prisma`; resolve that before marking anything applied, or the drift is
+baked in permanently.
+
+### Schema constraints worth keeping
+
+Originally SQLite compatibility measures, retained on their own merits:
+
+- **No native `enum`** — status fields are `String`, validated in
+  `src/lib/constants.ts`. Adding a value is a code change, not a table lock.
+- **No scalar lists** — amenity and category ids are JSON text, parsed by
+  `src/lib/json-list.ts`. See `findListings` for what that costs.
+- **No `DateTime` for calendar days** — availability uses `YYYY-MM-DD` strings,
+  so a booked day cannot shift across a UTC boundary.
 
 ---
 

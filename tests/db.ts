@@ -1,7 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 
 /**
- * A real SQLite database for the tests that need one.
+ * A real PostgreSQL database for the tests that need one — the same engine as
+ * production.
  *
  * ─── Why a real database rather than a mocked Prisma client ─────────────────
  * The rules under test are *queries*: "an expired owner's listings do not come
@@ -11,8 +12,9 @@ import { PrismaClient } from "@prisma/client";
  * predicate were wrong. Running the actual SQL is the only way these assertions
  * mean anything.
  *
- * SQLite makes that cheap: the file is created once per run, truncated between
- * tests, and deleted with the working directory.
+ * The database is dropped and recreated once per run by tests/global-setup.ts,
+ * then truncated between tests by `resetDatabase()` below. `deleteMany()` is
+ * engine-agnostic, so nothing here depends on which database is underneath.
  */
 
 const prisma = new PrismaClient();
@@ -20,9 +22,9 @@ const prisma = new PrismaClient();
 /**
  * Present for symmetry with the test files that call it.
  *
- * The schema is actually created by `tests/global-setup.ts`, which runs once
- * before any worker starts. Doing it per test file would have the second file
- * try to delete a database the first still holds open (EBUSY on Windows).
+ * The database is actually created and migrated by `tests/global-setup.ts`,
+ * which runs once before any worker starts — doing it per test file would have
+ * workers racing to drop a database the others are connected to.
  */
 export function ensureSchema(): void {
   /* no-op — see tests/global-setup.ts */

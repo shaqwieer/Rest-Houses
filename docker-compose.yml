@@ -2,7 +2,8 @@
 #  استراحات — full stack: app + PostgreSQL
 # ============================================================================
 #  Start:      docker compose up -d --build
-#  First run:  RUN_SEED=true docker compose up -d --build
+#  First run:  docker compose up -d --build
+#              docker compose --profile seed run --rm seed
 #  Logs:       docker compose logs -f app
 #  Stop:       docker compose down          (data survives)
 #  Wipe:       docker compose down -v       (⚠️ deletes the database)
@@ -39,7 +40,12 @@ services:
     # ports:
     #   - "5432:5432"
 
-  # One-shot job: applies the schema (and seeds on a first deploy), then exits.
+  # One-shot job: applies migrations, then exits.
+  #
+  # It does NOT seed — see the `seed` service below. And it does not fall back
+  # to `prisma db push`: a failure here exits non-zero, and because `app`
+  # depends on this service completing successfully, the application stays down
+  # rather than serving traffic against a half-migrated database.
   #
   # Built from the `build` stage, which still has the full node_modules — so the
   # Prisma CLI and tsx are available here and can be left out of the much smaller
@@ -50,30 +56,45 @@ services:
       context: .
       dockerfile: Dockerfile
       target: build
-      args:
-        DATABASE_PROVIDER: postgresql
     restart: "no"
     depends_on:
       db:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-chalets}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-desert_chalets}?schema=public
-      RUN_SEED: ${RUN_SEED:-false}
+    # Explicit interpreter, so the script runs regardless of its shebang.
+    command: ["/bin/sh", "/app/docker/migrate.sh"]
+
+  # Sample data. Behind a profile, so it never runs as part of a normal deploy:
+  #
+  #     docker compose --profile seed run --rm seed
+  #
+  # Replaces the old RUN_SEED flag, which was read on every `up` and needed a
+  # row-count guard to stop demo listings reappearing on a live site.
+  seed:
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-chalets}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-desert_chalets}?schema=public
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.ae}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       ADMIN_NAME: ${ADMIN_NAME:-المشرف}
       SITE_NAME: ${SITE_NAME:-استراحات الرمال}
       WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:-+971500000000}
       CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@example.ae}
-    # Explicit interpreter, so the script runs regardless of its shebang.
-    command: ["/bin/sh", "/app/docker/migrate.sh"]
+    command: ["/bin/sh", "/app/docker/seed.sh"]
 
   app:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        DATABASE_PROVIDER: postgresql
     restart: unless-stopped
     depends_on:
       db:
@@ -101,9 +122,6 @@ services:
       WHATSAPP_NUMBER: ${WHATSAPP_NUMBER:-+971500000000}
       CONTACT_EMAIL: ${CONTACT_EMAIL:-hello@example.ae}
 
-      # Set to "true" on a first deploy to load the sample استراحات.
-      # The entrypoint skips it automatically if listings already exist.
-      RUN_SEED: ${RUN_SEED:-false}
     # Published on the loopback interface only: on a shared host the app is
     # reached through the reverse proxy (nginx terminates TLS for the real
     # domain), so there is no reason to expose the port to the internet.

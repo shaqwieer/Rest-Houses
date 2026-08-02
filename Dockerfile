@@ -19,7 +19,6 @@
 # ============================================================================
 
 ARG NODE_VERSION=22
-ARG DATABASE_PROVIDER=postgresql
 
 # ---------------------------------------------------------------------------
 # base — shared by every stage
@@ -37,23 +36,19 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # deps — install node_modules (cached until package-lock.json changes)
 # ---------------------------------------------------------------------------
 FROM base AS deps
-ARG DATABASE_PROVIDER
 
 COPY package.json package-lock.json ./
-# prisma/ and scripts/ are copied before `npm ci` because the `postinstall` hook
-# runs `prisma generate`, which needs the schema to exist — and the schema must
-# already point at the right provider.
+# prisma/ is copied before `npm ci` because the `postinstall` hook runs
+# `prisma generate`, which needs the schema to exist.
 COPY prisma ./prisma
 COPY scripts ./scripts
 
-RUN node scripts/set-db-provider.mjs "${DATABASE_PROVIDER}" \
- && npm ci --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 # ---------------------------------------------------------------------------
 # build — compile the Next.js app
 # ---------------------------------------------------------------------------
 FROM base AS build
-ARG DATABASE_PROVIDER
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -63,8 +58,7 @@ COPY . .
 ENV DATABASE_URL="postgresql://build:build@localhost:5432/build?schema=public"
 ENV NODE_ENV=production
 
-RUN node scripts/set-db-provider.mjs "${DATABASE_PROVIDER}" \
- && npx prisma generate \
+RUN npx prisma generate \
  && npx next build
 
 # Normalise line endings on the shell scripts the containers execute. A checkout
