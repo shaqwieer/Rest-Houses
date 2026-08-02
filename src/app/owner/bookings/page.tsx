@@ -106,10 +106,11 @@ export default async function OwnerBookingsPage({
           {ordered.map((r) => (
             <RequestCard
               key={r.id}
-              // Owners see their own requests but cannot change a request's
-              // status: confirming a booking writes BOOKED rows into the shared
-              // availability calendar, which stays an operator action.
-              readOnly
+              // Confirm / reject / cancel, scoped by the server action to this
+              // owner's own rest houses. The calendar rows a confirmation writes
+              // belong to their own listing, so there is nothing here an
+              // operator needs to do on their behalf.
+              scope="owner"
               request={{
                 id: r.id,
                 reference: r.reference,

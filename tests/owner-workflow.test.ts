@@ -694,3 +694,153 @@ describe("dashboard routing", () => {
     expect(dashboardForAccount(null)).toBeNull();
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* owners answering their own booking requests                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An owner confirms, rejects and cancels requests for their own rest houses.
+ * They are the person the guest is dealing with, and a booking that waits for an
+ * operator to press "confirm" goes cold.
+ *
+ * The tests that matter here are the negative ones. `setOwnerRequestStatus`
+ * scopes the update with `listing: { ownerId }` **in the WHERE clause**, so the
+ * database refuses another owner's request rather than the code remembering to
+ * check afterwards — and the guard re-reads status and membership, so a
+ * suspended owner cannot act on a token minted while they were approved.
+ */
+describe("owner booking actions", () => {
+  async function createRequest(listingId: string, checkIn: string, checkOut: string) {
+    return prisma.bookingRequest.create({
+      data: {
+        reference: `RQ-${Math.floor(Math.random() * 1e6)}-${listingId.slice(-4)}`,
+        listingId,
+        customerName: "Guest",
+        customerPhone: "+971500000001",
+        checkIn,
+        checkOut,
+        nights: 1,
+        guests: 10,
+        subtotal: 1000,
+        serviceFee: 50,
+        total: 1050,
+        depositDue: 300,
+        depositPercent: 30,
+        status: "NEW",
+      },
+    });
+  }
+
+  it("confirms a request, closing the listing's own calendar", async () => {
+    const { user, owner } = await createOwner({ email: "answers@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    const request = await createRequest(listing.id, "2030-03-10", "2030-03-12");
+    signInAs(user.id);
+
+    const { setOwnerRequestStatus } = await import("@/app/actions/requests");
+    expect((await setOwnerRequestStatus(request.id, "CONFIRMED")).ok).toBe(true);
+
+    expect((await prisma.bookingRequest.findUnique({ where: { id: request.id } }))!.status).toBe(
+      "CONFIRMED",
+    );
+    // The two nights of the stay, BOOKED — check-out day is exclusive.
+    const booked = await prisma.availability.findMany({
+      where: { listingId: listing.id },
+      orderBy: { date: "asc" },
+    });
+    expect(booked.map((a) => a.date)).toEqual(["2030-03-10", "2030-03-11"]);
+    expect(booked.every((a) => a.status === "BOOKED")).toBe(true);
+    expect((await prisma.listing.findUnique({ where: { id: listing.id } }))!.bookingsCount).toBe(1);
+  });
+
+  it("releases the nights again when the owner cancels", async () => {
+    const { user, owner } = await createOwner({ email: "cancels@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    const request = await createRequest(listing.id, "2030-04-01", "2030-04-02");
+    signInAs(user.id);
+
+    const { setOwnerRequestStatus } = await import("@/app/actions/requests");
+    await setOwnerRequestStatus(request.id, "CONFIRMED");
+
+    // A day the owner blocked by hand must survive the cancellation — only the
+    // BOOKED rows the confirmation created are released.
+    await prisma.availability.create({
+      data: { listingId: listing.id, date: "2030-04-05", status: "BLOCKED" },
+    });
+
+    expect((await setOwnerRequestStatus(request.id, "CANCELLED")).ok).toBe(true);
+
+    const left = await prisma.availability.findMany({ where: { listingId: listing.id } });
+    expect(left.map((a) => a.date)).toEqual(["2030-04-05"]);
+    expect((await prisma.listing.findUnique({ where: { id: listing.id } }))!.bookingsCount).toBe(0);
+  });
+
+  it("refuses another owner's request, and changes nothing", async () => {
+    const { owner: mine } = await createOwner({ email: "mine@test.ae" });
+    const { user: intruder } = await createOwner({ email: "intruder@test.ae" });
+    const listing = await createListing({ ownerId: mine.id });
+    const request = await createRequest(listing.id, "2030-05-01", "2030-05-02");
+
+    signInAs(intruder.id);
+    const { setOwnerRequestStatus } = await import("@/app/actions/requests");
+    const result = await setOwnerRequestStatus(request.id, "CONFIRMED");
+
+    expect(result.ok).toBe(false);
+    // "Not found", not "forbidden": the same answer as for an id that does not
+    // exist, so the response confirms nothing about whose request it is.
+    expect((await prisma.bookingRequest.findUnique({ where: { id: request.id } }))!.status).toBe(
+      "NEW",
+    );
+    expect(await prisma.availability.count({ where: { listingId: listing.id } })).toBe(0);
+  });
+
+  it("refuses a suspended owner even for their own request", async () => {
+    const { user, owner } = await createOwner({ email: "suspended-owner@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    const request = await createRequest(listing.id, "2030-06-01", "2030-06-02");
+    signInAs(user.id);
+
+    // Suspended *after* the session was established — the case a 30-day JWT
+    // would otherwise keep asserting away.
+    await prisma.ownerProfile.update({
+      where: { id: owner.id },
+      data: { status: "SUSPENDED" },
+    });
+
+    const { setOwnerRequestStatus } = await import("@/app/actions/requests");
+    expect((await setOwnerRequestStatus(request.id, "CONFIRMED")).ok).toBe(false);
+    expect((await prisma.bookingRequest.findUnique({ where: { id: request.id } }))!.status).toBe(
+      "NEW",
+    );
+  });
+
+  it("refuses a request on a listing the owner does not own, even mid-transfer", async () => {
+    // An admin reassigns a listing away; the owner's open tab still shows the
+    // request. The scope is re-evaluated per call, so the stale page cannot act.
+    const { user, owner } = await createOwner({ email: "former@test.ae" });
+    const { owner: newOwner } = await createOwner({ email: "new-owner@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    const request = await createRequest(listing.id, "2030-07-01", "2030-07-02");
+    signInAs(user.id);
+
+    await prisma.listing.update({ where: { id: listing.id }, data: { ownerId: newOwner.id } });
+
+    const { setOwnerRequestStatus } = await import("@/app/actions/requests");
+    expect((await setOwnerRequestStatus(request.id, "CONFIRMED")).ok).toBe(false);
+  });
+
+  it("does not let an owner delete a request", async () => {
+    const { user, owner } = await createOwner({ email: "nodelete@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    const request = await createRequest(listing.id, "2030-08-01", "2030-08-02");
+    signInAs(user.id);
+
+    // `deleteRequest` is admin-only and has no owner-scoped sibling: rejecting
+    // tells the guest what they need, while erasing the row destroys the
+    // operator's record of it.
+    const { deleteRequest } = await import("@/app/actions/requests");
+    await expect(deleteRequest(request.id)).rejects.toThrow();
+    expect(await prisma.bookingRequest.count({ where: { id: request.id } })).toBe(1);
+  });
+});

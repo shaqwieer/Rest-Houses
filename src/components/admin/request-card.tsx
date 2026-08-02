@@ -6,7 +6,11 @@ import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { deleteRequest, setRequestStatus } from "@/app/actions/requests";
+import {
+  deleteRequest,
+  setOwnerRequestStatus,
+  setRequestStatus,
+} from "@/app/actions/requests";
 import { arDayMonth } from "@/lib/dates";
 import { arNum, formatReference } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
@@ -36,17 +40,27 @@ export type RequestCardData = {
 /**
  * One booking request, with confirm / reject / WhatsApp / delete actions.
  *
- * `readOnly` drops every status-changing control, for the owner dashboard.
- * Confirming a booking writes BOOKED rows into the shared availability
- * calendar, so it stays an operator action — an owner sees the request and can
- * reply on WhatsApp, but the calendar is changed in one place.
+ * `scope` decides which server action the buttons call, not whether they
+ * appear. An owner answers requests for their own rest houses — they are the
+ * person the guest is actually dealing with, and a booking that waits for an
+ * operator to press "confirm" goes cold. `setOwnerRequestStatus` scopes the
+ * update to that owner's own listings in the WHERE clause.
+ *
+ * Deleting stays admin-only, which is why the delete control is the one thing
+ * still hidden by scope: rejecting a request already tells the guest what they
+ * need to know, while erasing the row destroys the operator's record of it.
+ *
+ * `readOnly` remains for any surface that wants to show a request without
+ * offering to change it.
  */
 export function RequestCard({
   request,
   readOnly = false,
+  scope = "admin",
 }: {
   request: RequestCardData;
   readOnly?: boolean;
+  scope?: "admin" | "owner";
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -54,9 +68,13 @@ export function RequestCard({
   const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
+  const isOwner = scope === "owner";
+
   function act(status: string) {
     startTransition(async () => {
-      const result = await setRequestStatus(request.id, status);
+      const result = isOwner
+        ? await setOwnerRequestStatus(request.id, status)
+        : await setRequestStatus(request.id, status);
       toast(result.ok ? (result.message ?? t.common.saved) : result.error, result.ok ? "ok" : "error");
       if (result.ok) router.refresh();
     });
@@ -201,16 +219,18 @@ export function RequestCard({
                 {t.admin.returnToQueue}
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={pending}
-              title={t.admin.deleteRequest}
-              aria-label={t.admin.deleteRequest}
-              className="grid size-10 shrink-0 place-items-center rounded-xl bg-busy-bg text-busy disabled:opacity-60"
-            >
-              <Icon name="delete" size={18} />
-            </button>
+            {!isOwner && (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                disabled={pending}
+                title={t.admin.deleteRequest}
+                aria-label={t.admin.deleteRequest}
+                className="grid size-10 shrink-0 place-items-center rounded-xl bg-busy-bg text-busy disabled:opacity-60"
+              >
+                <Icon name="delete" size={18} />
+              </button>
+            )}
           </>
         ) : null}
       </div>
