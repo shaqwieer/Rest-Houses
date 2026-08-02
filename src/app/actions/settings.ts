@@ -7,6 +7,8 @@ import { requireAdmin } from "@/lib/auth";
 import { SETTINGS_ID } from "@/lib/settings";
 import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
 import type { ActionResult } from "./listings";
+import { getI18n } from "@/lib/i18n/server";
+import type { Dictionary } from "@/lib/i18n";
 
 /**
  * Site settings.
@@ -20,14 +22,15 @@ import type { ActionResult } from "./listings";
  * out to every page at once.
  */
 
-const hex = z
-  .string()
-  .trim()
-  .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "لون غير صالح — استخدم صيغة #RRGGBB");
+function settingsSchema(t: Dictionary) {
+  const hex = z
+    .string()
+    .trim()
+    .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, t.validation.invalidColor);
 
-const settingsSchema = z.object({
+  return z.object({
   // identity
-  siteName: z.string().trim().min(2, "اسم الموقع مطلوب").max(80),
+    siteName: z.string().trim().min(2, t.validation.siteNameRequired).max(80),
   tagline: z.string().trim().max(120).default(""),
   logoGlyph: z.string().trim().min(1).max(2).default("و"),
 
@@ -35,15 +38,15 @@ const settingsSchema = z.object({
   whatsappNumber: z
     .string()
     .trim()
-    .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, "رقم واتساب غير مكتمل"),
+    .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.whatsappIncomplete),
   phone: z.string().trim().max(40).default(""),
-  email: z.string().trim().email("بريد غير صالح").or(z.literal("")).default(""),
+    email: z.string().trim().email(t.validation.invalidEmail).or(z.literal("")).default(""),
 
   // socials — full URLs so the footer can link them directly
-  instagram: z.string().trim().url("رابط غير صالح").or(z.literal("")).default(""),
-  tiktok: z.string().trim().url("رابط غير صالح").or(z.literal("")).default(""),
-  snapchat: z.string().trim().url("رابط غير صالح").or(z.literal("")).default(""),
-  youtube: z.string().trim().url("رابط غير صالح").or(z.literal("")).default(""),
+  instagram: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
+  tiktok: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
+  snapchat: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
+  youtube: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
 
   // location
   mapLat: z.coerce.number().min(-90).max(90),
@@ -70,9 +73,26 @@ const settingsSchema = z.object({
   heroTitleAlt: z.string().trim().max(120).default(""),
   heroSubtitle: z.string().trim().max(400).default(""),
   footerAbout: z.string().trim().max(400).default(""),
-  seoTitle: z.string().trim().max(120).default(""),
-  seoDescription: z.string().trim().max(320).default(""),
-});
+    seoTitle: z.string().trim().max(120).default(""),
+    seoDescription: z.string().trim().max(320).default(""),
+
+    // ---- English copy ----------------------------------------------------
+    // All optional. Blank means "fall back to the Arabic value" — see
+    // `localized()` in src/lib/settings.ts. That fallback is what lets an
+    // operator who never fills these in still get a working English site.
+    siteNameEn: z.string().trim().max(80).default(""),
+    taglineEn: z.string().trim().max(120).default(""),
+    addressLineEn: z.string().trim().max(200).default(""),
+    checkInTimeEn: z.string().trim().max(40).default(""),
+    checkOutTimeEn: z.string().trim().max(40).default(""),
+    seoTitleEn: z.string().trim().max(120).default(""),
+    seoDescriptionEn: z.string().trim().max(320).default(""),
+    heroTitleEn: z.string().trim().max(120).default(""),
+    heroTitleAltEn: z.string().trim().max(120).default(""),
+    heroSubtitleEn: z.string().trim().max(400).default(""),
+    footerAboutEn: z.string().trim().max(400).default(""),
+  });
+}
 
 /**
  * A single coordinate field like "24.7614, 55.3340" is far easier to use on a
@@ -89,6 +109,7 @@ function parseCoordinatePair(raw: string): { lat: number; lng: number } | null {
 
 export async function saveSettings(formData: FormData): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   // Accept either the combined "lat, lng" field or the individual ones.
   const coordsRaw = String(formData.get("coordinates") ?? "").trim();
@@ -96,12 +117,12 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
   if (coordsRaw && !coords) {
     return {
       ok: false,
-      error: "الإحداثيات غير صحيحة — اكتبها بالصيغة: 24.7614, 55.3340",
-      fieldErrors: { coordinates: "صيغة غير صحيحة" },
+      error: t.validation.invalidCoordinates,
+      fieldErrors: { coordinates: t.validation.invalidFormat },
     };
   }
 
-  const parsed = settingsSchema.safeParse({
+  const parsed = settingsSchema(t).safeParse({
     siteName: formData.get("siteName"),
     tagline: formData.get("tagline") ?? "",
     logoGlyph: formData.get("logoGlyph") || "و",
@@ -132,6 +153,18 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     footerAbout: formData.get("footerAbout") ?? "",
     seoTitle: formData.get("seoTitle") ?? "",
     seoDescription: formData.get("seoDescription") ?? "",
+
+    siteNameEn: formData.get("siteNameEn") ?? "",
+    taglineEn: formData.get("taglineEn") ?? "",
+    addressLineEn: formData.get("addressLineEn") ?? "",
+    checkInTimeEn: formData.get("checkInTimeEn") ?? "",
+    checkOutTimeEn: formData.get("checkOutTimeEn") ?? "",
+    seoTitleEn: formData.get("seoTitleEn") ?? "",
+    seoDescriptionEn: formData.get("seoDescriptionEn") ?? "",
+    heroTitleEn: formData.get("heroTitleEn") ?? "",
+    heroTitleAltEn: formData.get("heroTitleAltEn") ?? "",
+    heroSubtitleEn: formData.get("heroSubtitleEn") ?? "",
+    footerAboutEn: formData.get("footerAboutEn") ?? "",
   });
 
   if (!parsed.success) {
@@ -140,7 +173,7 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
       const key = String(issue.path[0] ?? "form");
       if (!fieldErrors[key]) fieldErrors[key] = issue.message;
     }
-    return { ok: false, error: "الرجاء التحقّق من الحقول", fieldErrors };
+    return { ok: false, error: t.validation.checkTheFields, fieldErrors };
   }
 
   const d = parsed.data;
@@ -165,19 +198,20 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     });
   } catch (error) {
     console.error("saveSettings failed:", error);
-    return { ok: false, error: "تعذّر حفظ الإعدادات — حاول مرة أخرى" };
+    return { ok: false, error: t.validation.settingsSaveFailed };
   }
 
   // "layout" scope: the root layout is where the name and colours are applied,
   // so this is what makes a rebrand appear across the whole site immediately.
   revalidatePath("/", "layout");
 
-  return { ok: true, message: "تم حفظ الإعدادات" };
+  return { ok: true, message: t.validation.settingsSaved };
 }
 
 /** Upload (or replace) the brand logo shown in the header, footer and login. */
 export async function uploadLogo(file: File): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   try {
     const previous = await prisma.siteSettings.findUnique({
@@ -197,16 +231,25 @@ export async function uploadLogo(file: File): Promise<ActionResult> {
     await deleteStoredAsset(previous?.logoUrl);
 
     revalidatePath("/", "layout");
-    return { ok: true, message: "تم تحديث الشعار" };
+    return { ok: true, message: t.validation.logoUpdated };
   } catch (error) {
-    if (error instanceof UploadError) return { ok: false, error: error.message };
+    if (error instanceof UploadError) {
+      const byCode: Record<string, string> = {
+        NO_FILE: t.validation.uploadNoFile,
+        EMPTY: t.validation.uploadEmpty,
+        TOO_LARGE: t.validation.uploadTooLarge,
+        BAD_FORMAT: t.validation.uploadBadFormat,
+      };
+      return { ok: false, error: byCode[error.code] ?? t.validation.saveFailed };
+    }
     console.error("uploadLogo failed:", error);
-    return { ok: false, error: "تعذّر رفع الشعار" };
+    return { ok: false, error: t.validation.logoUploadFailed };
   }
 }
 
 export async function removeLogo(): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   const current = await prisma.siteSettings.findUnique({
     where: { id: SETTINGS_ID },
@@ -221,12 +264,13 @@ export async function removeLogo(): Promise<ActionResult> {
   await deleteStoredAsset(current?.logoUrl);
 
   revalidatePath("/", "layout");
-  return { ok: true, message: "تمت إزالة الشعار — سيظهر الحرف بدلًا منه" };
+  return { ok: true, message: t.validation.logoRemoved };
 }
 
 /** Upload the home-page hero background. */
 export async function uploadHeroImage(file: File): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   try {
     const previous = await prisma.siteSettings.findUnique({
@@ -245,10 +289,18 @@ export async function uploadHeroImage(file: File): Promise<ActionResult> {
     await deleteStoredAsset(previous?.heroImageUrl);
 
     revalidatePath("/", "layout");
-    return { ok: true, message: "تم تحديث صورة الغلاف" };
+    return { ok: true, message: t.validation.heroUpdated };
   } catch (error) {
-    if (error instanceof UploadError) return { ok: false, error: error.message };
+    if (error instanceof UploadError) {
+      const byCode: Record<string, string> = {
+        NO_FILE: t.validation.uploadNoFile,
+        EMPTY: t.validation.uploadEmpty,
+        TOO_LARGE: t.validation.uploadTooLarge,
+        BAD_FORMAT: t.validation.uploadBadFormat,
+      };
+      return { ok: false, error: byCode[error.code] ?? t.validation.saveFailed };
+    }
     console.error("uploadHeroImage failed:", error);
-    return { ok: false, error: "تعذّر رفع الصورة" };
+    return { ok: false, error: t.validation.heroUploadFailed };
   }
 }

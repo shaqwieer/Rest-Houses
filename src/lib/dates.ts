@@ -11,8 +11,9 @@
  * via `parseISODate` which constructs UTC midnight so the arithmetic is stable.
  */
 
-import { MONTHS_AR } from "./constants";
-import { arNum } from "./format";
+import { monthNames } from "./constants";
+import { arNum, arYear, toArabicDigits } from "./format";
+import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
 
 /** A calendar day in `YYYY-MM-DD` form. */
 export type ISODate = string;
@@ -76,30 +77,91 @@ export function isWeekend(iso: ISODate): boolean {
   return dow === 5 || dow === 6;
 }
 
-/** "٢٨ يوليو" */
-export function arDayMonth(iso: ISODate): string {
+/**
+ * ─── Date display ────────────────────────────────────────────────────────────
+ * Both languages format a calendar day as "<day> <month>" — Arabic reads it
+ * right-to-left with Arabic-Indic digits ("٢٨ يوليو"), English left-to-right
+ * with Latin ones ("28 July"). The word order is identical, so one template
+ * serves both and only the digits and month name change.
+ *
+ * Every one of these takes an optional trailing `locale` defaulting to Arabic,
+ * so the pre-existing `arDayMonth(iso)` call sites are unchanged in behaviour.
+ * The `ar` prefix on the names is now a slight misnomer, kept because renaming
+ * them across the tree would have been churn with no behavioural payoff.
+ */
+
+/** "٢٨ يوليو" / "28 July" */
+export function arDayMonth(iso: ISODate, locale: Locale = DEFAULT_LOCALE): string {
   const d = parseISODate(iso);
-  return `${arNum(d.getUTCDate())} ${MONTHS_AR[d.getUTCMonth()]}`;
+  return `${arNum(d.getUTCDate(), locale)} ${monthNames(locale)[d.getUTCMonth()]}`;
 }
 
-/** "٢٨ يوليو ٢٠٢٦" */
-export function arFullDate(iso: ISODate): string {
+/** "٢٨ يوليو ٢٠٢٦" / "28 July 2026" */
+export function arFullDate(iso: ISODate, locale: Locale = DEFAULT_LOCALE): string {
   const d = parseISODate(iso);
-  return `${arNum(d.getUTCDate())} ${MONTHS_AR[d.getUTCMonth()]} ${arNum(d.getUTCFullYear())}`;
+  // The year goes through `arYear`, not `arNum`: a year must not be
+  // thousands-grouped ("28 July 2,026").
+  return `${arNum(d.getUTCDate(), locale)} ${monthNames(locale)[d.getUTCMonth()]} ${arYear(
+    d.getUTCFullYear(),
+    locale,
+  )}`;
 }
 
-/** "يوليو ٢٠٢٦" — calendar header. `month` is 0-indexed. */
-export function arMonthLabel(year: number, month: number): string {
-  return `${MONTHS_AR[month]} ${arNum(year)}`;
+/** "يوليو ٢٠٢٦" / "July 2026" — calendar header. `month` is 0-indexed. */
+export function arMonthLabel(
+  year: number,
+  month: number,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  return `${monthNames(locale)[month]} ${arYear(year, locale)}`;
+}
+
+/**
+ * A stored `DateTime` (membership expiry, audit timestamp) as a calendar day.
+ *
+ * Formatted from the date's **UTC** components, matching how every other date
+ * in this app is handled: a membership that expires "on the 30th" must read as
+ * the 30th to everyone, not the 29th to a viewer west of UTC.
+ */
+export function formatDate(
+  date: Date | null | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (!date) return "—";
+  return arFullDate(toISODate(date), locale);
+}
+
+/** A timestamp with the time of day, for the audit log. */
+export function formatDateTime(
+  date: Date | null | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (!date) return "—";
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const mm = String(date.getUTCMinutes()).padStart(2, "0");
+
+  // Both halves go through the same digit conversion. Running the hour through
+  // `arNum` while leaving the minutes alone produced a mixed-script, unpadded
+  // "٩:05" in the Arabic audit log; `toArabicDigits` maps the already-padded
+  // string so "09:05" becomes "٠٩:٠٥".
+  const clock = `${hh}:${mm}`;
+  const time = locale === "ar" ? toArabicDigits(clock) : clock;
+
+  return `${arFullDate(toISODate(date), locale)} · ${time}`;
 }
 
 /**
  * Hijri day number for the small secondary label in each calendar cell.
+ *
+ * Arabic only: the Umm al-Qura date is a genuine convenience for a Gulf
+ * audience reading Arabic, and noise beside an English calendar.
+ *
  * Wrapped in try/catch: the Umm al-Qura calendar needs full ICU data, which a
  * minimal Node build may not ship. Missing data hides the label instead of
  * throwing during render.
  */
-export function hijriDay(iso: ISODate): string {
+export function hijriDay(iso: ISODate, locale: Locale = DEFAULT_LOCALE): string {
+  if (locale === "en") return "";
   try {
     return new Intl.DateTimeFormat("ar-SA-u-ca-islamic-umalqura", {
       day: "numeric",
@@ -139,6 +201,7 @@ export function buildMonthGrid(
   month: number,
   unavailable: ReadonlySet<ISODate>,
   today: ISODate = todayISO(),
+  locale: Locale = DEFAULT_LOCALE,
 ): CalendarCell[] {
   const firstDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
@@ -154,8 +217,8 @@ export function buildMonthGrid(
       key: iso,
       iso,
       dayNumber: day,
-      label: arNum(day),
-      hijri: hijriDay(iso),
+      label: arNum(day, locale),
+      hijri: hijriDay(iso, locale),
       isPast,
       isWeekend: isWeekend(iso),
       // A past date is already unselectable; don't also paint it "booked".

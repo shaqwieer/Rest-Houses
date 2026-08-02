@@ -2,6 +2,23 @@
 
 import dynamic from "next/dynamic";
 import type { MapPoint } from "./listing-map";
+import { useT } from "@/lib/i18n/provider";
+
+/**
+ * The loading placeholder.
+ *
+ * A component rather than inline JSX because `dynamic()`'s `loading` option is
+ * evaluated at module scope, where a hook cannot be called — wrapping it makes
+ * the label translatable.
+ */
+function MapLoading() {
+  const t = useT();
+  return (
+    <div className="grid size-full place-items-center bg-sand-200 text-muted">
+      <span className="text-[13px]">{t.listing.loadingMap}</span>
+    </div>
+  );
+}
 
 /**
  * Client boundary for the Leaflet map.
@@ -13,11 +30,7 @@ import type { MapPoint } from "./listing-map";
  */
 const ListingMap = dynamic(() => import("./listing-map"), {
   ssr: false,
-  loading: () => (
-    <div className="grid size-full place-items-center bg-sand-200 text-muted">
-      <span className="text-[13px]">جارٍ تحميل الخريطة…</span>
-    </div>
-  ),
+  loading: () => <MapLoading />,
 });
 
 export function MapEmbed({

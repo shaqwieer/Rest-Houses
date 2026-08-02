@@ -6,11 +6,15 @@ import { Brand } from "@/components/site/brand";
 import { Icon } from "@/components/ui/icon";
 import { auth } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "دخول المُلّاك",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.nav.ownerLogin,
+    robots: { index: false, follow: false },
+  };
+}
 
 /**
  * Admin login.
@@ -34,7 +38,7 @@ export default async function LoginPage({
   // Already signed in — skip the form.
   if (session?.user) redirect(next.startsWith("/") ? next : "/admin");
 
-  const settings = await getSettings();
+  const [settings, { t }] = await Promise.all([getSettings(), getI18n()]);
 
   return (
     <main className="flex min-h-screen flex-wrap items-stretch bg-sand-50">
@@ -45,21 +49,21 @@ export default async function LoginPage({
         <div className="relative">
           <div className="mb-9">
             <Brand settings={settings} tone="dark" size="lg" href={null} />
-            <div className="mt-1 text-[11.5px] text-sand-100/50">بوابة المُلّاك</div>
+            <div className="mt-1 text-[11.5px] text-sand-100/50">{t.auth.ownerPortal}</div>
           </div>
           <h1 className="m-0 mb-3.5 max-w-[20ch] font-display text-[clamp(24px,3vw,36px)] font-extrabold leading-[1.35] text-sand-50">
-            أدر استراحتك من جوّالك، في أي وقت
+            {t.auth.ownerPortalTitle}
           </h1>
           <p className="m-0 max-w-[40ch] text-[15px] leading-[1.95] text-sand-100/65">
-            حدّث الأسعار، احظر التواريخ، وأجب على طلبات الحجز — كل ذلك من شاشة واحدة.
+            {t.auth.ownerPortalBody}
           </p>
         </div>
 
         <ul className="relative m-0 flex list-none flex-col gap-3.5 p-0 pt-8">
           {[
-            { icon: "bolt" as const, text: "كل طلب حجز جديد يظهر في لوحتك فورًا" },
-            { icon: "event_busy" as const, text: "تقويم واحد لكل استراحاتك" },
-            { icon: "chat" as const, text: "ردّ على العميل بضغطة واحدة على الواتساب" },
+            { icon: "bolt" as const, text: t.auth.ownerPortalPoint1 },
+            { icon: "event_busy" as const, text: t.auth.ownerPortalPoint2 },
+            { icon: "chat" as const, text: t.auth.ownerPortalPoint3 },
           ].map((f) => (
             <li key={f.text} className="flex items-center gap-3">
               <Icon name={f.icon} size={22} className="text-gold-500" />
@@ -75,19 +79,19 @@ export default async function LoginPage({
           {/* brand repeats here on small screens, where the dark panel is hidden */}
           <div className="mb-6.5 lg:hidden">
             <Brand settings={settings} size="md" href={null} />
-            <div className="mt-1 text-[11.5px] text-muted">بوابة المُلّاك</div>
+            <div className="mt-1 text-[11.5px] text-muted">{t.auth.ownerPortal}</div>
           </div>
 
           <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-gold-100 px-3.5 py-1.5 text-[12px] font-bold text-bronze">
             <Icon name="lock_open" size={16} />
-            دخول المُلّاك والمشرفين
+            {t.auth.loginSubtitle}
           </div>
 
           <h2 className="m-0 mb-2 font-display text-[clamp(22px,2.6vw,28px)] font-extrabold text-ink">
-            تسجيل الدخول
+            {t.auth.loginTitle}
           </h2>
           <p className="m-0 mb-6.5 text-[14.5px] leading-[1.85] text-muted">
-            أدخل بريدك الإلكتروني وكلمة المرور للوصول إلى لوحة التحكم.
+            {t.auth.loginHint}
           </p>
 
           <LoginForm next={next} />
@@ -97,7 +101,7 @@ export default async function LoginPage({
             className="mx-auto mt-7 flex w-fit items-center gap-2 text-[13px] font-semibold text-muted no-underline hover:text-bronze hover:no-underline"
           >
             <Icon name="public" size={17} />
-            الرجوع إلى الموقع
+            {t.auth.backToSite}
           </Link>
         </div>
       </div>

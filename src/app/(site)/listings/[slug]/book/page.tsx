@@ -6,17 +6,21 @@ import { BookingForm } from "@/components/booking/booking-form";
 import { Icon } from "@/components/ui/icon";
 import { getListingBySlug, isRangeAvailable } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
-import { quote } from "@/lib/pricing";
+import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
 import { arDayMonth, isISODate, todayISO } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "إرسال طلب حجز",
-  // A per-guest form has nothing to offer search; keep it out of the index and
-  // don't leak query params into crawled URLs.
-  robots: { index: false, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.booking.title,
+    // A per-guest form has nothing to offer search; keep it out of the index and
+    // don't leak query params into crawled URLs.
+    robots: { index: false, follow: true },
+  };
+}
 
 export default async function BookPage({
   params,
@@ -25,8 +29,10 @@ export default async function BookPage({
   params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  const [{ slug }, sp, { t, locale }] = await Promise.all([params, searchParams, getI18n()]);
 
+  // The public predicate applies here too: an inactive owner's listing is not
+  // bookable, so the form is never rendered for one.
   const listing = await getListingBySlug(decodeURIComponent(slug));
   if (!listing) notFound();
 
@@ -51,9 +57,15 @@ export default async function BookPage({
   }
 
   const settings = await getSettings();
-  const guests = Number.isFinite(guestsRaw) && guestsRaw > 0
-    ? Math.min(guestsRaw, listing.capacity)
-    : Math.min(listing.capacity, 20);
+  const guests =
+    Number.isFinite(guestsRaw) && guestsRaw > 0
+      ? Math.min(guestsRaw, listing.capacity)
+      : Math.min(listing.capacity, 20);
+
+  // The listing's own deposit rate, falling back to the platform default only
+  // when it has none set. The same resolution runs again inside the server
+  // action; this one only drives what the guest is shown.
+  const depositPercent = resolveDepositPercent(listing.depositPercent, settings.depositPercent);
 
   const q = quote({
     checkIn: from!,
@@ -61,16 +73,17 @@ export default async function BookPage({
     pricePerNight: listing.pricePerNight,
     weekendPrice: listing.weekendPrice,
     serviceFeePercent: settings.serviceFeePercent,
-    depositPercent: settings.depositPercent,
+    depositPercent,
   });
 
-  const where = listing.area || cityLabel(listing.city);
+  const where = listing.area || cityLabel(listing.city, locale);
+  const chevron = locale === "ar" ? "chevron_left" : "chevron_right";
 
   return (
     <div className="min-h-[70vh] bg-sand-50">
       <div className="mx-auto max-w-[1060px] px-4 pt-6 pb-18 md:px-10">
         <nav
-          aria-label="مسار التنقل"
+          aria-label={t.nav.home}
           className="mb-4 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted"
         >
           <Link
@@ -79,17 +92,14 @@ export default async function BookPage({
           >
             {listing.name}
           </Link>
-          <Icon name="chevron_left" size={15} />
-          <span className="font-semibold text-ink">طلب حجز</span>
+          <Icon name={chevron} size={15} />
+          <span className="font-semibold text-ink">{t.booking.title}</span>
         </nav>
 
         <h1 className="m-0 mb-2 font-display text-[clamp(22px,2.8vw,32px)] font-extrabold text-ink">
-          إرسال طلب حجز
+          {t.booking.title}
         </h1>
-        <p className="m-0 mb-6.5 max-w-[56ch] text-[15px] text-muted">
-          املأ البيانات التالية وسيصل الطلب مباشرة إلى مالك الاستراحة على الواتساب. لا يُخصم أي
-          مبلغ في هذه المرحلة.
-        </p>
+        <p className="m-0 mb-6.5 max-w-[56ch] text-[15px] text-muted">{t.booking.introBody}</p>
 
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <BookingForm
@@ -100,7 +110,7 @@ export default async function BookPage({
             guests={guests}
             capacity={listing.capacity}
             freeCancelHours={settings.freeCancelHours}
-            depositPercent={settings.depositPercent}
+            depositPercent={depositPercent}
           />
 
           {/* ---- summary ---- */}
@@ -108,13 +118,7 @@ export default async function BookPage({
             <div className="mb-4 flex gap-3">
               <div className="relative size-17.5 shrink-0 overflow-hidden rounded-[13px] bg-sand-200">
                 {listing.coverUrl && (
-                  <Image
-                    src={listing.coverUrl}
-                    alt=""
-                    fill
-                    sizes="88px"
-                    className="object-cover"
-                  />
+                  <Image src={listing.coverUrl} alt="" fill sizes="88px" className="object-cover" />
                 )}
               </div>
               <div className="min-w-0">
@@ -128,7 +132,7 @@ export default async function BookPage({
                 {listing.reviewsCount > 0 && (
                   <div className="mt-1 inline-flex items-center gap-1 text-[12.5px] font-bold text-ink">
                     <Icon name="star" size={14} className="text-gold-500" />
-                    {arRating(listing.rating)}
+                    {arRating(listing.rating, locale)}
                   </div>
                 )}
               </div>
@@ -137,35 +141,51 @@ export default async function BookPage({
             <div className="mb-3.5 h-px bg-line" />
 
             <SummaryRow
-              label="التواريخ"
-              value={`${arDayMonth(from!)} – ${arDayMonth(to!)}`}
+              label={t.listing.dates}
+              value={`${arDayMonth(from!, locale)} – ${arDayMonth(to!, locale)}`}
             />
             <SummaryRow
-              label={`${arNum(listing.pricePerNight)} د.إ × ${arNum(q.nights)} ليلة`}
-              value={arNum(q.subtotal)}
+              label={t.listing.nightsLine(
+                arNum(listing.pricePerNight, locale),
+                arNum(q.nights, locale),
+                q.nights,
+              )}
+              value={arNum(q.subtotal, locale)}
             />
             <SummaryRow
-              label={`رسوم الخدمة (${arNum(settings.serviceFeePercent)}٪)`}
-              value={arNum(q.serviceFee)}
+              label={t.listing.serviceFee(arNum(settings.serviceFeePercent, locale))}
+              value={arNum(q.serviceFee, locale)}
               muted
             />
-            <SummaryRow label="عدد الضيوف" value={arNum(guests)} muted />
+            <SummaryRow label={t.listing.guests} value={arNum(guests, locale)} muted />
 
+            {/* Total AND deposit, both stated before the guest submits. */}
             <div className="mt-3 flex justify-between border-t border-dashed border-line pt-3 font-display text-[17px] font-extrabold text-ink">
-              <span>الإجمالي التقديري</span>
-              <span>{arNum(q.total)} د.إ</span>
+              <span>{t.booking.totalAmount}</span>
+              <span>
+                {arNum(q.total, locale)} {t.common.aed}
+              </span>
             </div>
 
-            <p className="m-0 mt-2 text-[11.5px] text-muted">
-              العربون المتوقع {arNum(q.depositDue)} د.إ ({arNum(settings.depositPercent)}٪) — يُدفع
-              للمالك بعد التأكيد.
-            </p>
+            <div className="mt-2 flex justify-between text-[13.5px] font-bold text-bronze">
+              <span>{t.booking.depositAmount}</span>
+              <span>
+                {depositPercent > 0
+                  ? `${arNum(q.depositDue, locale)} ${t.common.aed}`
+                  : t.booking.noDepositRequired}
+              </span>
+            </div>
+            {depositPercent > 0 && (
+              <p className="m-0 mt-1 text-[11.5px] text-muted">
+                {t.booking.depositExplain(arNum(depositPercent, locale))}
+              </p>
+            )}
 
             {/* Payment stub: the flow is shaped for an online deposit, but no
                 gateway is wired. See src/lib/payments/index.ts. */}
             <div className="mt-3.5 flex items-center gap-2 rounded-xl bg-ok-bg px-3 py-3 text-[12.5px] font-semibold text-ok">
               <Icon name="lock" size={18} />
-              لا يُطلب أي دفع عبر الموقع
+              {t.booking.noPaymentOnline}
             </div>
           </aside>
         </div>

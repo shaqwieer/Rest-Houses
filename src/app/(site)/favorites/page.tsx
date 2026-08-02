@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { FavoritesGrid } from "@/components/site/favorites-grid";
 import { findListings } from "@/lib/listings";
 import { toCardData } from "@/components/listing/card-data";
+import { getI18n } from "@/lib/i18n/server";
 
 /**
  * Rendered per request: this page reads the database, and the container image is
@@ -9,12 +10,15 @@ import { toCardData } from "@/components/listing/card-data";
  */
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "المفضلة",
-  description: "الاستراحات التي حفظتها لمقارنتها قبل الحجز.",
-  // The contents are per-device localStorage, so there's nothing stable to index.
-  robots: { index: false, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.favorites.title,
+    description: t.favorites.metaDescription,
+    // The contents are per-device localStorage, so there's nothing stable to index.
+    robots: { index: false, follow: true },
+  };
+}
 
 /**
  * Favourites.

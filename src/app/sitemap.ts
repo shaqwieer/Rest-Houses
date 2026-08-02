@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
-import { prisma } from "@/lib/prisma";
 import { siteUrl } from "@/lib/settings";
+import { getPublicListingSlugs } from "@/lib/listings";
 import { CATEGORIES, CITIES } from "@/lib/constants";
 
 /**
@@ -25,11 +25,12 @@ export const dynamic = "force-dynamic";
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = siteUrl();
 
-  const listings = await prisma.listing.findMany({
-    where: { published: true },
-    select: { slug: true, updatedAt: true },
-    orderBy: { updatedAt: "desc" },
-  });
+  // Routed through the shared public predicate rather than a local
+  // `{ published: true }`, so a listing hidden because its owner is suspended or
+  // their membership lapsed also drops out of the sitemap. Submitting URLs that
+  // 404 is worse than omitting them, and a stale sitemap is precisely how a
+  // "hidden" listing keeps getting crawled.
+  const listings = await getPublicListingSlugs();
 
   const staticPages: MetadataRoute.Sitemap = [
     { url: `${base}/`, changeFrequency: "daily", priority: 1 },

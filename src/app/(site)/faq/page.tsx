@@ -2,60 +2,47 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/site/page-shell";
-import { getSettings, absoluteUrl } from "@/lib/settings";
+import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { arNum } from "@/lib/format";
 import { generalEnquiryMessage, whatsappLink } from "@/lib/whatsapp";
+import { getI18n } from "@/lib/i18n/server";
+import { htmlLang } from "@/lib/i18n/config";
 
-export const metadata: Metadata = {
-  title: "الأسئلة الشائعة",
-  description:
-    "أجوبة عن الدفع، الإلغاء، العربون، السعة، التوفّر، والوصول إلى الاستراحات الصحراوية في الإمارات.",
-  alternates: { canonical: "/faq" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.pages.faqTitle,
+    description: t.pages.faqDescription,
+    alternates: { canonical: "/faq" },
+  };
+}
 
 export default async function FaqPage() {
-  const settings = await getSettings();
+  const [settings, { t, locale }] = await Promise.all([getSettings(), getI18n()]);
+  const s = localizeSettings(settings, locale);
 
+  /**
+   * The deposit answer names the platform default *and* says explicitly that
+   * each owner sets their own. The old copy quoted the platform figure as
+   * though it were the only one, which stopped being true the moment owners
+   * could set a rate per listing.
+   */
   const faqs = [
-    {
-      q: "هل أدفع عبر الموقع؟",
-      a: "لا. الموقع يسجّل طلبك ويوصله للمالك على الواتساب، والدفع يتم بينكما مباشرة. لا نطلب بطاقة ولا تحويلًا إلكترونيًا في أي مرحلة.",
-    },
-    {
-      q: "كم العربون ومتى يُدفع؟",
-      a: `العربون ${arNum(settings.depositPercent)}٪ من الإجمالي ويُستحق بعد أن يؤكّد المالك التوفّر — لا قبل ذلك. الطريقة يحدّدها المالك عند التواصل.`,
-    },
-    {
-      q: "هل يمكنني الإلغاء؟",
-      a: `الإلغاء مجاني حتى ${arNum(settings.freeCancelHours)} ساعة قبل موعد الوصول. بعد هذه المدة تُطبَّق سياسة المالك المذكورة في صفحة الاستراحة.`,
-    },
-    {
-      q: "الأسعار المعروضة نهائية؟",
-      a: `الإجمالي المعروض في صفحة الاستراحة يشمل سعر الليالي ورسوم الخدمة (${arNum(settings.serviceFeePercent)}٪). لا رسوم إضافية تُضاف بعد ذلك. سعر الجمعة والسبت قد يختلف ويظهر في التقويم.`,
-    },
-    {
-      q: "هل التقويم دقيق؟",
-      a: "نعم — الأيام المحجوزة أو المحظورة من المالك تظهر مشطوبة ولا يمكن اختيارها، ونتحقّق من التوفّر مرة أخرى في اللحظة التي ترسل فيها الطلب.",
-    },
-    {
-      q: "ماذا لو تجاوز عدد ضيوفي السعة؟",
-      a: "لا يقبل النظام طلبًا يتجاوز السعة المعلنة. إن كنت قريبًا من الحد الأقصى راسلنا على الواتساب ونبحث لك عن استراحة أوسع.",
-    },
-    {
-      q: "متى أستلم الموقع الدقيق؟",
-      a: "الخريطة في صفحة الاستراحة تُظهر المنطقة العامة. الموقع الدقيق ورمز البوابة يرسلهما المالك بعد تأكيد الحجز.",
-    },
-    {
-      q: "أملك استراحة — كيف أضيفها؟",
-      a: "راسلنا على الواتساب. بعد الزيارة الميدانية والتصوير نضيفها ونمنحك لوحة تحكم تدير منها الأسعار والتقويم والطلبات من جوّالك.",
-    },
+    { q: t.pages.faqQ1, a: t.pages.faqA1 },
+    { q: t.pages.faqQ2, a: t.pages.faqA2(arNum(settings.depositPercent, locale)) },
+    { q: t.pages.faqQ3, a: t.pages.faqA3(arNum(settings.freeCancelHours, locale)) },
+    { q: t.pages.faqQ4, a: t.pages.faqA4(arNum(settings.serviceFeePercent, locale)) },
+    { q: t.pages.faqQ5, a: t.pages.faqA5 },
+    { q: t.pages.faqQ6, a: t.pages.faqA6 },
+    { q: t.pages.faqQ7, a: t.pages.faqA7 },
+    { q: t.pages.faqQ8, a: t.pages.faqA8 },
   ];
 
   /** FAQPage structured data — eligible for the expandable FAQ rich result. */
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    inLanguage: "ar-AE",
+    inLanguage: `${htmlLang(locale)}-AE`,
     url: absoluteUrl("/faq"),
     mainEntity: faqs.map((f) => ({
       "@type": "Question",
@@ -64,6 +51,11 @@ export default async function FaqPage() {
     })),
   };
 
+  const waHref = whatsappLink(
+    settings.whatsappNumber,
+    generalEnquiryMessage(s.siteName, locale),
+  );
+
   return (
     <>
       <script
@@ -71,10 +63,7 @@ export default async function FaqPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <PageHeader
-        title="الأسئلة الشائعة"
-        subtitle="إن لم تجد جوابك هنا، راسلنا على الواتساب ونجيبك مباشرة."
-      />
+      <PageHeader title={t.pages.faqTitle} subtitle={t.pages.faqSubtitle} />
 
       <div className="mx-auto max-w-[820px] px-4 py-10 md:px-10 md:py-14">
         <div className="flex flex-col gap-2.5">
@@ -101,16 +90,14 @@ export default async function FaqPage() {
         </div>
 
         <div className="mt-8 flex flex-wrap gap-2.5">
-          <ButtonLink
-            href={whatsappLink(settings.whatsappNumber, generalEnquiryMessage(settings.siteName))}
-            variant="whatsapp"
-            size="lg"
-          >
-            <Icon name="chat" size={20} />
-            اسألنا على الواتساب
-          </ButtonLink>
+          {waHref && (
+            <ButtonLink href={waHref} variant="whatsapp" size="lg">
+              <Icon name="chat" size={20} />
+              {t.pages.faqAskWhatsapp}
+            </ButtonLink>
+          )}
           <ButtonLink href="/how-it-works" variant="secondary" size="lg">
-            كيف أحجز؟
+            {t.nav.howItWorks}
           </ButtonLink>
         </div>
       </div>

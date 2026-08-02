@@ -7,11 +7,13 @@ import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { useFavorites } from "./favorites-provider";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 
 /** Client half of the favourites page: filters the server-supplied cards by the
  *  ids in localStorage. */
 export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
   const { ids, ready, count, clear } = useFavorites();
+  const { t, locale } = useLocale();
 
   // Preserve the order the guest saved them in, not the catalogue order.
   const saved = ids
@@ -25,18 +27,20 @@ export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
           <div>
             <h1 className="m-0 mb-1.5 flex items-center gap-3 font-display text-[clamp(22px,2.8vw,32px)] font-extrabold text-ink">
               <Icon name="favorite" size={30} className="text-busy" />
-              المفضلة
+              {t.favorites.title}
             </h1>
             <p className="m-0 text-[14.5px] text-muted">
               {/* Until the effect has read localStorage we don't know the count,
                   and rendering "٠" first would flash the wrong number. */}
               {ready ? (
                 <>
-                  <span className="font-bold text-bronze">{arNum(count)}</span> استراحة محفوظة —
-                  تُحفظ على جهازك ولا تحتاج حسابًا.
+                  <span className="font-bold text-bronze">
+                    {t.favorites.savedCount(arNum(count, locale), count)}
+                  </span>{" "}
+                  — {t.favorites.savedNote}
                 </>
               ) : (
-                "جارٍ تحميل قائمتك…"
+                t.favorites.loadingList
               )}
             </p>
           </div>
@@ -44,7 +48,7 @@ export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
           <div className="flex flex-wrap gap-2.5">
             <ButtonLink href="/listings" variant="secondary">
               <Icon name="add" size={18} />
-              أضف المزيد
+              {t.favorites.addMore}
             </ButtonLink>
             {ready && count > 0 && (
               <button
@@ -52,7 +56,7 @@ export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
                 onClick={clear}
                 className="rounded-full px-4 py-2.5 text-[13.5px] font-semibold text-muted transition hover:text-busy"
               >
-                إفراغ القائمة
+                {t.favorites.clearList}
               </button>
             )}
           </div>
@@ -73,13 +77,13 @@ export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
           <div className="rounded-[28px] border border-dashed border-sand-300 bg-surface px-6 py-14 text-center md:py-20">
             <Icon name="favorite_border" size={54} className="mx-auto text-sand-400" />
             <h2 className="mt-4 mb-2 font-display text-[20px] font-extrabold text-ink">
-              قائمتك فارغة حتى الآن
+              {t.favorites.emptyTitle}
             </h2>
             <p className="mx-auto m-0 mb-5.5 max-w-[42ch] text-[14.5px] leading-[1.85] text-muted">
-              اضغط على أيقونة القلب في أي استراحة لحفظها هنا ومقارنتها لاحقًا قبل إرسال الطلب.
+              {t.favorites.emptyBody}
             </p>
             <ButtonLink href="/listings" size="lg">
-              تصفّح الاستراحات
+              {t.common.browse}
             </ButtonLink>
           </div>
         ) : (
@@ -94,9 +98,9 @@ export function FavoritesGrid({ all }: { all: ListingCardData[] }) {
           // A saved id with no matching listing means it was unpublished or
           // deleted. Say so instead of silently showing fewer cards.
           <p className="mt-5 text-[13px] text-muted">
-            بعض الاستراحات المحفوظة لم تعد متاحة.{" "}
+            {t.favorites.someUnavailable}{" "}
             <Link href="/listings" className="text-bronze">
-              تصفّح البدائل
+              {t.favorites.browseAlternatives}
             </Link>
           </p>
         )}

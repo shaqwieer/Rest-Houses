@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { parseIdList } from "./json-list";
 import { getAmenities, type SortId } from "./constants";
+import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import type { ISODate } from "./dates";
 import { nightsInRange, todayISO } from "./dates";
 
@@ -14,8 +15,71 @@ import { nightsInRange, todayISO } from "./dates";
  * component has to know about the storage representation.
  */
 
+/* -------------------------------------------------------------------------- */
+/* Public visibility                                                          */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The predicate that decides whether a listing may be seen by the public.
+ *
+ * ─── This is THE security boundary for requirement 3 ─────────────────────────
+ * Every public read path must start from this object — the results grid, the
+ * featured row, the detail page, the sitemap, favourites, the map, the category
+ * tallies on the home page, and the booking action's listing lookup. A path that
+ * builds its own `{ published: true }` is a hole: an expired owner's listings
+ * stay reachable through it, which is exactly the leak this exists to close.
+ * (`tests/visibility.test.ts` asserts the leak is closed on each of them.)
+ *
+ * Two conditions, and the second is the new one:
+ *
+ *   1. `published` — the owner's own intent. Untouched by any of this.
+ *
+ *   2. the owner is eligible, meaning **either**
+ *        • there is no owner at all (`ownerId: null`) — platform-owned
+ *          listings, including everything seeded before owners existed. These
+ *          must keep working; gating them on an owner they don't have would
+ *          empty the catalogue on the day this shipped.
+ *        • or the owner is APPROVED and inside their membership period.
+ *
+ * ─── Why expiry is not a stored flag ─────────────────────────────────────────
+ * Note what this does *not* do: it never writes to `Listing.published`. Hiding
+ * an expired owner's listings by unpublishing them would destroy the owner's
+ * own publish/unpublish choices, and renewal could then only guess which
+ * listings to restore. Keeping visibility as a query-time predicate means
+ * renewal is a single date change and every listing returns to exactly the
+ * state its owner left it in — including the ones they had deliberately
+ * unpublished, which stay unpublished.
+ */
+export function publicListingWhere(now: Date = new Date()): Prisma.ListingWhereInput {
+  return {
+    published: true,
+    OR: [{ ownerId: null }, { owner: { is: activeOwnerWhere(now) } }],
+  };
+}
+
+/**
+ * Merge extra filters onto the public predicate.
+ *
+ * `AND` rather than spreading into one object: several callers add their own
+ * `OR` (free-text search across name and area, for one), and a spread would
+ * silently overwrite the `OR` that enforces owner eligibility — turning the
+ * search box into a way to see hidden listings. Nesting both under `AND` keeps
+ * each intact.
+ */
+export function withPublicListingWhere(
+  extra: Prisma.ListingWhereInput,
+  now: Date = new Date(),
+): Prisma.ListingWhereInput {
+  return { AND: [publicListingWhere(now), extra] };
+}
+
 const listingInclude = {
   images: { orderBy: { sortOrder: "asc" } },
+  // The owner is included on every read so `resolveListingWhatsapp()` can route
+  // contact buttons to the right person without a second query per card. Only
+  // the public-safe columns are selected — never the private phone, ID number,
+  // status or membership dates.
+  owner: { select: publicOwnerFields() },
 } satisfies Prisma.ListingInclude;
 
 type ListingRow = Prisma.ListingGetPayload<{ include: typeof listingInclude }>;
@@ -97,20 +161,24 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
     availableTo,
   } = filters;
 
-  const where: Prisma.ListingWhereInput = { published: true };
+  // Built as a separate object and merged under AND, because the free-text
+  // search below sets its own `OR` — spreading it into the visibility predicate
+  // would overwrite the `OR` that enforces owner eligibility and turn the
+  // search box into a way to surface hidden listings.
+  const sqlFilters: Prisma.ListingWhereInput = {};
 
-  if (city && city !== "all") where.city = city;
-  if (typeof maxPrice === "number") where.pricePerNight = { lte: maxPrice };
+  if (city && city !== "all") sqlFilters.city = city;
+  if (typeof maxPrice === "number") sqlFilters.pricePerNight = { lte: maxPrice };
   if (typeof minCapacity === "number" && minCapacity > 0) {
-    where.capacity = { gte: minCapacity };
+    sqlFilters.capacity = { gte: minCapacity };
   }
   if (q && q.trim()) {
     const term = q.trim();
-    where.OR = [{ name: { contains: term } }, { area: { contains: term } }];
+    sqlFilters.OR = [{ name: { contains: term } }, { area: { contains: term } }];
   }
 
   const rows = await prisma.listing.findMany({
-    where,
+    where: withPublicListingWhere(sqlFilters),
     include: listingInclude,
     orderBy: SORT_ORDER[sort] ?? SORT_ORDER.reco,
   });
@@ -147,10 +215,10 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
   return views;
 }
 
-/** Home page — the hand-picked "استراحات مميّزة هذا الأسبوع" row. */
+/** Home page — the hand-picked "featured this week" row. */
 export const getFeaturedListings = cache(async (limit = 4): Promise<ListingView[]> => {
   const rows = await prisma.listing.findMany({
-    where: { published: true, featured: true },
+    where: withPublicListingWhere({ featured: true }),
     include: listingInclude,
     orderBy: [{ rating: "desc" }, { reviewsCount: "desc" }],
     take: limit,
@@ -158,9 +226,17 @@ export const getFeaturedListings = cache(async (limit = 4): Promise<ListingView[
   return rows.map(toView);
 });
 
+/**
+ * The public detail page.
+ *
+ * Uses the same predicate as the grid, so a listing that has dropped out of the
+ * results because its owner lapsed is *also* a 404 by direct URL. Hiding a
+ * listing from the grid while leaving it reachable by slug would not be hiding
+ * it at all — the URLs are in the sitemap and in people's history.
+ */
 export const getListingBySlug = cache(async (slug: string) => {
   const row = await prisma.listing.findFirst({
-    where: { slug, published: true },
+    where: withPublicListingWhere({ slug }),
     include: {
       ...listingInclude,
       reviews: { where: { published: true }, orderBy: { createdAt: "desc" }, take: 12 },
@@ -172,14 +248,94 @@ export const getListingBySlug = cache(async (slug: string) => {
   return { ...toView(rest as ListingRow), reviews };
 });
 
-/** Admin: includes unpublished drafts. */
+/**
+ * Public counts for the home page's hero badge and category tiles.
+ *
+ * These live here rather than inline in the page for one reason: they are
+ * public read paths, and a public read path that builds its own `where` is how
+ * an inactive owner's listings leak back into a count. Routing them through the
+ * same predicate as everything else makes that impossible by construction.
+ */
+export const getPublicListingStats = cache(async () => {
+  const [total, cities, categoryRows] = await Promise.all([
+    prisma.listing.count({ where: publicListingWhere() }),
+    prisma.listing
+      .findMany({
+        where: publicListingWhere(),
+        select: { city: true },
+        distinct: ["city"],
+      })
+      .then((r) => r.length),
+    // Categories live in a JSON column, so counting them means reading the
+    // column and tallying in memory — see the note in `findListings`.
+    prisma.listing.findMany({
+      where: publicListingWhere(),
+      select: { categories: true },
+    }),
+  ]);
+
+  const perCategory = new Map<string, number>();
+  for (const row of categoryRows) {
+    for (const id of parseIdList(row.categories)) {
+      perCategory.set(id, (perCategory.get(id) ?? 0) + 1);
+    }
+  }
+
+  return { total, cities, perCategory };
+});
+
+/** Public listings by id — for the favourites page, which stores ids locally. */
+export async function getPublicListingsByIds(ids: string[]): Promise<ListingView[]> {
+  if (ids.length === 0) return [];
+  const rows = await prisma.listing.findMany({
+    where: withPublicListingWhere({ id: { in: ids } }),
+    include: listingInclude,
+  });
+  return rows.map(toView);
+}
+
+/** Slugs for the sitemap — public listings only. */
+export async function getPublicListingSlugs(): Promise<{ slug: string; updatedAt: Date }[]> {
+  return prisma.listing.findMany({
+    where: publicListingWhere(),
+    select: { slug: true, updatedAt: true },
+  });
+}
+
+/** Admin: includes unpublished drafts and every owner's listings. */
 export async function getListingById(id: string) {
   const row = await prisma.listing.findUnique({ where: { id }, include: listingInclude });
   return row ? toView(row) : null;
 }
 
+/**
+ * A single listing scoped to one owner.
+ *
+ * `ownerId` is part of the WHERE clause, not checked after the read: an owner
+ * asking for a listing that isn't theirs gets null, exactly as they would for an
+ * id that doesn't exist. That is the difference between "not found" and a
+ * confirmation that someone else's listing exists (IDOR).
+ */
+export async function getOwnerListingById(id: string, ownerId: string) {
+  const row = await prisma.listing.findFirst({
+    where: { id, ownerId },
+    include: listingInclude,
+  });
+  return row ? toView(row) : null;
+}
+
 export async function getAllListingsForAdmin(): Promise<ListingView[]> {
   const rows = await prisma.listing.findMany({
+    include: listingInclude,
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map(toView);
+}
+
+/** Every listing belonging to one owner — the owner dashboard's grid. */
+export async function getListingsForOwner(ownerId: string): Promise<ListingView[]> {
+  const rows = await prisma.listing.findMany({
+    where: { ownerId },
     include: listingInclude,
     orderBy: { createdAt: "desc" },
   });

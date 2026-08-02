@@ -7,6 +7,7 @@ import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { useFavorites } from "@/components/site/favorites-provider";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 
 /**
  * Listing gallery: one large hero plus a horizontal thumbnail strip.
@@ -28,6 +29,7 @@ export function Gallery({
 }) {
   const [active, setActive] = useState(0);
   const { isFavorite, toggle } = useFavorites();
+  const { t, locale } = useLocale();
   const favorited = isFavorite(listingId);
 
   const hero = images[active];
@@ -55,12 +57,12 @@ export function Gallery({
         <div className="pointer-events-none absolute bottom-3 end-3 flex gap-2">
           {verified && (
             <Badge tone="glass" icon="verified">
-              مالك موثّق
+              {t.gallery.verifiedOwner}
             </Badge>
           )}
           {images.length > 0 && (
             <Badge tone="glass" icon="photo_library" className="text-sand-100">
-              {arNum(images.length)} صورة
+              {t.gallery.imageCount(arNum(images.length, locale), images.length)}
             </Badge>
           )}
         </div>
@@ -68,7 +70,9 @@ export function Gallery({
         <button
           type="button"
           onClick={() => toggle(listingId)}
-          aria-label={favorited ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
+          aria-label={
+          favorited ? t.favorites.removeFromFavorites : t.favorites.addToFavorites
+        }
           aria-pressed={favorited}
           className="absolute top-3 start-3 grid size-10 place-items-center rounded-full bg-surface/95 shadow-[0_4px_12px_rgb(0_0_0/0.18)] transition hover:scale-105"
         >
@@ -87,7 +91,7 @@ export function Gallery({
               key={img.id}
               type="button"
               onClick={() => setActive(i)}
-              aria-label={`صورة ${i + 1}`}
+              aria-label={t.gallery.imageNumber(arNum(i + 1, locale))}
               aria-current={i === active}
               className={clsx(
                 "relative h-17.5 w-24 shrink-0 overflow-hidden rounded-xl border-2 bg-sand-200 transition md:h-22 md:w-31.5",

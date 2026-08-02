@@ -5,9 +5,11 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
 import { Brand } from "./brand";
+import { LanguageSwitcher } from "./language-switcher";
 import { useFavorites } from "./favorites-provider";
 import { Icon } from "@/components/ui/icon";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 import type { Settings } from "@/lib/settings";
 
 /**
@@ -17,20 +19,30 @@ import type { Settings } from "@/lib/settings";
  * device flag: the utility strip + wide nav from `md:` up, and a compact bar
  * with a slide-down menu below it. The prototype toggled these with a state
  * variable, which would have ignored the visitor's actual viewport.
+ *
+ * ─── Tone ────────────────────────────────────────────────────────────────────
+ * Everything here addresses the **customer** looking for a rest house. The
+ * primary action was "أضف استراحتك" ("list your rest house") pointing at
+ * /admin — an owner-shaped call to action in a customer's navigation, and a
+ * dead end for anyone who was not already the operator. It is now "browse rest
+ * houses", and the owner affordances point at /register/owner and /login, kept
+ * secondary and grouped so they read as "not for you" to a guest.
  */
-
-const NAV_LINKS = [
-  { href: "/", label: "الرئيسية" },
-  { href: "/listings", label: "تصفّح الاستراحات" },
-  { href: "/about", label: "من نحن" },
-] as const;
 
 export function SiteHeader({ settings }: { settings: Settings }) {
   const pathname = usePathname();
   const { count, ready } = useFavorites();
+  const { t, locale } = useLocale();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const favBadge = ready ? arNum(count) : "";
+  const navLinks = [
+    { href: "/", label: t.nav.home },
+    { href: "/listings", label: t.nav.listings },
+    { href: "/how-it-works", label: t.nav.howItWorks },
+    { href: "/about", label: t.nav.about },
+  ];
+
+  const favBadge = ready ? arNum(count, locale) : "";
 
   return (
     <header className="sticky top-0 z-120 border-b border-line bg-sand-50/95 backdrop-blur-lg">
@@ -39,7 +51,7 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         <div className="mx-auto flex max-w-[1280px] items-center gap-5 px-4 py-1.5 text-[12.5px] lg:px-10">
           <a
             href={`tel:${settings.phone ?? settings.whatsappNumber}`}
-            className="flex items-center gap-1.5 text-gold-300 no-underline hover:no-underline hover:text-sand-100"
+            className="flex items-center gap-1.5 text-gold-300 no-underline hover:text-sand-100 hover:no-underline"
           >
             <Icon name="call" size={16} />
             <span dir="ltr">{settings.phone ?? settings.whatsappNumber}</span>
@@ -47,15 +59,18 @@ export function SiteHeader({ settings }: { settings: Settings }) {
           <span className="opacity-30">|</span>
           <span className="flex items-center gap-1.5">
             <Icon name="bolt" size={16} />
-            ردّ سريع عبر الواتساب
+            {t.nav.fastWhatsappReply}
           </span>
           <span className="flex-1" />
+
+          <LanguageSwitcher tone="dark" />
+
           <Link
-            href="/admin"
+            href="/login"
             className="flex items-center gap-1.5 rounded-full border border-gold-500/30 px-3 py-1 text-[11.5px] font-bold text-gold-300 no-underline hover:bg-gold-500/15 hover:no-underline"
           >
             <Icon name="lock_open" size={15} />
-            دخول المُلّاك
+            {t.nav.ownerLogin}
           </Link>
         </div>
       </div>
@@ -66,7 +81,7 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          aria-label={menuOpen ? "إغلاق القائمة" : "فتح القائمة"}
+          aria-label={menuOpen ? t.common.closeMenu : t.common.openMenu}
           aria-expanded={menuOpen}
           className="grid size-9.5 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink md:hidden"
         >
@@ -78,8 +93,11 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         </div>
 
         <nav className="hidden min-w-0 flex-1 flex-wrap items-center gap-1 md:flex">
-          {NAV_LINKS.map((link) => {
-            const active = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href.split("?")[0]);
+          {navLinks.map((link) => {
+            const active =
+              link.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(link.href.split("?")[0]);
             return (
               <Link
                 key={link.href}
@@ -98,11 +116,15 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         {/* favourites — icon-only on mobile, labelled from md up */}
         <Link
           href="/favorites"
-          aria-label="المفضلة"
+          aria-label={t.nav.favorites}
           className="relative flex shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface p-2 text-[14px] font-semibold text-ink no-underline transition hover:border-gold-500 hover:no-underline md:rounded-full md:px-4 md:py-2.5"
         >
-          <Icon name={count > 0 ? "favorite" : "favorite_border"} size={19} className="text-busy" />
-          <span className="hidden md:inline">المفضلة</span>
+          <Icon
+            name={count > 0 ? "favorite" : "favorite_border"}
+            size={19}
+            className="text-busy"
+          />
+          <span className="hidden md:inline">{t.nav.favorites}</span>
           {ready && count > 0 && (
             <span className="absolute -top-1.5 -start-1.5 grid h-4.5 min-w-4.5 place-items-center rounded-full border-2 border-sand-50 bg-busy px-1 text-[10px] font-bold text-white md:static md:border-0 md:px-1.5 md:text-[11px]">
               {favBadge}
@@ -111,11 +133,11 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         </Link>
 
         <Link
-          href="/admin"
+          href="/listings"
           className="hidden shrink-0 items-center gap-2 rounded-full bg-night-900 px-5 py-2.5 text-[14px] font-bold text-sand-100 no-underline transition hover:bg-night-700 hover:no-underline md:flex"
         >
-          <Icon name="add_home_work" size={18} />
-          أضف استراحتك
+          <Icon name="search" size={18} />
+          {t.common.browse}
         </Link>
       </div>
 
@@ -123,7 +145,7 @@ export function SiteHeader({ settings }: { settings: Settings }) {
       {menuOpen && (
         <nav className="animate-fade-up border-t border-line bg-surface px-4 py-3 md:hidden">
           <ul className="flex flex-col">
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
@@ -134,14 +156,33 @@ export function SiteHeader({ settings }: { settings: Settings }) {
                 </Link>
               </li>
             ))}
+
             <li className="mt-2 border-t border-line pt-2">
+              <div className="px-3 py-2">
+                <LanguageSwitcher />
+              </div>
+            </li>
+
+            {/* Owner affordances, grouped at the bottom and visually separated,
+                so they read as "not for you" to a customer scanning the menu. */}
+            <li>
               <Link
-                href="/admin"
+                href="/register/owner"
                 onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-2 rounded-xl px-3 py-3 text-[15px] font-semibold text-bronze no-underline hover:bg-gold-100 hover:no-underline"
               >
+                <Icon name="add_home_work" size={18} />
+                {t.nav.listYourProperty}
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/login"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2 rounded-xl px-3 py-3 text-[15px] font-semibold text-muted no-underline hover:bg-sand-100 hover:no-underline"
+              >
                 <Icon name="lock_open" size={18} />
-                دخول المُلّاك
+                {t.nav.ownerLogin}
               </Link>
             </li>
           </ul>

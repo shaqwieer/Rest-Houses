@@ -80,15 +80,22 @@ export function isDepositPaymentEnabled(settings: Settings): boolean {
 }
 
 /** Human-readable reason the payment step is hidden — surfaced in admin settings. */
-export function depositPaymentStatus(settings: Settings): string {
-  if (!settings.depositPaymentsEnabled) {
-    return "الدفع الإلكتروني غير مُفعّل — العربون يُحصّل مباشرة من المالك.";
-  }
-  if (!process.env.STRIPE_SECRET_KEY) {
-    return "الخيار مُفعّل لكن مفاتيح بوابة الدفع غير مُهيّأة في الخادم (STRIPE_SECRET_KEY).";
-  }
-  return "الدفع الإلكتروني مُفعّل.";
+/**
+ * Which of three states the deposit gateway is in.
+ *
+ * Returns a stable code rather than a sentence: this module is imported by
+ * server code with no request scope and therefore no locale, so translating
+ * here would hard-code one language. The admin settings page resolves the code
+ * against the dictionary, where the operator's language is known.
+ */
+export type DepositPaymentState = "DISABLED" | "MISCONFIGURED" | "ENABLED";
+
+export function depositPaymentStatus(settings: Settings): DepositPaymentState {
+  if (!settings.depositPaymentsEnabled) return "DISABLED";
+  if (!process.env.STRIPE_SECRET_KEY) return "MISCONFIGURED";
+  return "ENABLED";
 }
+
 
 /**
  * Deliberately unimplemented. Never called while

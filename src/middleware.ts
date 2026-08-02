@@ -33,7 +33,14 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything under /admin. The login page itself lives at /login so it is
-  // never matched here (which would be a redirect loop).
-  matcher: ["/admin", "/admin/:path*"],
+  // Everything under /admin and /owner. The login page lives at /login and the
+  // owner registration form at /register/owner, so neither is matched here
+  // (which would be a redirect loop, and would make registering impossible).
+  //
+  // Note the division of labour: this only asks "is there a session cookie?".
+  // Whether that session is an ADMIN, or an OWNER who is actually approved and
+  // inside their membership, is decided by `requireAdmin()` /
+  // `requireApprovedOwner()` where the data is touched — those re-read the
+  // database, which the edge runtime cannot do cheaply.
+  matcher: ["/admin", "/admin/:path*", "/owner", "/owner/:path*"],
 };

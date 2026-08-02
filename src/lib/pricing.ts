@@ -1,4 +1,5 @@
 import { isWeekend, nightsInRange, type ISODate } from "./dates";
+import { DEPOSIT_PERCENT_MAX, DEPOSIT_PERCENT_MIN } from "./constants";
 
 /**
  * Quote calculation — the single place a total is computed.
@@ -6,6 +7,14 @@ import { isWeekend, nightsInRange, type ISODate } from "./dates";
  * Both the listing sidebar and the booking form call this, so the number the
  * guest sees on the detail page is by construction the number saved with the
  * request and quoted in the WhatsApp message. Amounts are whole dirhams.
+ *
+ * ─── Authority ───────────────────────────────────────────────────────────────
+ * The browser calling this is producing a *preview*. The value that is stored,
+ * invoiced and messaged is always the one produced by the call inside
+ * `createBookingRequest` (src/app/actions/booking.ts), which re-reads the
+ * listing's price, the platform's service fee and the listing's deposit rate
+ * from the database and ignores every number the form submitted. A total in a
+ * hidden field is trivially editable; nothing here trusts one.
  */
 
 export type QuoteInput = {
@@ -15,6 +24,7 @@ export type QuoteInput = {
   /** Friday/Saturday rate. 0 or missing → same as pricePerNight. */
   weekendPrice?: number | null;
   serviceFeePercent: number;
+  /** Already resolved through `resolveDepositPercent` — 0..100. */
   depositPercent: number;
 };
 
@@ -23,11 +33,58 @@ export type Quote = {
   subtotal: number;
   serviceFee: number;
   total: number;
-  /** Deposit the owner will ask for on confirmation (display only for now). */
+  /** Deposit the owner will ask for on confirmation. */
   depositDue: number;
+  /** The rate that produced `depositDue`, carried through for the snapshot. */
+  depositPercent: number;
   /** Per-night breakdown, so a weekend uplift can be shown if we ever want to. */
   breakdown: { date: ISODate; amount: number; weekend: boolean }[];
 };
+
+/**
+ * Which deposit rate applies to a listing.
+ *
+ * `Listing.depositPercent` is nullable, and null and 0 mean genuinely different
+ * things:
+ *   null → "I haven't set one; use the platform default"
+ *   0    → "I require no deposit"
+ * A truthiness check (`listing.depositPercent || settings.depositPercent`)
+ * collapses those two, silently turning every no-deposit listing into one that
+ * charges the platform default. Hence the explicit null/undefined test.
+ *
+ * The result is clamped to 0..100 so a value that somehow bypassed validation —
+ * an old row, a direct database edit — can never produce a negative deposit or
+ * one larger than the booking itself.
+ */
+export function resolveDepositPercent(
+  listingDepositPercent: number | null | undefined,
+  platformDefault: number,
+): number {
+  const raw =
+    listingDepositPercent === null || listingDepositPercent === undefined
+      ? platformDefault
+      : listingDepositPercent;
+
+  if (!Number.isFinite(raw)) return clampPercent(platformDefault);
+  return clampPercent(raw);
+}
+
+/** Clamp to the valid percentage range and drop any fractional part. */
+export function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return DEPOSIT_PERCENT_MIN;
+  return Math.min(DEPOSIT_PERCENT_MAX, Math.max(DEPOSIT_PERCENT_MIN, Math.round(value)));
+}
+
+/** Is this a percentage a listing may store? Used by the server-side schemas. */
+export function isValidDepositPercent(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= DEPOSIT_PERCENT_MIN &&
+    value <= DEPOSIT_PERCENT_MAX
+  );
+}
 
 export function quote(input: QuoteInput): Quote {
   const {
@@ -49,9 +106,27 @@ export function quote(input: QuoteInput): Quote {
   const subtotal = breakdown.reduce((sum, n) => sum + n.amount, 0);
   const serviceFee = Math.round((subtotal * serviceFeePercent) / 100);
   const total = subtotal + serviceFee;
-  const depositDue = Math.round((total * depositPercent) / 100);
 
-  return { nights: breakdown.length, subtotal, serviceFee, total, depositDue, breakdown };
+  // The deposit is a share of the **total** — what the guest actually owes,
+  // service fee included — not of the subtotal. Computing it from the grand
+  // total is what keeps it consistent when the fee changes, and it is the
+  // figure quoted right next to the total on screen.
+  //
+  // `Math.round` matches the service-fee rounding two lines up, so both figures
+  // round the same way and a receipt never shows a deposit a dirham off from
+  // the same percentage of the printed total.
+  const safePercent = clampPercent(depositPercent);
+  const depositDue = Math.round((total * safePercent) / 100);
+
+  return {
+    nights: breakdown.length,
+    subtotal,
+    serviceFee,
+    total,
+    depositDue,
+    depositPercent: safePercent,
+    breakdown,
+  };
 }
 
 /** The "from" price shown on cards — the weekday rate. */

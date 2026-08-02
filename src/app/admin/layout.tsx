@@ -1,17 +1,21 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { AdminShell } from "@/components/admin/admin-shell";
-import { auth } from "@/lib/auth";
+import { auth, currentRole } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "لوحة التحكم",
-  robots: { index: false, follow: false, nocache: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.admin.dashboard,
+    robots: { index: false, follow: false, nocache: true },
+  };
+}
 
 /** The dashboard reads live data on every request — caching it would show the
- *  owner a stale request list, which is the one thing it exists to prevent. */
+ *  operator a stale request list, which is the one thing it exists to prevent. */
 export const dynamic = "force-dynamic";
 
 /**
@@ -19,8 +23,14 @@ export const dynamic = "force-dynamic";
  *
  * `middleware.ts` already redirects anyone without a session cookie, but it only
  * checks that a cookie *exists* — it can't verify the signature at the edge
- * cheaply. This is where the session is actually validated, and every mutating
- * server action calls `requireAdmin()` on top of that.
+ * cheaply. This is where the session is validated and, since owners now sign in
+ * through the same /login, where the **role** is checked: a signed-in owner
+ * reaching /admin is sent to their own dashboard rather than shown an operator's
+ * view of the whole platform.
+ *
+ * The role is re-read from the database rather than taken from the 30-day JWT,
+ * which would keep asserting a role that had since been changed. Every mutating
+ * server action calls `requireAdmin()` on top of this.
  */
 export default async function AdminLayout({
   children,
@@ -28,9 +38,13 @@ export default async function AdminLayout({
   const session = await auth();
   if (!session?.user) redirect("/login?next=/admin");
 
-  const [settings, newRequestCount] = await Promise.all([
+  const role = await currentRole();
+  if (role !== "ADMIN") redirect("/owner");
+
+  const [settings, newRequestCount, pendingOwnerCount] = await Promise.all([
     getSettings(),
     prisma.bookingRequest.count({ where: { status: "NEW" } }),
+    prisma.ownerProfile.count({ where: { status: "PENDING" } }),
   ]);
 
   return (
@@ -38,6 +52,7 @@ export default async function AdminLayout({
       siteName={settings.siteName}
       logoGlyph={settings.logoGlyph || "و"}
       newRequestCount={newRequestCount}
+      pendingOwnerCount={pendingOwnerCount}
     >
       {children}
     </AdminShell>

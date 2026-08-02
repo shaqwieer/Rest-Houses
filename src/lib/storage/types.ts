@@ -35,20 +35,44 @@ export const ALLOWED_IMAGE_TYPES = [
 
 export const MAX_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MB
 
-export class UploadError extends Error {}
+/**
+ * An upload the adapters refused.
+ *
+ * Carries a stable `code` alongside the message so the *caller* can translate
+ * it. This module is provider-agnostic plumbing shared by the local, database,
+ * S3 and Cloudinary adapters — it has no request scope and therefore no locale,
+ * so translating here would mean hard-coding one language for everyone. The
+ * message stays as a last-resort fallback for anything that logs it directly.
+ */
+export type UploadErrorCode =
+  | "NO_FILE"
+  | "EMPTY"
+  | "TOO_LARGE"
+  | "BAD_FORMAT"
+  | "FAILED";
+
+export class UploadError extends Error {
+  constructor(
+    message: string,
+    public readonly code: UploadErrorCode = "FAILED",
+  ) {
+    super(message);
+    this.name = "UploadError";
+  }
+}
 
 /** Shared validation so every adapter enforces the same limits. */
 export function assertValidImage(file: File): void {
   if (!file || typeof file.size !== "number") {
-    throw new UploadError("لم يتم إرسال ملف صالح");
+    throw new UploadError("No valid file was sent", "NO_FILE");
   }
   if (file.size === 0) {
-    throw new UploadError("الملف فارغ");
+    throw new UploadError("The file is empty", "EMPTY");
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    throw new UploadError("حجم الصورة أكبر من ٢٠٠ ميغابايت");
+    throw new UploadError("The image exceeds the size limit", "TOO_LARGE");
   }
   if (!(ALLOWED_IMAGE_TYPES as readonly string[]).includes(file.type)) {
-    throw new UploadError("صيغة غير مدعومة — استخدم JPG أو PNG أو WebP");
+    throw new UploadError("Unsupported image format", "BAD_FORMAT");
   }
 }

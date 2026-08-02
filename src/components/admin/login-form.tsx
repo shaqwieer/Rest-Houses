@@ -5,10 +5,12 @@ import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Field, TextInput } from "@/components/ui/field";
 import { loginAction } from "@/app/actions/auth";
+import { useT } from "@/lib/i18n/provider";
 
 /** Email + password sign-in. Styling follows the design's login fields. */
 export function LoginForm({ next }: { next: string }) {
   const router = useRouter();
+  const t = useT();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
@@ -36,7 +38,7 @@ export function LoginForm({ next }: { next: string }) {
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
 
-      <Field label="البريد الإلكتروني" required>
+      <Field label={t.auth.email} required>
         <span className="flex items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 focus-within:border-gold-500 focus-within:shadow-[0_0_0_3px_var(--gold-100)]">
           <Icon name="mail" size={20} className="text-gold-600" />
           <input
@@ -51,7 +53,7 @@ export function LoginForm({ next }: { next: string }) {
         </span>
       </Field>
 
-      <Field label="كلمة المرور" required>
+      <Field label={t.auth.password} required>
         <span className="flex items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 focus-within:border-gold-500 focus-within:shadow-[0_0_0_3px_var(--gold-100)]">
           <Icon name="lock" size={20} className="text-gold-600" />
           <input
@@ -66,7 +68,7 @@ export function LoginForm({ next }: { next: string }) {
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
-            aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
+            aria-label={showPassword ? t.auth.hidePassword : t.auth.showPassword}
             className="text-muted transition hover:text-bronze"
           >
             <Icon name={showPassword ? "visibility_off" : "visibility"} size={20} />
@@ -89,7 +91,7 @@ export function LoginForm({ next }: { next: string }) {
         disabled={pending}
         className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-linear-[140deg,var(--gold-500),var(--gold-600)] p-4.5 font-display text-[16px] font-extrabold text-night-900 shadow-gold transition hover:brightness-105 active:translate-y-px disabled:cursor-wait disabled:opacity-70"
       >
-        {pending ? "جارٍ التحقّق…" : "دخول لوحة التحكم"}
+        {pending ? t.auth.checking : t.auth.enterDashboard}
         {!pending && <Icon name="login" size={20} />}
       </button>
     </form>

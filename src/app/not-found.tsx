@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { getSettings } from "@/lib/settings";
+import { getI18n } from "@/lib/i18n/server";
 import { Brand } from "@/components/site/brand";
 
 /**
@@ -12,6 +13,7 @@ import { Brand } from "@/components/site/brand";
  */
 export default async function NotFound() {
   const settings = await getSettings();
+  const { t } = await getI18n();
 
   return (
     <div className="flex min-h-screen flex-col bg-sand-50">
@@ -26,10 +28,10 @@ export default async function NotFound() {
           </div>
 
           <h1 className="m-0 mb-3 font-display text-[clamp(24px,4vw,34px)] font-extrabold text-ink">
-            الصفحة غير موجودة
+            {t.notFound.title}
           </h1>
           <p className="m-0 mb-7 text-[15px] leading-[1.9] text-muted">
-            الرابط الذي وصلت منه قد يكون قديمًا، أو أن الاستراحة أُزيلت من الموقع.
+            {t.notFound.body}
           </p>
 
           <div className="flex flex-wrap justify-center gap-2.5">
@@ -38,13 +40,13 @@ export default async function NotFound() {
               className="inline-flex items-center gap-2 rounded-full bg-linear-[140deg,var(--gold-500),var(--gold-600)] px-6 py-3.5 font-display text-[15px] font-extrabold text-night-900 no-underline shadow-gold hover:no-underline"
             >
               <Icon name="search" size={19} />
-              تصفّح الاستراحات
+              {t.notFound.browse}
             </Link>
             <Link
               href="/"
               className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-6 py-3.5 text-[15px] font-bold text-ink no-underline hover:border-gold-500 hover:no-underline"
             >
-              الصفحة الرئيسية
+              {t.notFound.home}
             </Link>
           </div>
         </div>

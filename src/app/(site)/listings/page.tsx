@@ -8,7 +8,9 @@ import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { findListings, type ListingFilters } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
-import { cityLabel, isSortId } from "@/lib/constants";
+import { localizeSettings } from "@/lib/settings";
+import { getI18n } from "@/lib/i18n/server";
+import { cityLabel, isSortId, normalizeCityId } from "@/lib/constants";
 import { arNum } from "@/lib/format";
 import { arDayMonth, isISODate } from "@/lib/dates";
 
@@ -18,19 +20,23 @@ export async function generateMetadata({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }): Promise<Metadata> {
   const sp = await searchParams;
-  const settings = await getSettings();
-  const city = typeof sp.city === "string" ? sp.city : undefined;
+  const [settings, { t, locale }] = await Promise.all([getSettings(), getI18n()]);
+  const s = localizeSettings(settings, locale);
+  const city = normalizeCityId(typeof sp.city === "string" ? sp.city : undefined);
 
   // A city-filtered view gets its own title/description so each is a distinct,
   // indexable landing page rather than duplicate content.
-  const title = city && city !== "all" ? `استراحات ${cityLabel(city)}` : "تصفّح الاستراحات";
+  const title =
+    city && city !== "all"
+      ? t.listings.metaTitleCity(cityLabel(city, locale))
+      : t.listings.metaTitleAll;
 
   return {
     title,
     description:
       city && city !== "all"
-        ? `استراحات وشاليهات للإيجار في ${cityLabel(city)} — أسعار واضحة، تقويم متاح، وحجز مباشر عبر الواتساب من ${settings.siteName}.`
-        : settings.seoDescription ?? undefined,
+        ? t.listings.metaDescCity(cityLabel(city, locale), s.siteName)
+        : s.seoDescription || undefined,
     alternates: { canonical: city && city !== "all" ? `/listings?city=${city}` : "/listings" },
   };
 }
@@ -47,7 +53,8 @@ function parseFilters(sp: Record<string, string | string[] | undefined>): Listin
   const to = str("to");
 
   return {
-    city: str("city"),
+    // A bookmarked ?city=alain link still resolves — see normalizeCityId.
+    city: normalizeCityId(str("city")),
     category: str("category"),
     maxPrice: num("maxPrice"),
     minCapacity: num("capacity"),
@@ -65,7 +72,7 @@ export default async function ListingsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
+  const [sp, { t, locale }] = await Promise.all([searchParams, getI18n()]);
   const filters = parseFilters(sp);
   const listings = await findListings(filters);
 
@@ -82,12 +89,12 @@ export default async function ListingsPage({
 
   const heading =
     filters.city && filters.city !== "all"
-      ? `استراحات متاحة في ${cityLabel(filters.city)}`
-      : "استراحات متاحة في الإمارات";
+      ? t.listings.headingCity(cityLabel(filters.city, locale))
+      : t.listings.headingAll;
 
   const dateLine =
     filters.availableFrom && filters.availableTo
-      ? `${arDayMonth(filters.availableFrom)} – ${arDayMonth(filters.availableTo)}`
+      ? `${arDayMonth(filters.availableFrom, locale)} – ${arDayMonth(filters.availableTo, locale)}`
       : null;
 
   return (
@@ -95,19 +102,24 @@ export default async function ListingsPage({
       {/* ---- results header ---- */}
       <div className="border-b border-line bg-surface">
         <div className="mx-auto max-w-[1280px] px-4 pt-4.5 md:px-10">
-          <nav aria-label="مسار التنقل" className="mb-2.5 flex items-center gap-1.5 text-[12.5px] text-muted">
+          <nav
+            aria-label={t.listings.breadcrumb}
+            className="mb-2.5 flex items-center gap-1.5 text-[12.5px] text-muted"
+          >
             <Link href="/" className="text-muted no-underline hover:text-bronze hover:no-underline">
-              الرئيسية
+              {t.nav.home}
             </Link>
-            <Icon name="chevron_left" size={15} />
-            <span className="font-semibold text-ink">نتائج البحث</span>
+            <Icon name={locale === "ar" ? "chevron_left" : "chevron_right"} size={15} />
+            <span className="font-semibold text-ink">{t.listings.breadcrumb}</span>
           </nav>
 
           <h1 className="m-0 mb-1 font-display text-[clamp(20px,2.4vw,28px)] font-extrabold text-ink">
             {heading}
           </h1>
           <p className="m-0 mb-4 text-[14px] text-muted">
-            <span className="font-bold text-bronze">{arNum(listings.length)}</span> نتيجة
+            <span className="font-bold text-bronze">
+              {t.common.results(arNum(listings.length, locale), listings.length)}
+            </span>
             {dateLine && <> · {dateLine}</>}
             {filters.q && <> · «{filters.q}»</>}
           </p>
@@ -128,12 +140,12 @@ export default async function ListingsPage({
             <div className="rounded-[20px] border border-dashed border-sand-300 bg-surface px-6 py-14 text-center">
               <Icon name="travel_explore" size={46} className="mx-auto text-sand-400" />
               <h2 className="mt-3.5 mb-2 font-display text-[18px] font-bold text-ink">
-                لا توجد استراحات مطابقة
+                {t.listings.emptyTitle}
               </h2>
               <p className="m-0 mb-4.5 text-[14px] text-muted">
-                جرّب توسيع نطاق السعر أو إزالة بعض المرافق.
+                {t.listings.emptyBodyLong}
               </p>
-              <ButtonLink href="/listings">إعادة ضبط الفلاتر</ButtonLink>
+              <ButtonLink href="/listings">{t.listings.resetFilters}</ButtonLink>
             </div>
           ) : (
             <div className="grid gap-4.5 sm:grid-cols-2 xl:grid-cols-3">

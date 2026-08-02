@@ -1,89 +1,87 @@
 import type { Metadata } from "next";
 import { PageHeader, Prose } from "@/components/site/page-shell";
-import { getSettings } from "@/lib/settings";
+import { getSettings, localizeSettings } from "@/lib/settings";
 import { arNum } from "@/lib/format";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "سياسة الحجز والإلغاء",
-  description: "شروط الحجز، العربون، الإلغاء، وقواعد استخدام الاستراحات.",
-  alternates: { canonical: "/policies" },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.pages.policiesTitle,
+    description: t.pages.policiesDescription,
+    alternates: { canonical: "/policies" },
+  };
+}
 
 /**
  * Booking terms.
  *
  * The percentages and hours are read from settings rather than written into the
- * copy, so changing the deposit in /admin/settings updates the published terms
- * too — otherwise the terms page silently starts contradicting the checkout.
+ * copy, so changing the service fee in /admin/settings updates the published
+ * terms too — otherwise the terms page silently starts contradicting checkout.
+ *
+ * The deposit clause is the one exception, and deliberately so: since owners set
+ * their own rate per listing, no single number here could be correct for every
+ * rest house. It names the platform *default* and points the reader at the
+ * listing's own page, which is where the figure that will actually be charged
+ * is shown.
  */
 export default async function PoliciesPage() {
-  const settings = await getSettings();
+  const [settings, { t, locale }] = await Promise.all([getSettings(), getI18n()]);
+  const s = localizeSettings(settings, locale);
 
   return (
     <>
-      <PageHeader
-        title="سياسة الحجز والإلغاء"
-        subtitle="القواعد التي يعمل بها الموقع بين الضيف والمالك."
-      />
+      <PageHeader title={t.pages.policiesTitle} subtitle={t.pages.policiesSubtitle} />
 
       <div className="mx-auto max-w-[900px] px-4 py-10 md:px-10 md:py-14">
         <Prose>
-          <h2>١. طبيعة الخدمة</h2>
+          <h2>{t.pages.polS1H}</h2>
+          <p>{t.pages.polS1B(s.siteName)}</p>
+
+          <h2>{t.pages.polS2H}</h2>
           <p>
-            {settings.siteName} منصّة وسيطة تعرض استراحات وشاليهات مملوكة لأطراف مستقلّين. عقد
-            الإقامة يقوم بينك وبين مالك الاستراحة. دورنا هو التحقّق من العروض، عرض التوفّر والسعر
-            بدقّة، وتوصيل طلبك للمالك.
+            {t.pages.polS2Lead} <strong>{t.pages.polS2Strong}</strong>
+            {t.pages.polS2Tail}
           </p>
 
-          <h2>٢. الطلب والتأكيد</h2>
-          <p>
-            إرسال الطلب من الموقع <strong>ليس حجزًا مؤكدًا</strong>. يصبح الحجز مؤكدًا فقط بعد أن
-            يوافق المالك عليه ويُغلق التقويم على تواريخك. حتى تلك اللحظة قد تُحجز التواريخ لضيف آخر.
-          </p>
-
-          <h2>٣. الأسعار ورسوم الخدمة</h2>
+          <h2>{t.pages.polS3H}</h2>
           <ul>
-            <li>الأسعار بالدرهم الإماراتي وتشمل رسوم خدمة بنسبة {arNum(settings.serviceFeePercent)}٪.</li>
-            <li>سعر الجمعة والسبت قد يكون أعلى، ويظهر بوضوح في التقويم قبل الإرسال.</li>
-            <li>لا توجد رسوم إضافية تُضاف بعد عرض الإجمالي.</li>
+            <li>{t.pages.polS3L1(arNum(settings.serviceFeePercent, locale))}</li>
+            <li>{t.pages.polS3L2}</li>
+            <li>{t.pages.polS3L3}</li>
           </ul>
 
-          <h2>٤. العربون</h2>
-          <p>
-            يُستحق عربون بنسبة {arNum(settings.depositPercent)}٪ من الإجمالي بعد تأكيد المالك، وليس
-            عند إرسال الطلب. لا يُحصَّل أي مبلغ عبر الموقع؛ طريقة الدفع يحدّدها المالك عند التواصل.
-          </p>
+          <h2>{t.pages.polS4H}</h2>
+          <p>{t.pages.polS4B(arNum(settings.depositPercent, locale))}</p>
 
-          <h2>٥. الإلغاء</h2>
+          <h2>{t.pages.polS5H}</h2>
           <ul>
             <li>
-              الإلغاء مجاني حتى <strong>{arNum(settings.freeCancelHours)} ساعة</strong> قبل موعد
-              الوصول، ويُرد العربون كاملًا.
+              {t.pages.polS5L1a}{" "}
+              <strong>{t.pages.polS5L1b(arNum(settings.freeCancelHours, locale))}</strong>{" "}
+              {t.pages.polS5L1c}
             </li>
-            <li>الإلغاء بعد هذه المدة يخضع لسياسة المالك المذكورة في صفحة الاستراحة.</li>
-            <li>عدم الحضور دون إشعار يُعامل كإلغاء متأخر.</li>
-            <li>إذا ألغى المالك حجزًا مؤكدًا، يُرد العربون كاملًا ونساعدك في إيجاد بديل.</li>
+            <li>{t.pages.polS5L2}</li>
+            <li>{t.pages.polS5L3}</li>
+            <li>{t.pages.polS5L4}</li>
           </ul>
 
-          <h2>٦. مواعيد الدخول والخروج</h2>
-          <p>
-            الدخول من {settings.checkInTime} والخروج حتى {settings.checkOutTime}، ما لم يُتفق على
-            غير ذلك مع المالك.
-          </p>
+          <h2>{t.pages.polS6H}</h2>
+          <p>{t.pages.polS6B(s.checkInTime, s.checkOutTime)}</p>
 
-          <h2>٧. قواعد الاستخدام</h2>
+          <h2>{t.pages.polS7H}</h2>
           <ul>
-            <li>عدد الضيوف لا يتجاوز السعة المعلنة.</li>
-            <li>احترام هدوء المنطقة وأوقات الراحة.</li>
-            <li>الأضرار التي تلحق بالممتلكات مسؤولية الضيف.</li>
-            <li>يُمنع أي استخدام مخالف لقوانين دولة الإمارات العربية المتحدة.</li>
+            <li>{t.pages.polS7L1}</li>
+            <li>{t.pages.polS7L2}</li>
+            <li>{t.pages.polS7L3}</li>
+            <li>{t.pages.polS7L4}</li>
           </ul>
 
-          <h2>٨. الشكاوى</h2>
+          <h2>{t.pages.polS8H}</h2>
           <p>
-            إن اختلف الواقع عمّا هو معروض، راسلنا على الواتساب{" "}
-            <span dir="ltr">{settings.whatsappNumber}</span> مع رقم طلبك خلال ٢٤ ساعة من الوصول
-            ونتدخّل مباشرة.
+            {t.pages.polS8Lead} <span dir="ltr">{settings.whatsappNumber}</span>{" "}
+            {t.pages.polS8Tail}
           </p>
         </Prose>
       </div>

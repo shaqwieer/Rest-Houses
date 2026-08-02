@@ -1,36 +1,70 @@
+"use client";
+
 import Link from "next/link";
 import { Brand } from "./brand";
+import { LanguageSwitcher } from "./language-switcher";
 import { Icon, type IconName } from "@/components/ui/icon";
 import type { Settings } from "@/lib/settings";
+import { localizeSettings } from "@/lib/settings";
 import { whatsappLink } from "@/lib/whatsapp";
+import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
 
 /**
- * Site footer: about + explore links + help links + Google Maps embed.
+ * Site footer: about + explore links + help links + contact.
  *
- * The map here is a Google Maps embed (the client asked for Google Maps) built
- * from the lat/lng pair in settings — no API key needed for the `/maps?q=` embed
- * form. The interactive per-listing map uses Leaflet instead; see
- * components/listing/listing-map.tsx for why the two differ.
+ * ─── The "موقعنا / Our Location" block has been removed ──────────────────────
+ * This footer used to carry a fourth column with a Google Maps `<iframe>` built
+ * from the lat/lng in settings — the only "Our Location" block anywhere in the
+ * codebase, and the map that rendered below the home page's closing call to
+ * action. It has been deleted outright, along with the keyless
+ * `google.com/maps?output=embed` request it made on every page load.
+ *
+ * Two consequences worth being explicit about:
+ *   • The removal is site-wide, not home-page-only. The footer is one shared
+ *     component; threading a `hideLocation` prop through it to suppress the
+ *     block on a single route would leave the same map on every other page and
+ *     add a conditional whose only purpose is to confuse a later reader.
+ *   • The contact affordances that lived in that column — the WhatsApp number
+ *     and the address line — were **not** lost. They moved into the contact
+ *     column below, so nothing a visitor could reach before is unreachable now;
+ *     only the embedded map is gone.
+ *
+ * The interactive per-listing map (Leaflet, components/listing/listing-map.tsx)
+ * is a different component on a different page, and is untouched.
  */
 
-function socialLinks(settings: Settings): { href: string; icon: IconName; label: string }[] {
+function socialLinks(
+  settings: Settings,
+  emailLabel: string,
+): { href: string; icon: IconName; label: string }[] {
   const out: { href: string; icon: IconName; label: string }[] = [];
-  if (settings.instagram) out.push({ href: settings.instagram, icon: "photo_camera", label: "إنستغرام" });
-  out.push({ href: whatsappLink(settings.whatsappNumber), icon: "chat", label: "واتساب" });
-  if (settings.email) out.push({ href: `mailto:${settings.email}`, icon: "alternate_email", label: "البريد" });
-  if (settings.youtube) out.push({ href: settings.youtube, icon: "play_circle", label: "يوتيوب" });
-  if (settings.tiktok) out.push({ href: settings.tiktok, icon: "play_circle", label: "تيك توك" });
+
+  if (settings.instagram)
+    out.push({ href: settings.instagram, icon: "photo_camera", label: "Instagram" });
+
+  // Returns "" when the number is unusable, so an unconfigured site renders no
+  // dead link to `wa.me/`.
+  const wa = whatsappLink(settings.whatsappNumber);
+  if (wa) out.push({ href: wa, icon: "chat", label: "WhatsApp" });
+
+  if (settings.email)
+    out.push({ href: `mailto:${settings.email}`, icon: "alternate_email", label: emailLabel });
+  if (settings.youtube)
+    out.push({ href: settings.youtube, icon: "play_circle", label: "YouTube" });
+  if (settings.tiktok)
+    out.push({ href: settings.tiktok, icon: "play_circle", label: "TikTok" });
+
   return out;
 }
 
 export function SiteFooter({ settings }: { settings: Settings }) {
-  const socials = socialLinks(settings);
-  const year = arNum(new Date().getFullYear());
+  const { t, locale } = useLocale();
+  const s = localizeSettings(settings, locale);
 
-  // `q=lat,lng` + `output=embed` is the keyless Google Maps embed. `z` is zoom.
-  const mapSrc = `https://www.google.com/maps?q=${settings.mapLat},${settings.mapLng}&z=${settings.mapZoom}&hl=ar&output=embed`;
-  const mapDirections = `https://www.google.com/maps/search/?api=1&query=${settings.mapLat},${settings.mapLng}`;
+  const socials = socialLinks(settings, t.owner.email);
+  const year = arNum(new Date().getFullYear(), locale);
+  const waHref = whatsappLink(settings.whatsappNumber);
 
   return (
     <footer className="relative overflow-hidden bg-night-900">
@@ -44,34 +78,37 @@ export function SiteFooter({ settings }: { settings: Settings }) {
               <Brand settings={settings} tone="dark" size="md" />
             </div>
             <p className="mb-4 max-w-[34ch] text-[13.5px] leading-relaxed text-sand-100/60">
-              {settings.footerAbout}
+              {s.footerAbout}
             </p>
-            <div className="flex gap-2.5">
-              {socials.map((s) => (
+            <div className="mb-4 flex gap-2.5">
+              {socials.map((social) => (
                 <a
-                  key={s.label + s.href}
-                  href={s.href}
+                  key={social.label + social.href}
+                  href={social.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={s.label}
+                  aria-label={social.label}
                   className="grid size-9.5 place-items-center rounded-xl border border-gold-500/30 text-gold-300 no-underline transition hover:bg-gold-500/15 hover:no-underline"
                 >
-                  <Icon name={s.icon} size={19} />
+                  <Icon name={social.icon} size={19} />
                 </a>
               ))}
             </div>
+            <LanguageSwitcher tone="dark" />
           </div>
 
           {/* explore */}
-          <nav aria-label="استكشف">
-            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">استكشف</h2>
+          <nav aria-label={t.footer.explore}>
+            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">
+              {t.footer.explore}
+            </h2>
             <ul className="flex flex-col gap-2.5">
               {[
-                { href: "/listings", label: "كل الاستراحات" },
-                { href: "/listings?amenities=pool", label: "استراحات بمسبح" },
-                { href: "/listings?category=wedding", label: "قاعات أعراس" },
-                { href: "/listings?category=camp", label: "مخيمات شتوية" },
-                { href: "/favorites", label: "المفضلة" },
+                { href: "/listings", label: t.footer.allListings },
+                { href: "/listings?amenities=pool", label: t.footer.poolListings },
+                { href: "/listings?category=wedding", label: t.footer.weddingVenues },
+                { href: "/listings?category=camp", label: t.footer.winterCamps },
+                { href: "/favorites", label: t.nav.favorites },
               ].map((l) => (
                 <li key={l.href}>
                   <Link
@@ -86,13 +123,16 @@ export function SiteFooter({ settings }: { settings: Settings }) {
           </nav>
 
           {/* help */}
-          <nav aria-label="المساعدة">
-            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">المساعدة</h2>
+          <nav aria-label={t.footer.help}>
+            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">
+              {t.footer.help}
+            </h2>
             <ul className="flex flex-col gap-2.5">
               {[
-                { href: "/how-it-works", label: "كيف أحجز؟" },
-                { href: "/policies", label: "سياسة الإلغاء" },
-                { href: "/faq", label: "الأسئلة الشائعة" },
+                { href: "/how-it-works", label: t.nav.howItWorks },
+                { href: "/policies", label: t.nav.policies },
+                { href: "/faq", label: t.nav.faq },
+                { href: "/about", label: t.nav.about },
               ].map((l) => (
                 <li key={l.href}>
                   <Link
@@ -103,70 +143,74 @@ export function SiteFooter({ settings }: { settings: Settings }) {
                   </Link>
                 </li>
               ))}
-              <li>
-                <Link
-                  href="/admin"
-                  className="flex items-center gap-1.5 text-[13.5px] text-sand-100/60 no-underline hover:text-gold-300 hover:no-underline"
-                >
-                  <Icon name="lock_open" size={16} />
-                  دخول المُلّاك
-                </Link>
-              </li>
             </ul>
           </nav>
 
-          {/* location */}
+          {/* contact — the WhatsApp number and address that used to sit under
+              the removed map, kept here so no contact route was lost with it */}
           <div>
-            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">موقعنا</h2>
-            <div className="mb-3 h-33 overflow-hidden rounded-2xl border border-gold-500/30 bg-night-800">
-              <iframe
-                src={mapSrc}
-                title="خريطة الموقع"
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="size-full border-0 [filter:saturate(0.75)_contrast(1.05)]"
-              />
-            </div>
-            {settings.addressLine && (
-              <p className="mb-2 text-[12.5px] text-sand-100/55">{settings.addressLine}</p>
+            <h2 className="mb-3.5 font-display text-[14.5px] font-bold text-sand-50">
+              {t.footer.contact}
+            </h2>
+
+            {waHref && (
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mb-2.5 flex items-center gap-2 text-[13.5px] text-gold-300 no-underline hover:text-sand-100 hover:no-underline"
+              >
+                <Icon name="chat" size={17} />
+                <span dir="ltr">{settings.whatsappNumber}</span>
+              </a>
             )}
-            <a
-              href={mapDirections}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mb-2 flex items-center gap-2 text-[13px] text-gold-300 no-underline hover:text-sand-100 hover:no-underline"
+
+            {settings.email && (
+              <a
+                href={`mailto:${settings.email}`}
+                className="mb-2.5 flex items-center gap-2 text-[13.5px] text-sand-100/60 no-underline hover:text-gold-300 hover:no-underline"
+              >
+                <Icon name="alternate_email" size={17} />
+                <span dir="ltr">{settings.email}</span>
+              </a>
+            )}
+
+            {s.addressLine && (
+              <p className="m-0 mb-4 flex items-start gap-2 text-[12.5px] text-sand-100/55">
+                <Icon name="location_on" size={16} className="mt-0.5 shrink-0" />
+                {s.addressLine}
+              </p>
+            )}
+
+            {/* The one place in the public footer that addresses owners rather
+                than customers — everything else here speaks to the guest who is
+                looking for a rest house. */}
+            <Link
+              href="/register/owner"
+              className="inline-flex items-center gap-2 rounded-full border border-gold-500/30 px-3.5 py-2 text-[12.5px] font-bold text-gold-300 no-underline transition hover:bg-gold-500/15 hover:no-underline"
             >
-              <Icon name="pin_drop" size={17} />
-              الاتجاهات على خرائط جوجل
-            </a>
-            <a
-              href={whatsappLink(settings.whatsappNumber)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-[13.5px] text-gold-300 no-underline hover:text-sand-100 hover:no-underline"
-            >
-              <Icon name="call" size={17} />
-              <span dir="ltr">{settings.whatsappNumber}</span>
-            </a>
+              <Icon name="add_home_work" size={16} />
+              {t.footer.listYourPropertyCta}
+            </Link>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gold-500/20 py-4.5">
           <span className="text-[12.5px] text-sand-100/45">
-            © {year} {settings.siteName} — جميع الحقوق محفوظة
+            {t.footer.rights(year, s.siteName)}
           </span>
           <span className="flex gap-4.5">
             <Link
               href="/policies"
               className="text-[12.5px] text-sand-100/45 no-underline hover:text-gold-300 hover:no-underline"
             >
-              الشروط والأحكام
+              {t.nav.terms}
             </Link>
             <Link
               href="/privacy"
               className="text-[12.5px] text-sand-100/45 no-underline hover:text-gold-300 hover:no-underline"
             >
-              سياسة الخصوصية
+              {t.nav.privacy}
             </Link>
           </span>
         </div>

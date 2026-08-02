@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
 import { Chip } from "@/components/ui/field";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 import {
   AMENITIES,
   CATEGORIES,
@@ -13,6 +14,7 @@ import {
   CAPACITY_MAX,
   PRICE_MAX,
   PRICE_MIN,
+  label as pickLabel,
 } from "@/lib/constants";
 
 /**
@@ -47,6 +49,7 @@ export function FiltersPanel({
   const urlCapacity = Number(params.get("capacity")) || 0;
 
   // Live slider values — committed to the URL on pointer release.
+  const { t, locale } = useLocale();
   const [priceDraft, setPriceDraft] = useState(urlMaxPrice);
   const [capacityDraft, setCapacityDraft] = useState(urlCapacity);
 
@@ -100,12 +103,14 @@ export function FiltersPanel({
   return (
     <div className="flex flex-col">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="m-0 font-display text-[16px] font-extrabold text-ink">تصفية النتائج</h2>
+        <h2 className="m-0 font-display text-[16px] font-extrabold text-ink">
+          {t.listings.filterResults}
+        </h2>
         {onClose && (
           <button
             type="button"
             onClick={onClose}
-            aria-label="إغلاق الفلاتر"
+            aria-label={t.listings.closeFilters}
             className="grid size-7.5 place-items-center rounded-[9px] bg-sand-100 text-ink"
           >
             <Icon name="close" size={19} />
@@ -115,14 +120,14 @@ export function FiltersPanel({
 
       {/* city */}
       <div className="mb-5.5">
-        <div className={groupLabel}>المدينة / المنطقة</div>
+        <div className={groupLabel}>{t.listings.cityGroup}</div>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={city === "all"} onClick={() => setParam("city", "all")}>
-            كل المدن
+            {t.listings.allCitiesShort}
           </Chip>
           {CITIES.map((c) => (
             <Chip key={c.id} active={city === c.id} onClick={() => setParam("city", c.id)}>
-              {c.ar}
+              {pickLabel(c, locale)}
             </Chip>
           ))}
         </div>
@@ -130,10 +135,10 @@ export function FiltersPanel({
 
       {/* occasion */}
       <div className="mb-5.5">
-        <div className={groupLabel}>المناسبة</div>
+        <div className={groupLabel}>{t.listings.occasionGroup}</div>
         <div className="flex flex-wrap gap-1.5">
           <Chip active={category === "all"} onClick={() => setParam("category", "all")}>
-            الكل
+            {t.common.all}
           </Chip>
           {CATEGORIES.map((c) => (
             <Chip
@@ -141,7 +146,7 @@ export function FiltersPanel({
               active={category === c.id}
               onClick={() => setParam("category", c.id)}
             >
-              {c.ar}
+              {pickLabel(c, locale)}
             </Chip>
           ))}
         </div>
@@ -151,11 +156,11 @@ export function FiltersPanel({
       <div className="mb-5.5">
         <div className="mb-1.5 flex items-baseline justify-between">
           <span className="text-[12.5px] font-bold tracking-wide text-bronze">
-            الحد الأقصى للسعر
+            {t.listings.maxPriceGroup}
           </span>
           <span className="font-display text-[15px] font-extrabold text-ink">
-            {arNum(priceDraft)}{" "}
-            <span className="text-[11.5px] font-semibold text-muted">د.إ</span>
+            {arNum(priceDraft, locale)}{" "}
+            <span className="text-[11.5px] font-semibold text-muted">{t.common.aed}</span>
           </span>
         </div>
         <input
@@ -168,12 +173,12 @@ export function FiltersPanel({
           // Commit on release (mouse) and on blur (keyboard/touch).
           onPointerUp={() => setParam("maxPrice", priceDraft === PRICE_MAX ? null : String(priceDraft))}
           onKeyUp={() => setParam("maxPrice", priceDraft === PRICE_MAX ? null : String(priceDraft))}
-          aria-label="الحد الأقصى للسعر"
+          aria-label={t.listings.maxPriceGroup}
           className="h-1.5 w-full cursor-pointer"
         />
         <div className="mt-1 flex justify-between text-[11.5px] text-muted">
-          <span>{arNum(PRICE_MIN)}</span>
-          <span>{arNum(PRICE_MAX)}</span>
+          <span>{arNum(PRICE_MIN, locale)}</span>
+          <span>{arNum(PRICE_MAX, locale)}</span>
         </div>
       </div>
 
@@ -181,10 +186,10 @@ export function FiltersPanel({
       <div className="mb-5.5">
         <div className="mb-1.5 flex items-baseline justify-between">
           <span className="text-[12.5px] font-bold tracking-wide text-bronze">
-            السعة (عدد الضيوف)
+            {t.listings.capacityGroup}
           </span>
           <span className="font-display text-[15px] font-extrabold text-ink">
-            {capacityDraft ? `${arNum(capacityDraft)}+` : "أي عدد"}
+            {capacityDraft ? `${arNum(capacityDraft, locale)}+` : t.listings.anyCapacity}
           </span>
         </div>
         <input
@@ -196,18 +201,18 @@ export function FiltersPanel({
           onChange={(e) => setCapacityDraft(Number(e.target.value))}
           onPointerUp={() => setParam("capacity", capacityDraft === 0 ? null : String(capacityDraft))}
           onKeyUp={() => setParam("capacity", capacityDraft === 0 ? null : String(capacityDraft))}
-          aria-label="السعة"
+          aria-label={t.listings.capacityGroup}
           className="h-1.5 w-full cursor-pointer"
         />
         <div className="mt-1 flex justify-between text-[11.5px] text-muted">
-          <span>أي عدد</span>
-          <span>{arNum(CAPACITY_MAX)}+</span>
+          <span>{t.listings.anyCapacity}</span>
+          <span>{arNum(CAPACITY_MAX, locale)}+</span>
         </div>
       </div>
 
       {/* amenities */}
       <div>
-        <div className={groupLabel}>المرافق</div>
+        <div className={groupLabel}>{t.listings.amenities}</div>
         <div className="flex flex-wrap gap-1.5">
           {AMENITIES.map((a) => (
             <Chip
@@ -216,7 +221,7 @@ export function FiltersPanel({
               onClick={() => toggleAmenity(a.id)}
             >
               <Icon name={a.icon as never} size={16} />
-              {a.ar}
+              {pickLabel(a, locale)}
             </Chip>
           ))}
         </div>
@@ -227,7 +232,7 @@ export function FiltersPanel({
         onClick={reset}
         className="mt-5 text-[13px] font-semibold text-bronze underline underline-offset-3"
       >
-        إعادة ضبط الفلاتر
+        {t.listings.resetFilters}
       </button>
 
       {onClose && (
@@ -236,7 +241,7 @@ export function FiltersPanel({
           onClick={onClose}
           className="mt-4 w-full rounded-2xl bg-night-900 p-3.5 text-[14.5px] font-bold text-sand-100"
         >
-          عرض {arNum(resultCount)} نتيجة
+          {t.listings.showResults(arNum(resultCount, locale))}
         </button>
       )}
     </div>
@@ -256,6 +261,7 @@ export function FiltersPanel({
  * ------------------------------------------------------------------------ */
 
 export function FiltersTrigger({ resultCount }: { resultCount: number }) {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
 
   return (
@@ -266,14 +272,14 @@ export function FiltersTrigger({ resultCount }: { resultCount: number }) {
         className="flex items-center gap-2 rounded-full border border-gold-600 bg-gold-100 px-4 py-2.5 text-[13.5px] font-bold text-bronze lg:hidden"
       >
         <Icon name="tune" size={18} />
-        الفلاتر
+        {t.listings.filters}
       </button>
 
       {open && (
         <div className="fixed inset-0 z-200 lg:hidden">
           <button
             type="button"
-            aria-label="إغلاق الفلاتر"
+            aria-label={t.listings.closeFilters}
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-night-900/50 backdrop-blur-sm"
           />

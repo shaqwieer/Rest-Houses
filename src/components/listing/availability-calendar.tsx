@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
-import { DOW_AR, DOW_AR_SHORT } from "@/lib/constants";
+import { useLocale } from "@/lib/i18n/provider";
+import { dayNames, dayNamesShort } from "@/lib/constants";
 import {
   addDays,
   arMonthLabel,
@@ -46,6 +47,7 @@ export function AvailabilityCalendar({
   const today = todayISO();
   const unavailable = useMemo(() => new Set(unavailableDates), [unavailableDates]);
 
+  const { t, locale } = useLocale();
   const [view, setView] = useState(() => {
     const d = parseISODate(value.checkIn ?? today);
     return { year: d.getUTCFullYear(), month: d.getUTCMonth() };
@@ -55,7 +57,7 @@ export function AvailabilityCalendar({
     () =>
       Array.from({ length: months }, (_, i) => {
         const { year, month } = shiftMonth(view.year, view.month, i);
-        return { year, month, cells: buildMonthGrid(year, month, unavailable, today) };
+        return { year, month, cells: buildMonthGrid(year, month, unavailable, today, locale) };
       }),
     [view, months, unavailable, today],
   );
@@ -102,7 +104,7 @@ export function AvailabilityCalendar({
           type="button"
           onClick={() => setView((v) => shiftMonth(v.year, v.month, -1))}
           disabled={atFirstMonth}
-          aria-label="الشهر السابق"
+          aria-label={t.listing.prevMonth}
           className="grid size-8.5 place-items-center rounded-xl border border-line bg-surface text-ink transition enabled:hover:border-gold-500 disabled:opacity-35"
         >
           {/* In RTL, "previous" points right. */}
@@ -111,17 +113,18 @@ export function AvailabilityCalendar({
 
         <span className="min-w-30 text-center font-display text-[15px] font-bold text-ink">
           {grids.length > 1
-            ? `${arMonthLabel(grids[0].year, grids[0].month)} — ${arMonthLabel(
+            ? `${arMonthLabel(grids[0].year, grids[0].month, locale)} — ${arMonthLabel(
                 grids[grids.length - 1].year,
                 grids[grids.length - 1].month,
+                locale,
               )}`
-            : arMonthLabel(view.year, view.month)}
+            : arMonthLabel(view.year, view.month, locale)}
         </span>
 
         <button
           type="button"
           onClick={() => setView((v) => shiftMonth(v.year, v.month, 1))}
-          aria-label="الشهر التالي"
+          aria-label={t.listing.nextMonth}
           className="grid size-8.5 place-items-center rounded-xl border border-line bg-surface text-ink transition hover:border-gold-500"
         >
           <Icon name="chevron_left" size={19} />
@@ -133,20 +136,20 @@ export function AvailabilityCalendar({
           <div key={`${g.year}-${g.month}`}>
             {months > 1 && (
               <div className="mb-2 text-center font-display text-[13.5px] font-bold text-bronze">
-                {arMonthLabel(g.year, g.month)}
+                {arMonthLabel(g.year, g.month, locale)}
               </div>
             )}
 
             {/* weekday header */}
             <div className="mb-1.5 grid grid-cols-7 gap-1.5">
-              {DOW_AR.map((d, i) => (
+              {dayNames(locale).map((d, i) => (
                 <div
                   key={d}
                   className="py-1 text-center text-[11px] font-bold text-muted"
                   // Full names don't fit at phone widths; abbreviate there.
                   title={d}
                 >
-                  <span className="sm:hidden">{DOW_AR_SHORT[i]}</span>
+                  <span className="sm:hidden">{dayNamesShort(locale)[i]}</span>
                   <span className="hidden sm:inline">{d}</span>
                 </div>
               ))}
@@ -175,7 +178,9 @@ export function AvailabilityCalendar({
                     type="button"
                     onClick={() => pick(cell.iso)}
                     disabled={disabled}
-                    aria-label={`${cell.dayNumber}${cell.isUnavailable ? " — محجوز" : ""}`}
+                    aria-label={`${cell.dayNumber}${
+                  cell.isUnavailable ? ` — ${t.listing.dayBooked}` : ""
+                }`}
                     aria-pressed={isStart || isEnd}
                     className={clsx(
                       "relative flex h-11.5 flex-col items-center justify-center rounded-xl border text-[14px] font-bold leading-none transition",
@@ -215,18 +220,21 @@ export function AvailabilityCalendar({
 
       {/* legend */}
       <div className="mt-4 flex flex-wrap gap-3.5 border-t border-line pt-3.5">
-        <Legend swatch="border border-line bg-surface" label="متاح" />
-        <Legend swatch="border border-busy bg-busy-bg" label="محجوز" />
-        <Legend swatch="border border-sand-200 bg-sand-100" label="نهاية الأسبوع — سعر مرتفع" />
+        <Legend swatch="border border-line bg-surface" label={t.listing.dayAvailable} />
+        <Legend swatch="border border-busy bg-busy-bg" label={t.listing.dayBooked} />
+        <Legend
+          swatch="border border-sand-200 bg-sand-100"
+          label={t.listing.weekendHigher}
+        />
         <Legend
           swatch="bg-linear-[140deg,var(--gold-500),var(--gold-600)]"
-          label="اختيارك"
+          label={t.listing.yourSelection}
         />
       </div>
 
       {value.checkIn && !value.checkOut && (
         <p className="m-0 mt-3 rounded-xl bg-gold-100 px-3 py-2.5 text-[12.5px] font-semibold text-bronze">
-          اخترت تاريخ الوصول — اختر الآن تاريخ المغادرة.
+          {t.listing.pickCheckOutNow}
         </p>
       )}
     </div>

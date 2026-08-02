@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { prisma } from "./prisma";
 import type { SiteSettings } from "@prisma/client";
+import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
 
 /**
  * Site settings access.
@@ -58,10 +59,73 @@ const FALLBACK = {
   heroImageUrl: null,
   footerAbout:
     "منصّة إماراتية لحجز الاستراحات والشاليهات الصحراوية — موثّقة ميدانيًا وبأسعار واضحة.",
+
+  // English siblings — blank means "fall back to the Arabic value", which is
+  // what `localized()` below does. See prisma/schema.prisma for why they exist.
+  siteNameEn: "Sands Rest Houses",
+  taglineEn: "Rest houses & chalets across the UAE",
+  addressLineEn: "Dubai — United Arab Emirates",
+  checkInTimeEn: "4 PM",
+  checkOutTimeEn: "12 noon",
+  seoTitleEn: "Book rest houses and chalets in the UAE",
+  seoDescriptionEn:
+    "Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.",
+  heroTitleEn: "Your rest house in the heart of the desert",
+  heroTitleAltEn: "is one booking away",
+  heroSubtitleEn:
+    "Choose from carefully selected rest houses and chalets in Lahbab, Liwa and Al Ain — clear pricing, a live calendar, and direct confirmation with the owner.",
+  footerAboutEn:
+    "An Emirati platform for booking desert rest houses and chalets — verified in person, with clear pricing.",
+
   updatedAt: new Date(),
 } satisfies SiteSettings;
 
 export type Settings = SiteSettings;
+
+/**
+ * Pick the right language for a piece of stored copy.
+ *
+ * The English column is optional everywhere, so an operator who has not filled
+ * it in still gets a working English site — with the Arabic text in those
+ * specific fields rather than an empty hero. Falling back is deliberately
+ * silent: a blank heading is a far worse failure than an untranslated one.
+ */
+export function localized(
+  arabic: string | null | undefined,
+  english: string | null | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (locale === "en") {
+    const en = (english ?? "").trim();
+    if (en) return en;
+  }
+  return (arabic ?? "").trim();
+}
+
+/**
+ * Every localisable settings field, resolved for one locale at once.
+ *
+ * Returned as a plain object of strings so it can be handed straight to a
+ * client component as a prop — unlike the dictionary, which contains functions
+ * and cannot cross the server/client boundary.
+ */
+export type LocalizedSettings = ReturnType<typeof localizeSettings>;
+
+export function localizeSettings(settings: Settings, locale: Locale = DEFAULT_LOCALE) {
+  return {
+    siteName: localized(settings.siteName, settings.siteNameEn, locale),
+    tagline: localized(settings.tagline, settings.taglineEn, locale),
+    addressLine: localized(settings.addressLine, settings.addressLineEn, locale),
+    checkInTime: localized(settings.checkInTime, settings.checkInTimeEn, locale),
+    checkOutTime: localized(settings.checkOutTime, settings.checkOutTimeEn, locale),
+    seoTitle: localized(settings.seoTitle, settings.seoTitleEn, locale),
+    seoDescription: localized(settings.seoDescription, settings.seoDescriptionEn, locale),
+    heroTitle: localized(settings.heroTitle, settings.heroTitleEn, locale),
+    heroTitleAlt: localized(settings.heroTitleAlt, settings.heroTitleAltEn, locale),
+    heroSubtitle: localized(settings.heroSubtitle, settings.heroSubtitleEn, locale),
+    footerAbout: localized(settings.footerAbout, settings.footerAboutEn, locale),
+  };
+}
 
 export const getSettings = cache(async (): Promise<Settings> => {
   try {

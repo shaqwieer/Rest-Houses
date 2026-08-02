@@ -6,8 +6,9 @@ import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { useFavorites } from "@/components/site/favorites-provider";
 import { arNum, arRating } from "@/lib/format";
-import { cityLabel, getAmenity } from "@/lib/constants";
+import { cityLabel, getAmenity, label as pickLabel } from "@/lib/constants";
 import type { ListingCardData } from "./card-data";
+import { useLocale } from "@/lib/i18n/provider";
 
 /**
  * The listing card — used on the home page, the results grid and favourites.
@@ -31,6 +32,7 @@ export function ListingCard({
   priority?: boolean;
 }) {
   const { isFavorite, toggle } = useFavorites();
+  const { t, locale } = useLocale();
   const favorited = isFavorite(listing.id);
 
   // Four amenity chips, matching the design's `amens.slice(0,4)`.
@@ -60,7 +62,9 @@ export function ListingCard({
         <button
           type="button"
           onClick={() => toggle(listing.id)}
-          aria-label={favorited ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}
+          aria-label={
+            favorited ? t.favorites.removeFromFavorites : t.favorites.addToFavorites
+          }
           aria-pressed={favorited}
           className="absolute top-3 start-3 z-6 grid size-9 place-items-center rounded-full bg-surface/95 shadow-[0_4px_12px_rgb(0_0_0/0.18)] transition hover:scale-108"
         >
@@ -74,14 +78,14 @@ export function ListingCard({
         {showVerifiedBadge && listing.verified && (
           <div className="pointer-events-none absolute top-3 end-3">
             <Badge tone="glass" icon="verified">
-              موثّقة
+              {t.common.verified}
             </Badge>
           </div>
         )}
 
         {showCityBadge && (
           <span className="pointer-events-none absolute bottom-3 end-3 rounded-full bg-night-900/85 px-2.5 py-1 text-[12px] font-bold text-sand-100 backdrop-blur-sm">
-            {cityLabel(listing.city)}
+            {cityLabel(listing.city, locale)}
           </span>
         )}
       </div>
@@ -100,12 +104,12 @@ export function ListingCard({
           {listing.reviewsCount > 0 ? (
             <span className="flex shrink-0 items-center gap-1 text-[12.5px] font-bold text-ink">
               <Icon name="star" size={15} className="text-gold-500" />
-              {arRating(listing.rating)}
-              <span className="font-medium text-muted">({arNum(listing.reviewsCount)})</span>
+              {arRating(listing.rating, locale)}
+              <span className="font-medium text-muted">({arNum(listing.reviewsCount, locale)})</span>
             </span>
           ) : (
             <span className="shrink-0 rounded-full bg-gold-100 px-2.5 py-1 text-[11px] font-bold text-bronze">
-              جديدة
+              {t.common.new}
             </span>
           )}
         </div>
@@ -113,12 +117,12 @@ export function ListingCard({
         <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
           <span className="flex items-center gap-1">
             <Icon name="location_on" size={15} />
-            {listing.area || cityLabel(listing.city)}
+            {listing.area || cityLabel(listing.city, locale)}
           </span>
           <span className="opacity-40">·</span>
           <span className="flex items-center gap-1">
             <Icon name="group" size={15} />
-            حتى {arNum(listing.capacity)} ضيف
+            {t.common.upToGuests(arNum(listing.capacity, locale), listing.capacity)}
           </span>
         </div>
 
@@ -129,7 +133,7 @@ export function ListingCard({
               className="inline-flex items-center gap-1 rounded-lg bg-sand-100 px-2 py-1 text-[11px] font-semibold text-bronze"
             >
               <Icon name={a.icon as never} size={13} />
-              {a.ar}
+              {pickLabel(a, locale)}
             </span>
           ))}
         </div>
@@ -137,15 +141,18 @@ export function ListingCard({
         <div className="mt-auto flex items-end justify-between gap-2.5 border-t border-dashed border-line pt-3">
           <div>
             <span className="font-display text-[18px] font-extrabold text-ink">
-              {arNum(listing.pricePerNight)}
+              {arNum(listing.pricePerNight, locale)}
             </span>
-            <span className="text-[12px] font-semibold text-muted"> د.إ / ليلة</span>
+            <span className="text-[12px] font-semibold text-muted">
+              {" "}
+              {t.common.aed} {t.common.perNight}
+            </span>
           </div>
           <Link
             href={`/listings/${encodeURIComponent(listing.slug)}`}
             className="rounded-full bg-night-900 px-4 py-2.5 text-[13px] font-bold text-sand-100 no-underline transition hover:bg-gold-600 hover:text-night-900 hover:no-underline"
           >
-            التفاصيل
+            {t.common.details}
           </Link>
         </div>
       </div>

@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
-import { arNum } from "@/lib/format";
+import { arNum, currencyUnit } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 
 // Leaflet's own stylesheet. Imported statically so the bundler can process it,
 // but because this whole module is only reached through `next/dynamic` (see
@@ -46,6 +47,7 @@ export default function ListingMap({
   zoom?: number;
   className?: string;
 }) {
+  const { t, locale } = useLocale();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const layerRef = useRef<LayerGroup | null>(null);
@@ -88,7 +90,7 @@ export default function ListingMap({
       for (const p of points) {
         coords.push([p.lat, p.lng]);
 
-        const label = p.price ? `${arNum(p.price)} د.إ` : "📍";
+        const label = p.price ? `${arNum(p.price, locale)} ${currencyUnit(locale)}` : "📍";
         // A gold-outlined night pill instead of Leaflet's default blue teardrop,
         // matching the design's marker treatment.
         const html = `<div style="display:flex;align-items:center;gap:6px;background:var(--night-900,#0C1522);color:var(--gold-100,#F5E9CC);border:1px solid var(--gold-500,#C9A44C);border-radius:999px;padding:5px 11px;font-family:var(--font-tajawal),sans-serif;font-weight:700;font-size:12px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);transform:translate(-50%,-50%)">${label}</div>`;
@@ -98,7 +100,10 @@ export default function ListingMap({
           title: p.name,
         }).addTo(layer);
 
-        const detail = [p.area, p.capacity ? `حتى ${arNum(p.capacity)} ضيف` : null]
+        const detail = [
+      p.area,
+      p.capacity ? t.common.upToGuests(arNum(p.capacity, locale), p.capacity) : null,
+    ]
           .filter(Boolean)
           .join(" · ");
 
@@ -106,7 +111,11 @@ export default function ListingMap({
           `<div style="direction:rtl;text-align:right;font-family:var(--font-tajawal),sans-serif">
              <b style="font-size:13px">${escapeHtml(p.name)}</b>
              ${detail ? `<br><span style="color:#6E6A60;font-size:12px">${escapeHtml(detail)}</span>` : ""}
-             ${p.href ? `<br><a href="${p.href}" style="font-size:12px;color:#A8873A">عرض التفاصيل ←</a>` : ""}
+             ${
+            p.href
+              ? `<br><a href="${p.href}" style="font-size:12px;color:#A8873A">${t.listing.viewDetailsArrow}</a>`
+              : ""
+          }
            </div>`,
         );
       }

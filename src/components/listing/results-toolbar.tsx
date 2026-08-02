@@ -4,12 +4,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
-import { SORT_OPTIONS } from "@/lib/constants";
+import { SORT_OPTIONS, label } from "@/lib/constants";
 import { MapEmbed, type MapPoint } from "./map-embed";
+import { useLocale } from "@/lib/i18n/provider";
 
 /** Sort dropdown + map toggle. Both write to the URL so results stay shareable. */
 export function ResultsToolbar({ points }: { points: MapPoint[] }) {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const params = useSearchParams();
   const [mapOpen, setMapOpen] = useState(params.get("map") === "1");
 
@@ -26,16 +28,16 @@ export function ResultsToolbar({ points }: { points: MapPoint[] }) {
     <>
       <label className="flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-2.5">
         <Icon name="swap_vert" size={18} className="text-muted" />
-        <span className="text-[13px] font-semibold text-muted">ترتيب</span>
+        <span className="text-[13px] font-semibold text-muted">{t.common.sort}</span>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value)}
-          aria-label="ترتيب النتائج"
+          aria-label={t.listings.sortResults}
           className="cursor-pointer border-0 bg-transparent text-[13.5px] font-bold text-ink outline-none"
         >
           {SORT_OPTIONS.map((o) => (
             <option key={o.id} value={o.id}>
-              {o.ar}
+              {label(o, locale)}
             </option>
           ))}
         </select>
@@ -53,7 +55,7 @@ export function ResultsToolbar({ points }: { points: MapPoint[] }) {
         )}
       >
         <Icon name="map" size={18} />
-        عرض الخريطة
+        {mapOpen ? t.listings.hideMap : t.listings.showMap}
       </button>
 
       {/* Rendered in a portal-ish sibling slot below the toolbar by the parent

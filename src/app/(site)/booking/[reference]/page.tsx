@@ -4,16 +4,21 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
-import { getSettings, absoluteUrl } from "@/lib/settings";
-import { bookingRequestMessage, whatsappLink } from "@/lib/whatsapp";
+import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
+import { publicOwnerFields } from "@/lib/owners";
 import { isDepositPaymentEnabled } from "@/lib/payments";
 import { arDayMonth } from "@/lib/dates";
-import { arNum, toArabicDigits } from "@/lib/format";
+import { arNum, formatReference } from "@/lib/format";
+import { getI18n } from "@/lib/i18n/server";
 
-export const metadata: Metadata = {
-  title: "تم إرسال الطلب",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: t.booking.confirmTitle,
+    robots: { index: false, follow: false },
+  };
+}
 
 /**
  * Booking confirmation — and the page that builds the WhatsApp deep link.
@@ -26,6 +31,13 @@ export const metadata: Metadata = {
  *
  * `wa.me?text=` pre-types the message but does not send it — the guest taps
  * send themselves.
+ *
+ * ─── Whose number this opens ─────────────────────────────────────────────────
+ * It used to be `listing.ownerWhatsapp || settings.whatsappNumber` — a
+ * per-listing copy with the *platform's* number as the fallback, so any listing
+ * without its own copy sent the guest to the operator. It now resolves through
+ * the owner relation, so an owned listing always reaches its own owner and never
+ * falls back to the site-wide number. See `resolveListingWhatsapp`.
  */
 export default async function BookingConfirmationPage({
   params,
@@ -33,6 +45,7 @@ export default async function BookingConfirmationPage({
   params: Promise<{ reference: string }>;
 }) {
   const { reference } = await params;
+  const { t, locale } = await getI18n();
 
   const booking = await prisma.bookingRequest.findUnique({
     where: { reference: decodeURIComponent(reference) },
@@ -44,6 +57,7 @@ export default async function BookingConfirmationPage({
           area: true,
           ownerName: true,
           ownerWhatsapp: true,
+          owner: { select: publicOwnerFields() },
         },
       },
     },
@@ -52,12 +66,16 @@ export default async function BookingConfirmationPage({
   if (!booking) notFound();
 
   const settings = await getSettings();
+  const s = localizeSettings(settings, locale);
 
-  // Per-listing owner number wins; otherwise the site-wide number from settings.
-  const targetNumber = booking.listing.ownerWhatsapp || settings.whatsappNumber;
+  const contact = resolveListingWhatsapp(
+    booking.listing,
+    settings.whatsappNumber,
+    t.common.owner,
+  );
 
   const message = bookingRequestMessage({
-    siteName: settings.siteName,
+    siteName: s.siteName,
     reference: booking.reference,
     listingName: booking.listing.name,
     listingArea: booking.listing.area,
@@ -69,11 +87,17 @@ export default async function BookingConfirmationPage({
     customerName: booking.customerName,
     customerPhone: booking.customerPhone,
     total: booking.total,
+    // The snapshot stored with the booking, never the listing's current rate —
+    // the message a guest sends must match what they were quoted.
+    depositDue: booking.depositDue,
+    depositPercent: booking.depositPercent,
     notes: booking.notes,
+    locale,
   });
 
-  const waHref = whatsappLink(targetNumber, message);
+  const waHref = whatsappLink(contact.digits, message);
   const depositEnabled = isDepositPaymentEnabled(settings);
+  const ref = formatReference(booking.reference, locale);
 
   return (
     <div className="min-h-[70vh] bg-sand-50">
@@ -83,33 +107,44 @@ export default async function BookingConfirmationPage({
         </div>
 
         <h1 className="m-0 mb-3 font-display text-[clamp(23px,3vw,32px)] font-extrabold text-ink">
-          تم إرسال طلبك بنجاح
+          {t.booking.confirmTitle}
         </h1>
-        <p className="m-0 mb-2 text-[15.5px] leading-[1.9] text-muted">
-          وصل طلبك إلى مالك{" "}
-          <strong className="text-ink">{booking.listing.name}</strong>. اضغط الزر أدناه لفتح
-          المحادثة وإرسال التفاصيل — الرسالة جاهزة، يبقى الضغط على «إرسال».
-        </p>
+        <p className="m-0 mb-2 text-[15.5px] leading-[1.9] text-muted">{t.booking.confirmBody}</p>
 
         <div className="my-4 inline-flex items-center gap-2.5 rounded-full bg-gold-100 px-5 py-2.5 text-[14px] font-bold text-bronze">
           <Icon name="confirmation_number" size={19} />
-          رقم الطلب: <span dir="ltr">{toArabicDigits(booking.reference)}</span>
+          {t.booking.reference}: <span dir="ltr">{ref}</span>
         </div>
 
         {/* ---- summary ---- */}
         <div className="mb-5.5 rounded-[28px] border border-line bg-surface p-5.5 text-start shadow-e1">
-          <h2 className="m-0 mb-4 font-display text-[16px] font-extrabold text-ink">ملخص الطلب</h2>
-          <Row label="الاستراحة" value={booking.listing.name} />
+          <h2 className="m-0 mb-4 font-display text-[16px] font-extrabold text-ink">
+            {t.booking.summaryTitle}
+          </h2>
+          <Row label={t.admin.listings} value={booking.listing.name} />
           <Row
-            label="التواريخ"
-            value={`${arDayMonth(booking.checkIn)} – ${arDayMonth(booking.checkOut)}`}
+            label={t.listing.dates}
+            value={`${arDayMonth(booking.checkIn, locale)} – ${arDayMonth(booking.checkOut, locale)}`}
           />
-          <Row label="عدد الليالي" value={arNum(booking.nights)} />
-          <Row label="الضيوف" value={arNum(booking.guests)} />
-          <Row label="مقدّم الطلب" value={booking.customerName} />
+          <Row label={t.common.night} value={arNum(booking.nights, locale)} />
+          <Row label={t.listing.guests} value={arNum(booking.guests, locale)} />
+          <Row label={t.booking.fullName} value={booking.customerName} />
           <Row
-            label="الإجمالي التقديري"
-            value={`${arNum(booking.total)} د.إ`}
+            label={t.booking.totalAmount}
+            value={`${arNum(booking.total, locale)} ${t.common.aed}`}
+            emphasis
+          />
+          {/* Both figures appear on the receipt, using the snapshotted rate. */}
+          <Row
+            label={t.booking.depositAmount}
+            value={
+              booking.depositDue > 0
+                ? `${arNum(booking.depositDue, locale)} ${t.common.aed} (${arNum(
+                    booking.depositPercent,
+                    locale,
+                  )}${locale === "ar" ? "٪" : "%"})`
+                : t.booking.noDepositRequired
+            }
             emphasis
             last
           />
@@ -122,33 +157,31 @@ export default async function BookingConfirmationPage({
         <div className="mb-5.5 flex items-start gap-3 rounded-2xl border border-line bg-sand-100 p-4 text-start">
           <Icon name="savings" size={20} className="shrink-0 text-bronze" />
           <p className="m-0 text-[12.5px] leading-[1.8] text-muted">
-            {depositEnabled ? (
-              <>يمكنك دفع العربون ({arNum(booking.depositDue)} د.إ) إلكترونيًا بعد تأكيد المالك.</>
-            ) : (
-              <>
-                العربون المتوقع <strong className="text-ink">{arNum(booking.depositDue)} د.إ</strong>{" "}
-                ويُحصَّل مباشرة من المالك بعد تأكيد التوفّر — لا يوجد دفع إلكتروني على الموقع حاليًا.
-              </>
-            )}
+            {booking.depositDue === 0
+              ? t.booking.noDepositRequired
+              : depositEnabled
+                ? t.booking.depositPayOnline(arNum(booking.depositDue, locale))
+                : t.booking.depositCollectedByOwner(arNum(booking.depositDue, locale))}
           </p>
         </div>
 
         <div className="flex flex-wrap justify-center gap-2.5">
-          <ButtonLink href={waHref} variant="whatsapp" size="lg">
-            <Icon name="chat" size={20} />
-            فتح المحادثة الآن
-          </ButtonLink>
+          {waHref && (
+            <ButtonLink href={waHref} variant="whatsapp" size="lg">
+              <Icon name="chat" size={20} />
+              {t.booking.openWhatsapp}
+            </ButtonLink>
+          )}
           <ButtonLink href="/listings" variant="secondary" size="lg">
-            تصفّح استراحات أخرى
+            {t.common.browse}
           </ButtonLink>
         </div>
 
         <p className="m-0 mt-5 text-[12px] text-muted">
-          احتفظ برقم الطلب <span dir="ltr">{toArabicDigits(booking.reference)}</span> للمراجعة.
+          {t.booking.keepReference} <span dir="ltr">{ref}</span>
           {settings.email && (
             <>
-              {" "}
-              لأي استفسار:{" "}
+              {" · "}
               <Link href={`mailto:${settings.email}`} dir="ltr" className="text-bronze">
                 {settings.email}
               </Link>
@@ -180,9 +213,7 @@ function Row({
       <span>{label}</span>
       <span
         className={
-          emphasis
-            ? "font-display text-[16px] font-extrabold text-ink"
-            : "font-bold text-ink"
+          emphasis ? "font-display text-[16px] font-extrabold text-ink" : "font-bold text-ink"
         }
       >
         {value}

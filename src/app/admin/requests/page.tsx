@@ -2,9 +2,11 @@ import Link from "next/link";
 import { RequestCard } from "@/components/admin/request-card";
 import { Icon } from "@/components/ui/icon";
 import { prisma } from "@/lib/prisma";
+import { requireAdminPage } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
-import { BOOKING_STATUSES, BOOKING_STATUS_LABELS, isBookingStatus } from "@/lib/constants";
+import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
+import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 
 /** Booking requests, filterable by status via `?status=NEW`. */
@@ -13,8 +15,11 @@ export default async function AdminRequestsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  await requireAdminPage();
+
   const sp = await searchParams;
   const statusFilter = isBookingStatus(sp.status) ? sp.status : null;
+  const { t, locale } = await getI18n();
 
   /**
    * Pending requests are fetched SEPARATELY and uncapped.
@@ -27,8 +32,9 @@ export default async function AdminRequestsPage({
    *     precisely the ones that have been waiting longest for a reply.
    * Both were reproduced against 250 rows before settling on this split.
    *
-   * NEW is a work queue the owner actively drains, so it is bounded in practice;
-   * the closed history is what grows without limit, so only that is capped.
+   * NEW is a work queue the operator actively drains, so it is bounded in
+   * practice; the closed history is what grows without limit, so only that is
+   * capped.
    */
   const [pending, history, counts, settings] = await Promise.all([
     statusFilter && statusFilter !== "NEW"
@@ -51,8 +57,7 @@ export default async function AdminRequestsPage({
     getSettings(),
   ]);
 
-  const countFor = (status: string) =>
-    counts.find((c) => c.status === status)?._count._all ?? 0;
+  const countFor = (status: string) => counts.find((c) => c.status === status)?._count._all ?? 0;
   const totalCount = counts.reduce((sum, c) => sum + c._count._all, 0);
   const newCount = countFor("NEW");
 
@@ -63,21 +68,19 @@ export default async function AdminRequestsPage({
 
   return (
     <div className="animate-fade-up">
-      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">طلبات الحجز</h1>
+      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
+        {t.admin.bookingsTitle}
+      </h1>
       <p className="m-0 mb-3.5 text-[13.5px] text-muted">
-        {newCount > 0 ? (
-          <>
-            <span className="font-bold text-busy">{arNum(newCount)}</span> طلبات جديدة بانتظار الرد
-          </>
-        ) : (
-          "لا طلبات بانتظار الرد"
-        )}
+        {newCount > 0
+          ? t.admin.pendingRequestsLine(arNum(newCount, locale))
+          : t.admin.noPendingRequests}
       </p>
 
       {/* status filter chips */}
       <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto pb-1">
         <FilterChip href="/admin/requests" active={!statusFilter}>
-          الكل ({arNum(totalCount)})
+          {t.common.all} ({arNum(totalCount, locale)})
         </FilterChip>
         {BOOKING_STATUSES.map((status) => (
           <FilterChip
@@ -85,7 +88,7 @@ export default async function AdminRequestsPage({
             href={`/admin/requests?status=${status}`}
             active={statusFilter === status}
           >
-            {BOOKING_STATUS_LABELS[status]} ({arNum(countFor(status))})
+            {t.status[status]} ({arNum(countFor(status), locale)})
           </FilterChip>
         ))}
       </div>
@@ -94,11 +97,8 @@ export default async function AdminRequestsPage({
         <div className="rounded-[20px] border border-dashed border-sand-300 bg-surface p-8 text-center">
           <Icon name="inbox" size={46} className="mx-auto text-sand-400" />
           <h2 className="mt-3.5 mb-2 font-display text-[17px] font-bold text-ink">
-            {statusFilter ? "لا طلبات بهذه الحالة" : "لا توجد طلبات بعد"}
+            {t.admin.noRequestsYet}
           </h2>
-          <p className="m-0 text-[13.5px] text-muted">
-            ستظهر طلبات الحجز هنا فور إرسالها من الموقع.
-          </p>
         </div>
       ) : (
         <div className="grid gap-2.5 lg:grid-cols-2">
@@ -119,10 +119,13 @@ export default async function AdminRequestsPage({
                 guests: r.guests,
                 total: r.total,
                 depositDue: r.depositDue,
+                // The snapshotted rate, not the listing's current one — an
+                // owner changing their deposit must not relabel old bookings.
+                depositPercent: r.depositPercent,
                 notes: r.notes,
                 status: r.status,
-                // The owner's reply link targets the *customer's* number, with
-                // an opening message referencing their request already typed.
+                // The operator's reply link targets the *customer's* number,
+                // with an opening message referencing their request pre-typed.
                 whatsappHref: whatsappLink(
                   r.customerPhone,
                   ownerReplyMessage({
@@ -130,6 +133,7 @@ export default async function AdminRequestsPage({
                     customerName: r.customerName,
                     reference: r.reference,
                     listingName: r.listing.name,
+                    locale,
                   }),
                 ),
               }}
@@ -142,7 +146,7 @@ export default async function AdminRequestsPage({
       {historyCapped && (
         <p className="mt-4 flex items-center gap-2 text-[12.5px] text-muted">
           <Icon name="info" size={16} className="text-bronze" />
-          يُعرض أحدث ٢٠٠ طلب مُغلق. استخدم الفلاتر أعلاه لعرض حالة محددة.
+          {t.admin.historyCapped}
         </p>
       )}
     </div>

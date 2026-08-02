@@ -3,8 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import { CITIES } from "@/lib/constants";
+import { CITIES, label } from "@/lib/constants";
 import { addDays, todayISO } from "@/lib/dates";
+import { useLocale } from "@/lib/i18n/provider";
 
 /**
  * Hero search bar: destination, dates, guests.
@@ -17,6 +18,7 @@ import { addDays, todayISO } from "@/lib/dates";
  */
 export function HeroSearch() {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const today = todayISO();
 
   const [city, setCity] = useState("all");
@@ -52,14 +54,14 @@ export function HeroSearch() {
       className="grid items-stretch gap-1 rounded-[28px] border border-gold-500/30 bg-surface/97 p-2.5 shadow-[0_30px_70px_rgb(0_0_0/0.4)] sm:grid-cols-2 lg:grid-cols-[repeat(4,1fr)_auto]"
     >
       <label className={cellBase}>
-        <span className={labelBase}>الوجهة</span>
+        <span className={labelBase}>{t.listings.destination}</span>
         <span className={valueBase}>
           <Icon name="location_on" size={19} className="text-gold-600" />
-          <select value={city} onChange={(e) => setCity(e.target.value)} aria-label="الوجهة">
-            <option value="all">كل الإمارات</option>
+          <select value={city} onChange={(e) => setCity(e.target.value)} aria-label={t.listings.destination}>
+            <option value="all">{t.listings.allCities}</option>
             {CITIES.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.ar}
+                {label(c, locale)}
               </option>
             ))}
           </select>
@@ -67,7 +69,7 @@ export function HeroSearch() {
       </label>
 
       <label className={`${cellBase} sm:border-e sm:border-line`}>
-        <span className={labelBase}>تاريخ الوصول</span>
+        <span className={labelBase}>{t.booking.checkInDate}</span>
         <span className={valueBase}>
           <Icon name="calendar_today" size={19} className="text-gold-600" />
           <input
@@ -75,13 +77,13 @@ export function HeroSearch() {
             value={checkIn}
             min={today}
             onChange={(e) => onCheckIn(e.target.value)}
-            aria-label="تاريخ الوصول"
+            aria-label={t.booking.checkInDate}
           />
         </span>
       </label>
 
       <label className={`${cellBase} lg:border-e lg:border-line`}>
-        <span className={labelBase}>تاريخ المغادرة</span>
+        <span className={labelBase}>{t.booking.checkOutDate}</span>
         <span className={valueBase}>
           <Icon name="event" size={19} className="text-gold-600" />
           <input
@@ -89,13 +91,13 @@ export function HeroSearch() {
             value={checkOut}
             min={checkIn ? addDays(checkIn, 1) : today}
             onChange={(e) => setCheckOut(e.target.value)}
-            aria-label="تاريخ المغادرة"
+            aria-label={t.booking.checkOutDate}
           />
         </span>
       </label>
 
       <label className={`${cellBase} sm:border-e sm:border-line`}>
-        <span className={labelBase}>عدد الضيوف</span>
+        <span className={labelBase}>{t.booking.guestCount}</span>
         <span className={valueBase}>
           <Icon name="group" size={19} className="text-gold-600" />
           <input
@@ -104,7 +106,7 @@ export function HeroSearch() {
             max={500}
             value={guests}
             onChange={(e) => setGuests(Math.max(1, Number(e.target.value) || 1))}
-            aria-label="عدد الضيوف"
+            aria-label={t.booking.guestCount}
           />
         </span>
       </label>
@@ -114,7 +116,7 @@ export function HeroSearch() {
         className="flex items-center justify-center gap-2.5 rounded-[20px] bg-linear-[140deg,var(--gold-500),var(--gold-600)] px-6 py-4 font-display text-[16px] font-extrabold text-night-900 shadow-gold transition hover:brightness-105 active:translate-y-px sm:col-span-2 lg:col-span-1"
       >
         <Icon name="search" size={21} />
-        ابحث
+        {t.listings.searchButton}
       </button>
     </form>
   );

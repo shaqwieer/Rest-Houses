@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { isISODate, nightsInRange, todayISO, type ISODate } from "@/lib/dates";
 import type { ActionResult } from "./listings";
+import { getI18n } from "@/lib/i18n/server";
 
 /**
  * Availability editing — the owner's calendar.
@@ -21,15 +22,16 @@ export async function toggleBlockedDate(
   date: ISODate,
 ): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
-  if (!isISODate(date)) return { ok: false, error: "تاريخ غير صالح" };
-  if (date < todayISO()) return { ok: false, error: "لا يمكن تعديل تاريخ ماضٍ" };
+  if (!isISODate(date)) return { ok: false, error: t.validation.invalidDate };
+  if (date < todayISO()) return { ok: false, error: t.validation.dateNotEditable };
 
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
     select: { slug: true },
   });
-  if (!listing) return { ok: false, error: "الاستراحة غير موجودة" };
+  if (!listing) return { ok: false, error: t.validation.listingNotFound };
 
   const existing = await prisma.availability.findUnique({
     where: { listingId_date: { listingId, date } },
@@ -42,7 +44,7 @@ export async function toggleBlockedDate(
     if (existing.status === "BOOKED") {
       return {
         ok: false,
-        error: "هذا اليوم محجوز بطلب مؤكد — ألغِ الطلب من صفحة الطلبات لتحريره",
+        error: t.validation.dayHeldByBooking,
       };
     }
     await prisma.availability.delete({ where: { id: existing.id } });
@@ -67,21 +69,24 @@ export async function setRangeBlocked(
   blocked: boolean,
 ): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   if (!isISODate(from) || !isISODate(to) || from >= to) {
-    return { ok: false, error: "نطاق تواريخ غير صالح" };
+    return { ok: false, error: t.validation.invalidRange };
   }
 
   const listing = await prisma.listing.findUnique({
     where: { id: listingId },
     select: { slug: true },
   });
-  if (!listing) return { ok: false, error: "الاستراحة غير موجودة" };
+  if (!listing) return { ok: false, error: t.validation.listingNotFound };
 
   const today = todayISO();
   const dates = nightsInRange(from, to).filter((d) => d >= today);
-  if (dates.length === 0) return { ok: false, error: "لا توجد أيام قابلة للتعديل في هذا النطاق" };
-  if (dates.length > 400) return { ok: false, error: "النطاق طويل جدًا — أقصى حد ٤٠٠ يوم" };
+  if (dates.length === 0) {
+    return { ok: false, error: t.validation.noEditableDays };
+  }
+  if (dates.length > 400) return { ok: false, error: t.validation.rangeTooLong };
 
   if (blocked) {
     // Insert only the days that aren't already recorded.
@@ -116,6 +121,6 @@ export async function setRangeBlocked(
 
   return {
     ok: true,
-    message: blocked ? "تم حظر النطاق المحدّد" : "تم تحرير النطاق المحدّد",
+    message: blocked ? t.common.rangeBlocked : t.common.rangeFreed,
   };
 }

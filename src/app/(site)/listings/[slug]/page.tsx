@@ -8,39 +8,34 @@ import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
 import { getListingBySlug, getUnavailableDates } from "@/lib/listings";
-import { getSettings, absoluteUrl } from "@/lib/settings";
-import { prisma } from "@/lib/prisma";
-import { cityLabel } from "@/lib/constants";
+import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { cityLabel, label as pickLabel } from "@/lib/constants";
 import { arNum, arRating, arTimeAgo } from "@/lib/format";
+import { resolveDepositPercent } from "@/lib/pricing";
+import { resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
+import { getI18n } from "@/lib/i18n/server";
+import { ogLocale } from "@/lib/i18n/config";
 
 /**
- * Pre-render every published listing at build time, then keep them fresh with
- * on-demand revalidation. Detail pages are the most-shared URLs on the site, so
- * serving them as static HTML is the single biggest perceived-speed win.
- * Listings created later still work — Next renders them on first request and
- * caches the result (the default `dynamicParams: true`).
+ * ─── Why this page is no longer statically generated ─────────────────────────
+ * It used to `generateStaticParams()` every published slug and serve pre-built
+ * HTML with hourly revalidation. That is incompatible with reading the locale
+ * cookie: a page built once cannot be built in two languages, and a static
+ * Arabic document served to an English visitor would arrive with the wrong text
+ * *and* the wrong `dir`, then flip after hydration.
  *
- * The database is OPTIONAL here. A container image is built without one — there
- * is no Postgres during `docker build`, and coupling an image build to a running
- * database would be wrong anyway. When the query fails we return no params: the
- * build succeeds, and every listing page is then rendered on first request and
- * cached from there. Same output, just built lazily.
+ * The trade is deliberate and it is the smaller cost. Correct language and
+ * direction on first paint — in the HTML that search engines and screen readers
+ * actually read — is worth more than a cached document for a catalogue whose
+ * prices and availability were never safe to cache for long anyway. The
+ * expensive parts (images, fonts, the optimiser's derived sizes) are cached
+ * exactly as before; what is recomputed is two indexed queries.
+ *
+ * If per-language static generation is wanted later, the fix is a `[locale]`
+ * route segment — see the note at the top of src/lib/i18n/config.ts for what
+ * that would cost elsewhere.
  */
-export async function generateStaticParams() {
-  try {
-    const rows = await prisma.listing.findMany({
-      where: { published: true },
-      select: { slug: true },
-    });
-    return rows.map((r) => ({ slug: r.slug }));
-  } catch {
-    return [];
-  }
-}
-
-/** Rebuild at most once an hour even without an explicit revalidate call, so an
- *  edit made directly in the database still surfaces. */
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({
   params,
@@ -48,15 +43,22 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const listing = await getListingBySlug(decodeURIComponent(slug));
-  if (!listing) return { title: "الاستراحة غير موجودة" };
+  const [{ t, locale }, listing] = await Promise.all([
+    getI18n(),
+    getListingBySlug(decodeURIComponent(slug)),
+  ]);
+  if (!listing) return { title: t.listing.notFound };
 
   const settings = await getSettings();
-  const where = listing.area || cityLabel(listing.city);
-  const description = `${listing.name} في ${where} — تتسع حتى ${listing.capacity} ضيف، السعر من ${listing.pricePerNight} د.إ لليلة. ${listing.description}`.slice(
-    0,
-    300,
-  );
+  const s = localizeSettings(settings, locale);
+  const where = listing.area || cityLabel(listing.city, locale);
+
+  const description = (
+    locale === "en"
+      ? `${listing.name} in ${where} — sleeps up to ${listing.capacity} guests, from ${listing.pricePerNight} AED per night. ${listing.description}`
+      : `${listing.name} في ${where} — تتسع حتى ${listing.capacity} ضيف، السعر من ${listing.pricePerNight} د.إ لليلة. ${listing.description}`
+  ).slice(0, 300);
+
   const path = `/listings/${encodeURIComponent(listing.slug)}`;
 
   return {
@@ -68,8 +70,8 @@ export async function generateMetadata({
       title: `${listing.name} — ${where}`,
       description,
       url: absoluteUrl(path),
-      siteName: settings.siteName,
-      locale: "ar_AE",
+      siteName: s.siteName,
+      locale: ogLocale(locale),
       // Dynamic OG card, generated per listing — see src/app/api/og/route.tsx
       images: [
         {
@@ -89,21 +91,41 @@ export default async function ListingDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  // `getListingBySlug` applies the shared public predicate, so a listing whose
+  // owner is suspended, rejected or out of membership 404s by direct URL just as
+  // it disappears from the grid. Hiding it from the grid while leaving the slug
+  // reachable would not be hiding it at all.
   const listing = await getListingBySlug(decodeURIComponent(slug));
   if (!listing) notFound();
 
-  const [settings, unavailable] = await Promise.all([
+  const [settings, unavailable, { t, locale }] = await Promise.all([
     getSettings(),
     getUnavailableDates(listing.id),
+    getI18n(),
   ]);
 
-  const where = listing.area || cityLabel(listing.city);
-  const ownerName = listing.ownerName || "المالك";
+  const s = localizeSettings(settings, locale);
+  const where = listing.area || cityLabel(listing.city, locale);
+
+  // The deposit shown here is the same value the server will charge: resolved
+  // from the listing's own rate, falling back to the platform default only when
+  // the listing has none set. null and 0 mean different things — see
+  // `resolveDepositPercent`.
+  const depositPercent = resolveDepositPercent(
+    listing.depositPercent,
+    settings.depositPercent,
+  );
+
+  // Contact resolves through the owner relation for an owned listing, so this
+  // button opens *that owner's* WhatsApp — never the platform's.
+  const contact = resolveListingWhatsapp(listing, settings.whatsappNumber, t.common.owner);
+  const contactHref = whatsappLink(contact.digits);
 
   /**
    * `LodgingBusiness` + aggregate rating. This is what makes a listing eligible
-   * for the star-rating rich result in Arabic search, which is a real
-   * click-through advantage over a plain blue link.
+   * for the star-rating rich result, which is a real click-through advantage
+   * over a plain blue link.
    */
   const jsonLd = {
     "@context": "https://schema.org",
@@ -112,19 +134,21 @@ export default async function ListingDetailPage({
     description: listing.description,
     url: absoluteUrl(`/listings/${encodeURIComponent(listing.slug)}`),
     image: listing.images.map((i) => i.url),
-    telephone: listing.ownerWhatsapp || settings.whatsappNumber,
+    // The owner's number, not the site's — the same resolution the contact
+    // button uses, so structured data and the visible page agree.
+    telephone: contact.display || settings.whatsappNumber,
     priceRange: `${listing.pricePerNight}–${listing.weekendPrice || listing.pricePerNight} AED`,
     maximumAttendeeCapacity: listing.capacity,
     address: {
       "@type": "PostalAddress",
-      addressLocality: cityLabel(listing.city),
+      addressLocality: cityLabel(listing.city, locale),
       addressRegion: listing.area,
       addressCountry: "AE",
     },
     geo: { "@type": "GeoCoordinates", latitude: listing.lat, longitude: listing.lng },
     amenityFeature: listing.amenityList.map((a) => ({
       "@type": "LocationFeatureSpecification",
-      name: a.ar,
+      name: pickLabel(a, locale),
       value: true,
     })),
     ...(listing.reviewsCount > 0
@@ -147,13 +171,15 @@ export default async function ListingDetailPage({
       : {}),
   };
 
+  const chevron = locale === "ar" ? "chevron_left" : "chevron_right";
+
   return (
     <BookingProvider
       unavailableDates={[...unavailable]}
       pricePerNight={listing.pricePerNight}
       weekendPrice={listing.weekendPrice}
       serviceFeePercent={settings.serviceFeePercent}
-      depositPercent={settings.depositPercent}
+      depositPercent={depositPercent}
       capacity={listing.capacity}
     >
       <script
@@ -165,20 +191,20 @@ export default async function ListingDetailPage({
         {/* ---- breadcrumb + gallery ---- */}
         <div className="mx-auto max-w-[1280px] px-4 pt-4 md:px-10">
           <nav
-            aria-label="مسار التنقل"
+            aria-label={t.nav.home}
             className="mb-3.5 flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted"
           >
             <Link href="/" className="text-muted no-underline hover:text-bronze hover:no-underline">
-              الرئيسية
+              {t.nav.home}
             </Link>
-            <Icon name="chevron_left" size={15} />
+            <Icon name={chevron} size={15} />
             <Link
               href="/listings"
               className="text-muted no-underline hover:text-bronze hover:no-underline"
             >
-              النتائج
+              {t.listings.title}
             </Link>
-            <Icon name="chevron_left" size={15} />
+            <Icon name={chevron} size={15} />
             <span className="font-semibold text-ink">{listing.name}</span>
           </nav>
 
@@ -208,19 +234,19 @@ export default async function ListingDetailPage({
                   {listing.reviewsCount > 0 ? (
                     <span className="inline-flex items-center gap-1.5 font-bold text-ink">
                       <Icon name="star" size={17} className="text-gold-500" />
-                      {arRating(listing.rating)}
+                      {arRating(listing.rating, locale)}
                       <span className="font-medium text-muted">
-                        ({arNum(listing.reviewsCount)} تقييم)
+                        ({t.listing.reviewCount(arNum(listing.reviewsCount, locale), listing.reviewsCount)})
                       </span>
                     </span>
                   ) : (
-                    <Badge tone="gold">استراحة جديدة — لا تقييمات بعد</Badge>
+                    <Badge tone="gold">{t.listing.noReviews}</Badge>
                   )}
 
                   {listing.bookingsCount > 0 && (
                     <span className="inline-flex items-center gap-1.5">
                       <Icon name="history" size={17} />
-                      {arNum(listing.bookingsCount)} حجز سابق
+                      {t.listing.pastBookings(arNum(listing.bookingsCount, locale))}
                     </span>
                   )}
                 </div>
@@ -230,26 +256,39 @@ export default async function ListingDetailPage({
             {/* about + key facts */}
             <section className="border-b border-line py-6">
               <h2 className="m-0 mb-2.5 font-display text-[19px] font-extrabold text-ink">
-                عن الاستراحة
+                {t.listing.descriptionTitle}
               </h2>
-              <p className="m-0 mb-4 text-[15.5px] leading-[2] text-ink/86">{listing.description}</p>
+              <p className="m-0 mb-4 text-[15.5px] leading-[2] text-ink/86">
+                {listing.description}
+              </p>
 
               <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
-                <Fact icon="group" label="السعة القصوى" value={`${arNum(listing.capacity)} ضيف`} />
                 <Fact
-                  icon="schedule"
-                  label="الدخول / الخروج"
-                  value={`${settings.checkInTime} / ${settings.checkOutTime}`}
+                  icon="group"
+                  label={t.listing.maxCapacity}
+                  value={t.common.upToGuests(arNum(listing.capacity, locale), listing.capacity)}
                 />
                 <Fact
+                  icon="schedule"
+                  label={t.listing.checkInOutLabel}
+                  value={`${s.checkInTime} / ${s.checkOutTime}`}
+                />
+                {/* The deposit is stated on the page *before* a guest sends a
+                    request, which is the promise the trust section makes. A 0%
+                    deposit says so explicitly rather than showing "0%". */}
+                <Fact
                   icon="savings"
-                  label="العربون"
-                  value={`${arNum(settings.depositPercent)}٪ عند التأكيد`}
+                  label={t.listing.depositLabel}
+                  value={
+                    depositPercent > 0
+                      ? t.listing.depositOnConfirm(arNum(depositPercent, locale))
+                      : t.booking.noDepositRequired
+                  }
                 />
                 <Fact
                   icon="event_repeat"
-                  label="الإلغاء المجاني"
-                  value={`حتى ${arNum(settings.freeCancelHours)} ساعة`}
+                  label={t.listing.freeCancelLabel}
+                  value={t.listing.upToHours(arNum(settings.freeCancelHours, locale))}
                 />
               </div>
             </section>
@@ -258,7 +297,7 @@ export default async function ListingDetailPage({
             {listing.amenityList.length > 0 && (
               <section className="border-b border-line py-6">
                 <h2 className="m-0 mb-4 font-display text-[19px] font-extrabold text-ink">
-                  المرافق والخدمات
+                  {t.listing.amenitiesTitle}
                 </h2>
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                   {listing.amenityList.map((a) => (
@@ -269,7 +308,9 @@ export default async function ListingDetailPage({
                       <span className="grid size-9 shrink-0 place-items-center rounded-[11px] bg-gold-100">
                         <Icon name={a.icon as never} size={20} className="text-bronze" />
                       </span>
-                      <span className="text-[14px] font-semibold text-ink">{a.ar}</span>
+                      <span className="text-[14px] font-semibold text-ink">
+                        {pickLabel(a, locale)}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -277,16 +318,16 @@ export default async function ListingDetailPage({
             )}
 
             {/* availability calendar (shares state with the sidebar card) */}
-            <CalendarSection
-              checkIn={settings.checkInTime}
-              checkOut={settings.checkOutTime}
-            />
+            <CalendarSection checkIn={s.checkInTime} checkOut={s.checkOutTime} />
 
-            {/* location */}
+            {/* location — the per-listing Leaflet map, which is a different
+                component from the removed footer embed and stays. */}
             <section className="border-b border-line py-6">
-              <h2 className="m-0 mb-1.5 font-display text-[19px] font-extrabold text-ink">الموقع</h2>
+              <h2 className="m-0 mb-1.5 font-display text-[19px] font-extrabold text-ink">
+                {t.listing.locationTitle}
+              </h2>
               <p className="m-0 mb-3.5 text-[13.5px] text-muted">
-                {where} — يُرسل الموقع الدقيق على الخريطة بعد تأكيد الحجز.
+                {t.listing.locationNote(where)}
               </p>
               <div className="h-80 overflow-hidden rounded-[20px] border border-line bg-sand-200 shadow-e1">
                 <MapEmbed
@@ -308,10 +349,15 @@ export default async function ListingDetailPage({
             {/* reviews */}
             <section className="py-6 pb-8">
               <div className="mb-4.5 flex flex-wrap items-center gap-3">
-                <h2 className="m-0 font-display text-[19px] font-extrabold text-ink">التقييمات</h2>
+                <h2 className="m-0 font-display text-[19px] font-extrabold text-ink">
+                  {t.listing.reviewsTitle}
+                </h2>
                 {listing.reviewsCount > 0 && (
                   <Badge tone="gold" icon="star">
-                    {arRating(listing.rating)} من {arNum(listing.reviewsCount)} تقييم
+                    {t.listing.ratingOutOf(
+                      arRating(listing.rating, locale),
+                      arNum(listing.reviewsCount, locale),
+                    )}
                   </Badge>
                 )}
               </div>
@@ -320,19 +366,16 @@ export default async function ListingDetailPage({
                 <div className="rounded-[20px] border border-dashed border-sand-300 bg-surface px-6 py-9 text-center">
                   <Icon name="rate_review" size={40} className="mx-auto text-sand-400" />
                   <h3 className="mt-3 mb-1.5 font-display text-[17px] font-bold text-ink">
-                    كن أول من يقيّم هذه الاستراحة
+                    {t.listing.beFirstToReview}
                   </h3>
                   <p className="mx-auto m-0 max-w-[40ch] text-[14px] leading-[1.85] text-muted">
-                    أُضيفت حديثًا إلى المنصة ولم تستقبل تقييمات بعد. شاركنا تجربتك بعد إقامتك.
+                    {t.listing.beFirstToReviewBody}
                   </p>
                 </div>
               ) : (
                 <div className="grid gap-3.5 md:grid-cols-2 xl:grid-cols-3">
                   {listing.reviews.map((r) => (
-                    <article
-                      key={r.id}
-                      className="rounded-[20px] border border-line bg-surface p-5"
-                    >
+                    <article key={r.id} className="rounded-[20px] border border-line bg-surface p-5">
                       <div className="mb-3 flex items-center gap-3">
                         <span className="grid size-9.5 place-items-center rounded-full bg-sand-200 text-bronze">
                           <Icon name="person" size={21} />
@@ -342,12 +385,12 @@ export default async function ListingDetailPage({
                             {r.authorName}
                           </span>
                           <span className="block text-[12px] text-muted">
-                            {arTimeAgo(r.createdAt)}
+                            {arTimeAgo(r.createdAt, new Date(), locale)}
                           </span>
                         </span>
                         <span className="inline-flex items-center gap-1 text-[13px] font-bold text-ink">
                           <Icon name="star" size={15} className="text-gold-500" />
-                          {arRating(r.rating)}
+                          {arRating(r.rating, locale)}
                         </span>
                       </div>
                       <p className="m-0 text-[14px] leading-[1.9] text-ink/84">{r.body}</p>
@@ -363,10 +406,13 @@ export default async function ListingDetailPage({
             pricePerNight={listing.pricePerNight}
             weekendPrice={listing.weekendPrice}
             capacity={listing.capacity}
-            ownerName={ownerName}
+            ownerName={contact.name}
             serviceFeePercent={settings.serviceFeePercent}
-            depositPercent={settings.depositPercent}
+            depositPercent={depositPercent}
             freeCancelHours={settings.freeCancelHours}
+            // "" when the listing has no usable number, which hides the button
+            // rather than pointing it at a bare wa.me/.
+            ownerWhatsappHref={contactHref}
           />
         </div>
 

@@ -30,19 +30,123 @@ datasource db {
 }
 
 // ---------------------------------------------------------------------------
-// Auth — a single admin account (NextAuth credentials provider).
-// Seeded from ADMIN_EMAIL / ADMIN_PASSWORD; the password is bcrypt-hashed and
-// never stored in plain text. The table supports more than one row so you can
-// add extra owners later without a migration.
+// Auth — the account record behind a login (NextAuth credentials provider).
+//
+// `role` is one of ROLES in src/lib/constants.ts:
+//   "ADMIN"  — platform operator; full access to /admin
+//   "OWNER"  — rest-house owner; access to /owner *only once approved*
+//
+// The default stays "ADMIN" so the seeded operator account and every row that
+// existed before owners were introduced keep working unchanged. An owner row is
+// always created explicitly with role="OWNER" by the registration action.
+//
+// IMPORTANT: role alone never grants owner access. Whether an owner may act is
+// decided by their OwnerProfile status + membership expiry, re-read from the
+// database on every request — see `requireApprovedOwner()` in src/lib/auth.ts.
+// A 30-day JWT would otherwise keep saying "approved" for a month after an
+// admin suspends the account.
 // ---------------------------------------------------------------------------
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
   name         String?
   passwordHash String
-  role         String   @default("ADMIN") // ADMIN
+  role         String   @default("ADMIN") // "ADMIN" | "OWNER"
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  ownerProfile OwnerProfile?
+  auditLogs    AuditLog[]    @relation("AuditActor")
+
+  @@index([role])
+}
+
+// ---------------------------------------------------------------------------
+// OwnerProfile — the business record for a rest-house owner.
+//
+// Kept as its own model rather than columns on `User` for two reasons:
+//   * the auth record stays minimal (email + hash + role), so a query that
+//     needs a login never accidentally selects private business data —
+//     phone, WhatsApp, ID number are exposed only through the admin views
+//   * a registration *request* is a first-class object with its own lifecycle
+//     (submitted → reviewed → approved/rejected → suspended/expired), which is
+//     a poor fit for flags smeared across the account table
+//
+// `status` is one of OWNER_STATUSES in src/lib/constants.ts — String rather
+// than a native enum, per the portability note at the top of this file:
+//   "PENDING"   — submitted, awaiting admin review (cannot publish)
+//   "APPROVED"  — active; may manage and publish listings
+//   "REJECTED"  — refused by an admin; `rejectionReason` explains why
+//   "SUSPENDED" — was approved, then switched off by an admin
+//
+// membershipExpiresAt is a *query-time* predicate, never a stored "expired"
+// flag and never something that rewrites Listing.published. Expiry must hide
+// listings without destroying the owner's own publish intent, so that renewing
+// restores exactly the listings that were live before. See
+// `publicListingWhere()` in src/lib/listings.ts.
+// ---------------------------------------------------------------------------
+model OwnerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Account + business information collected at registration.
+  fullName     String
+  phone        String
+  whatsapp     String // drives every wa.me link on this owner's listings
+  businessName String  @default("")
+  idNumber     String? // Emirates ID / trade licence, optional
+  city         String  @default("") // one of CITIES ids, or "" if unspecified
+  about        String  @default("")
+
+  status          String    @default("PENDING")
+  rejectionReason String?
+  reviewedAt      DateTime?
+  reviewedById    String?
+
+  // null = no expiry set yet (a pending owner). A date in the past hides every
+  // listing this owner has, without unpublishing any of them.
+  membershipExpiresAt DateTime?
+
+  listings Listing[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([status, membershipExpiresAt])
+}
+
+// ---------------------------------------------------------------------------
+// AuditLog — an append-only record of consequential admin actions.
+//
+// Written inside the same transaction as the change it describes, so a log
+// entry can never exist for a change that rolled back (or vice versa).
+//
+// `metadata` is JSON text rather than a native JSON column, for the same
+// SQLite/PostgreSQL portability reason as Listing.amenities.
+// ---------------------------------------------------------------------------
+model AuditLog {
+  id String @id @default(cuid())
+
+  // Kept as a nullable relation + a denormalised email, so the log survives
+  // the deletion of the account that performed the action.
+  actorId    String?
+  actor      User?   @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String  @default("")
+  actorRole  String  @default("")
+
+  action     String // one of AUDIT_ACTIONS in src/lib/constants.ts
+  entityType String // "OwnerProfile" | "Listing" | "BookingRequest" | …
+  entityId   String
+  summary    String @default("")
+  metadata   String @default("{}") // JSON text
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([action])
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +163,35 @@ model SiteSettings {
   tagline     String  @default("استراحات وشاليهات الإمارات")
   logoUrl     String? // uploaded via the image adapter; falls back to the "و" monogram
   logoGlyph   String  @default("و") // single letter shown when there is no logo image
+
+  // ---------------------------------------------------------------------
+  // English siblings for every stored piece of *copy*.
+  //
+  // The settings row holds marketing text the operator edits without a
+  // deploy — the hero, the tagline, the footer blurb, the SEO strings. Those
+  // are the most visible words on the site, so leaving them Arabic-only would
+  // make the English site half-translated no matter how complete the
+  // dictionary is.
+  //
+  // All nullable and all empty by default: `localizedSetting()` in
+  // src/lib/settings.ts falls back to the Arabic value whenever the English
+  // one is blank, so an operator who never fills these in sees exactly the
+  // behaviour they had before.
+  // ---------------------------------------------------------------------
+  // These carry real English defaults rather than "" so a fresh install has a
+  // genuinely English English site out of the box. The fallback to Arabic still
+  // exists for any field an operator later clears.
+  siteNameEn       String? @default("Sands Rest Houses")
+  taglineEn        String? @default("Rest houses & chalets across the UAE")
+  addressLineEn    String? @default("Dubai — United Arab Emirates")
+  checkInTimeEn    String? @default("4 PM")
+  checkOutTimeEn   String? @default("12 noon")
+  seoTitleEn       String? @default("Book rest houses and chalets in the UAE")
+  seoDescriptionEn String? @default("Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.")
+  heroTitleEn      String? @default("Your rest house in the heart of the desert")
+  heroTitleAltEn   String? @default("is one booking away")
+  heroSubtitleEn   String? @default("Choose from carefully selected rest houses and chalets in Lahbab, Liwa and Al Ain — clear pricing, a live calendar, and direct confirmation with the owner.")
+  footerAboutEn    String? @default("An Emirati platform for booking desert rest houses and chalets — verified in person, with clear pricing.")
 
   // Contact — whatsappNumber drives every wa.me deep link on the site
   whatsappNumber String  @default("+971500000000")
@@ -149,8 +282,34 @@ model Listing {
   reviewsCount Int   @default(0)
   bookingsCount Int  @default(0)
 
-  // Per-listing owner contact. Falls back to the site-wide WhatsApp number
-  // when null, so a single-owner site needs no per-listing setup.
+  // Deposit the owner asks for, as a whole percentage of the booking total.
+  //
+  // null = "use the platform default" (SiteSettings.depositPercent), which is
+  // what every listing created before owners could set their own resolves to.
+  // 0 is a meaningful, distinct value: "no deposit required". Resolve it with
+  // `resolveDepositPercent()` in src/lib/pricing.ts — never read it directly,
+  // or a null will silently become a 0% deposit.
+  depositPercent Int?
+
+  // ---------------------------------------------------------------------
+  // Owner.
+  //
+  // Nullable and load-bearing: listings that predate the owner workflow (the
+  // seeded catalogue, anything an admin created directly) have no owner and
+  // must stay publicly visible. `publicListingWhere()` treats a null owner as
+  // "platform-owned, always eligible" and gates only owned listings on the
+  // owner's status and membership.
+  // ---------------------------------------------------------------------
+  ownerId String?
+  owner   OwnerProfile? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Legacy per-listing owner contact, kept for platform-owned listings and for
+  // backwards compatibility with rows created before OwnerProfile existed.
+  //
+  // For an *owned* listing these are not the source of truth: the WhatsApp
+  // number resolves through the owner relation, so an owner who changes their
+  // number changes every one of their listings at once. See
+  // `resolveListingWhatsapp()` in src/lib/whatsapp.ts.
   ownerName     String? @default("المالك")
   ownerWhatsapp String?
 
@@ -164,6 +323,7 @@ model Listing {
 
   @@index([city])
   @@index([published, featured])
+  @@index([ownerId])
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +423,15 @@ model BookingRequest {
   serviceFee   Int
   total        Int
   depositDue   Int @default(0)
+
+  // The deposit *rate* that produced `depositDue`, snapshotted alongside it.
+  //
+  // Without this the percentage shown on an old booking would be re-derived
+  // from the listing's current setting, so an owner moving from 25% to 50%
+  // would retroactively relabel every past booking — the stored amount saying
+  // one thing and the displayed rate another. Existing rows are backfilled
+  // from SiteSettings.depositPercent by the migration.
+  depositPercent Int @default(30)
 
   // "NEW" | "CONFIRMED" | "REJECTED" | "CANCELLED"
   status String @default("NEW")

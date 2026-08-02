@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { isBookingStatus } from "@/lib/constants";
 import { nightsInRange } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
 import type { ActionResult } from "./listings";
 
 /**
@@ -20,8 +21,9 @@ export async function setRequestStatus(
   status: string,
 ): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
-  if (!isBookingStatus(status)) return { ok: false, error: "حالة غير صالحة" };
+  if (!isBookingStatus(status)) return { ok: false, error: t.validation.invalidStatus };
 
   const request = await prisma.bookingRequest.findUnique({
     where: { id: requestId },
@@ -34,7 +36,7 @@ export async function setRequestStatus(
       listing: { select: { slug: true } },
     },
   });
-  if (!request) return { ok: false, error: "الطلب غير موجود" };
+  if (!request) return { ok: false, error: t.validation.requestNotFound };
 
   const nights = nightsInRange(request.checkIn, request.checkOut);
 
@@ -48,7 +50,7 @@ export async function setRequestStatus(
     if (clash) {
       return {
         ok: false,
-        error: `تعارض في التواريخ — اليوم ${clash.date} محجوز أو محظور مسبقًا`,
+        error: t.validation.dateConflict(clash.date),
       };
     }
 
@@ -99,10 +101,10 @@ export async function setRequestStatus(
   revalidatePath("/listings");
 
   const messages: Record<string, string> = {
-    CONFIRMED: "تم تأكيد الطلب وحجز التواريخ",
-    REJECTED: "تم رفض الطلب",
-    CANCELLED: "تم إلغاء الطلب وتحرير التواريخ",
-    NEW: "أُعيد الطلب إلى قائمة الانتظار",
+    CONFIRMED: t.common.requestConfirmed,
+    REJECTED: t.common.requestRejected,
+    CANCELLED: t.common.requestCancelled,
+    NEW: t.common.requestReturned,
   };
 
   return { ok: true, message: messages[status] };
@@ -111,12 +113,13 @@ export async function setRequestStatus(
 /** Remove a request permanently — for spam or duplicates. */
 export async function deleteRequest(requestId: string): Promise<ActionResult> {
   await requireAdmin();
+  const { t } = await getI18n();
 
   const request = await prisma.bookingRequest.findUnique({
     where: { id: requestId },
     select: { status: true, listingId: true, checkIn: true, checkOut: true },
   });
-  if (!request) return { ok: false, error: "الطلب غير موجود" };
+  if (!request) return { ok: false, error: t.validation.requestNotFound };
 
   // Deleting a confirmed request must not leave its dates blocked forever.
   if (request.status === "CONFIRMED") {
@@ -135,5 +138,5 @@ export async function deleteRequest(requestId: string): Promise<ActionResult> {
   revalidatePath("/admin/requests");
   revalidatePath("/admin/calendar");
 
-  return { ok: true, message: "تم حذف الطلب" };
+  return { ok: true, message: t.common.deleted };
 }

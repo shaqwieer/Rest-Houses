@@ -7,8 +7,9 @@ import { Icon } from "@/components/ui/icon";
 import { Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { setRangeBlocked, toggleBlockedDate } from "@/app/actions/availability";
-import { DOW_AR_SHORT } from "@/lib/constants";
+import { dayNamesShort } from "@/lib/constants";
 import { arMonthLabel, buildMonthGrid, shiftMonth, todayISO, type ISODate } from "@/lib/dates";
+import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
 
 /**
@@ -35,6 +36,7 @@ export function AvailabilityEditor({
   const router = useRouter();
   const params = useSearchParams();
   const { toast } = useToast();
+  const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
 
   const today = todayISO();
@@ -57,7 +59,7 @@ export function AvailabilityEditor({
 
   // Both statuses render as unavailable in the visitor's calendar.
   const unavailable = new Set(optimistic.keys());
-  const cells = buildMonthGrid(view.year, view.month, unavailable, today);
+  const cells = buildMonthGrid(view.year, view.month, unavailable, today, locale);
 
   const blockedCount = [...optimistic.values()].filter((s) => s === "BLOCKED").length;
   const bookedCount = [...optimistic.values()].filter((s) => s === "BOOKED").length;
@@ -92,7 +94,10 @@ export function AvailabilityEditor({
 
     startTransition(async () => {
       const result = await setRangeBlocked(selectedId, from, nextFirst, blocked);
-      toast(result.ok ? (result.message ?? "تم") : result.error, result.ok ? "ok" : "error");
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
       if (result.ok) router.refresh();
     });
   }
@@ -101,13 +106,15 @@ export function AvailabilityEditor({
 
   return (
     <div className="animate-fade-up">
-      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">محرّر التوفّر</h1>
+      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
+          {t.admin.availabilityEditor}
+        </h1>
       <p className="m-0 mb-4 text-[13.5px] leading-relaxed text-muted">
-        اضغط على أي يوم لحظره أو إتاحته. الأيام المحظورة تظهر للزوار كـ«محجوز».
+        {t.admin.availabilityEditorHint}
       </p>
 
       <label className="mb-3.5 flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-bold text-bronze">الاستراحة</span>
+        <span className="text-[12.5px] font-bold text-bronze">{t.admin.selectListing}</span>
         <Select value={selectedId} onChange={(e) => onSelectListing(e.target.value)}>
           {listings.map((l) => (
             <option key={l.id} value={l.id}>
@@ -124,18 +131,18 @@ export function AvailabilityEditor({
             type="button"
             onClick={() => setView((v) => shiftMonth(v.year, v.month, -1))}
             disabled={atFirstMonth}
-            aria-label="الشهر السابق"
+            aria-label={t.listing.prevMonth}
             className="grid size-8.5 place-items-center rounded-xl border border-line text-ink disabled:opacity-35"
           >
             <Icon name="chevron_right" size={19} />
           </button>
           <span className="font-display text-[16px] font-extrabold text-ink">
-            {arMonthLabel(view.year, view.month)}
+            {arMonthLabel(view.year, view.month, locale)}
           </span>
           <button
             type="button"
             onClick={() => setView((v) => shiftMonth(v.year, v.month, 1))}
-            aria-label="الشهر التالي"
+            aria-label={t.listing.nextMonth}
             className="grid size-8.5 place-items-center rounded-xl border border-line text-ink"
           >
             <Icon name="chevron_left" size={19} />
@@ -144,7 +151,7 @@ export function AvailabilityEditor({
 
         {/* weekday header */}
         <div className="mb-1.5 grid grid-cols-7 gap-1.5">
-          {DOW_AR_SHORT.map((d) => (
+          {dayNamesShort(locale).map((d) => (
             <div key={d} className="text-center text-[10.5px] font-bold text-muted">
               {d}
             </div>
@@ -167,7 +174,11 @@ export function AvailabilityEditor({
                 onClick={() => onToggle(cell.iso)}
                 disabled={cell.isPast || pending}
                 aria-label={`${cell.dayNumber}${
-                  isBooked ? " — محجوز بطلب مؤكد" : isBlocked ? " — محظور" : " — متاح"
+                  isBooked
+                    ? ` — ${t.admin.dayBookedConfirmed}`
+                    : isBlocked
+                      ? ` — ${t.admin.dayBlocked}`
+                      : ` — ${t.admin.availableToBook}`
                 }`}
                 aria-pressed={Boolean(status)}
                 className={clsx(
@@ -195,9 +206,9 @@ export function AvailabilityEditor({
 
         {/* legend */}
         <div className="mt-3.5 flex flex-wrap gap-3.5 border-t border-line pt-3">
-          <Legend swatch="border border-line bg-surface" label="متاح للحجز" />
-          <Legend swatch="border border-busy bg-busy-bg" label="محظور — اضغط للتحرير" />
-          <Legend swatch="border border-ok bg-ok-bg" label="محجوز بطلب مؤكد" />
+          <Legend swatch="border border-line bg-surface" label={t.admin.availableToBook} />
+          <Legend swatch="border border-busy bg-busy-bg" label={t.admin.dayBlockedClickToFree} />
+          <Legend swatch="border border-ok bg-ok-bg" label={t.admin.dayBookedConfirmed} />
         </div>
       </div>
 
@@ -210,7 +221,7 @@ export function AvailabilityEditor({
           className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-surface p-3.5 text-[13px] font-bold text-ink transition hover:border-busy hover:text-busy disabled:opacity-50"
         >
           <Icon name="event_busy" size={18} />
-          حظر بقية الشهر
+          {t.admin.blockRestOfMonth}
         </button>
         <button
           type="button"
@@ -219,15 +230,18 @@ export function AvailabilityEditor({
           className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-surface p-3.5 text-[13px] font-bold text-ink transition hover:border-ok hover:text-ok disabled:opacity-50"
         >
           <Icon name="event_available" size={18} />
-          تحرير بقية الشهر
+          {t.admin.freeRestOfMonth}
         </button>
       </div>
 
       <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-2xl bg-gold-100 px-4 py-3.5 text-[13px] font-semibold text-bronze">
         <Icon name="event_busy" size={19} />
         <span>
-          {arNum(blockedCount)} يومًا محظورًا
-          {bookedCount > 0 && <> و {arNum(bookedCount)} يومًا محجوزًا</>} في «{selectedName}»
+          {t.admin.blockedDaysCount(arNum(blockedCount, locale))}
+          {bookedCount > 0 && (
+            <> · {t.admin.bookedDaysCount(arNum(bookedCount, locale))}</>
+          )}{" "}
+          — {selectedName}
         </span>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { Field, TextArea, TextInput } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { removeLogo, saveSettings, uploadHeroImage, uploadLogo } from "@/app/actions/settings";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 
 /**
  * Site settings.
@@ -21,6 +22,22 @@ import { arNum } from "@/lib/format";
 
 export type SettingsFormValues = {
   siteName: string;
+  /**
+   * English copy. All optional — blank means "use the Arabic value", which is
+   * what `localized()` in src/lib/settings.ts does. See the English-copy card
+   * near the bottom of the form.
+   */
+  siteNameEn: string;
+  taglineEn: string;
+  addressLineEn: string;
+  checkInTimeEn: string;
+  checkOutTimeEn: string;
+  seoTitleEn: string;
+  seoDescriptionEn: string;
+  heroTitleEn: string;
+  heroTitleAltEn: string;
+  heroSubtitleEn: string;
+  footerAboutEn: string;
   tagline: string;
   logoGlyph: string;
   logoUrl: string | null;
@@ -57,22 +74,23 @@ export type SettingsFormValues = {
 /** Preset accent pairs, so the owner can rebrand in one tap instead of picking
  *  two harmonising hex values by hand. */
 const ACCENT_PRESETS = [
-  { name: "ذهبي صحراوي", accent: "#C9A44C", deep: "#A8873A" },
-  { name: "نحاسي", accent: "#B9852F", deep: "#8F6420" },
-  { name: "طيني", accent: "#A2705B", deep: "#7E5342" },
-  { name: "زيتوني", accent: "#7C8B6B", deep: "#5E6B4F" },
-  { name: "برونزي داكن", accent: "#8C6B3F", deep: "#6B4F2B" },
+  { key: "presetDesertGold", accent: "#C9A44C", deep: "#A8873A" },
+  { key: "presetCopper", accent: "#B9852F", deep: "#8F6420" },
+  { key: "presetClay", accent: "#A2705B", deep: "#7E5342" },
+  { key: "presetOlive", accent: "#7C8B6B", deep: "#5E6B4F" },
+  { key: "presetDarkBronze", accent: "#8C6B3F", deep: "#6B4F2B" },
 ] as const;
 
 export function SettingsForm({
   values,
-  paymentStatusText,
+  paymentState,
 }: {
   values: SettingsFormValues;
-  paymentStatusText: string;
+  paymentState: "DISABLED" | "MISCONFIGURED" | "ENABLED";
 }) {
   const router = useRouter();
   const { toast } = useToast();
+  const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -100,7 +118,7 @@ export function SettingsForm({
     startTransition(async () => {
       const result = await saveSettings(formData);
       if (result.ok) {
-        toast(result.message ?? "تم الحفظ");
+        toast(result.message ?? t.common.saved);
         router.refresh();
       } else {
         setErrors(result.fieldErrors ?? {});
@@ -113,7 +131,10 @@ export function SettingsForm({
     if (!file) return;
     startTransition(async () => {
       const result = await uploadLogo(file);
-      toast(result.ok ? (result.message ?? "تم") : result.error, result.ok ? "ok" : "error");
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
       if (logoInput.current) logoInput.current.value = "";
       if (result.ok) router.refresh();
     });
@@ -123,7 +144,10 @@ export function SettingsForm({
     if (!file) return;
     startTransition(async () => {
       const result = await uploadHeroImage(file);
-      toast(result.ok ? (result.message ?? "تم") : result.error, result.ok ? "ok" : "error");
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
       if (heroInput.current) heroInput.current.value = "";
       if (result.ok) router.refresh();
     });
@@ -133,15 +157,17 @@ export function SettingsForm({
 
   return (
     <form onSubmit={onSubmit} className="animate-fade-up">
-      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">إعدادات الموقع</h1>
+      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
+          {t.admin.settingsTitle}
+        </h1>
       <p className="m-0 mb-4 text-[13.5px] leading-relaxed text-muted">
-        كل ما تعدّله هنا يظهر على الموقع فورًا — لا حاجة لتعديل الكود أو إعادة النشر.
+        {t.admin.settingsSubtitle}
       </p>
 
       <div className="grid items-start gap-3 lg:grid-cols-2">
         {/* =============== identity =============== */}
-        <Card icon="badge" title="الهوية">
-          <Field label="اسم الموقع" required error={errors.siteName}>
+        <Card icon="badge" title={t.admin.cardIdentity}>
+          <Field label={t.admin.fieldSiteName} required error={errors.siteName}>
             <TextInput
               name="siteName"
               defaultValue={values.siteName}
@@ -150,11 +176,11 @@ export function SettingsForm({
             />
           </Field>
 
-          <Field label="الوصف المختصر" hint="يظهر تحت الاسم في الهيدر">
+          <Field label={t.admin.fieldTagline} hint={t.admin.fieldTaglineHint}>
             <TextInput name="tagline" defaultValue={values.tagline} />
           </Field>
 
-          <Field label="حرف الشعار" hint="يظهر داخل المربّع الذهبي عند عدم وجود صورة">
+          <Field label={t.admin.fieldLogoGlyph} hint={t.admin.fieldLogoGlyphHint}>
             <TextInput name="logoGlyph" defaultValue={values.logoGlyph} maxLength={2} className="w-20 text-center" />
           </Field>
 
@@ -162,7 +188,7 @@ export function SettingsForm({
           <div className="flex items-center gap-3 rounded-[13px] border border-line bg-sand-50 px-3 py-3">
             <div className="relative size-11 shrink-0 overflow-hidden rounded-xl bg-sand-200">
               {values.logoUrl ? (
-                <Image src={values.logoUrl} alt="الشعار" fill sizes="44px" className="object-cover" />
+                <Image src={values.logoUrl} alt={t.admin.logoAlt} fill sizes="44px" className="object-cover" />
               ) : (
                 <div
                   className="grid size-full place-items-center font-display text-[18px] font-extrabold text-night-900"
@@ -173,15 +199,15 @@ export function SettingsForm({
               )}
             </div>
             <div className="flex-1 text-[12px] leading-relaxed text-muted">
-              الشعار يظهر في الهيدر والفوتر وصفحة الدخول.
+              {t.admin.logoNote}
             </div>
             <div className="flex shrink-0 gap-1.5">
               <button
                 type="button"
                 onClick={() => logoInput.current?.click()}
                 disabled={pending}
-                title="رفع شعار"
-                aria-label="رفع شعار"
+                title={t.admin.uploadLogo}
+                aria-label={t.admin.uploadLogo}
                 className="grid size-9 place-items-center rounded-[10px] bg-sand-100 text-ink hover:bg-gold-100 disabled:opacity-50"
               >
                 <Icon name="upload" size={17} />
@@ -192,13 +218,13 @@ export function SettingsForm({
                   onClick={() =>
                     startTransition(async () => {
                       const r = await removeLogo();
-                      toast(r.ok ? (r.message ?? "تم") : r.error, r.ok ? "ok" : "error");
+                      toast(r.ok ? (r.message ?? t.common.saved) : r.error, r.ok ? "ok" : "error");
                       if (r.ok) router.refresh();
                     })
                   }
                   disabled={pending}
-                  title="إزالة الشعار"
-                  aria-label="إزالة الشعار"
+                  title={t.admin.removeLogo}
+                  aria-label={t.admin.removeLogo}
                   className="grid size-9 place-items-center rounded-[10px] bg-busy-bg text-busy disabled:opacity-50"
                 >
                   <Icon name="delete" size={17} />
@@ -216,11 +242,11 @@ export function SettingsForm({
         </Card>
 
         {/* =============== contact =============== */}
-        <Card icon="contact_phone" title="التواصل">
+        <Card icon="contact_phone" title={t.admin.cardContact}>
           <Field
-            label="رقم الواتساب"
+            label={t.admin.fieldWhatsapp}
             required
-            hint="يُستخدم في كل أزرار الواتساب على الموقع"
+            hint={t.admin.fieldWhatsappHint}
             error={errors.whatsappNumber}
           >
             <TextInput
@@ -234,7 +260,7 @@ export function SettingsForm({
             />
           </Field>
 
-          <Field label="رقم الهاتف" hint="يظهر في الشريط العلوي" error={errors.phone}>
+          <Field label={t.admin.fieldPhone} hint={t.admin.fieldPhoneHint} error={errors.phone}>
             <TextInput
               name="phone"
               defaultValue={values.phone}
@@ -244,7 +270,7 @@ export function SettingsForm({
             />
           </Field>
 
-          <Field label="البريد الإلكتروني" error={errors.email}>
+          <Field label={t.auth.email} error={errors.email}>
             <TextInput
               name="email"
               type="email"
@@ -255,7 +281,7 @@ export function SettingsForm({
             />
           </Field>
 
-          <Field label="إنستغرام" hint="الرابط الكامل" error={errors.instagram}>
+          <Field label={t.admin.fieldInstagram} hint={t.admin.fieldFullUrlHint} error={errors.instagram}>
             <TextInput
               name="instagram"
               defaultValue={values.instagram}
@@ -267,23 +293,23 @@ export function SettingsForm({
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="تيك توك" error={errors.tiktok}>
+            <Field label={t.admin.fieldTiktok} error={errors.tiktok}>
               <TextInput name="tiktok" defaultValue={values.tiktok} dir="ltr" className="text-end" />
             </Field>
-            <Field label="يوتيوب" error={errors.youtube}>
+            <Field label={t.admin.fieldYoutube} error={errors.youtube}>
               <TextInput name="youtube" defaultValue={values.youtube} dir="ltr" className="text-end" />
             </Field>
           </div>
         </Card>
 
         {/* =============== theme =============== */}
-        <Card icon="palette" title="الألوان">
+        <Card icon="palette" title={t.admin.cardColors}>
           <p className="m-0 text-[12px] leading-relaxed text-muted">
-            اختر لونين أساسيين وستُشتَق بقية التدرّجات تلقائيًا — الأزرار، الشارات، التقويم والخرائط.
+            {t.admin.colorsIntro}
           </p>
 
           <div>
-            <div className="mb-2 text-[12.5px] font-bold text-bronze">مجموعات جاهزة</div>
+            <div className="mb-2 text-[12.5px] font-bold text-bronze">{t.admin.colorPresets}</div>
             <div className="flex flex-wrap gap-2">
               {ACCENT_PRESETS.map((preset) => {
                 const active = accent.toLowerCase() === preset.accent.toLowerCase();
@@ -295,8 +321,8 @@ export function SettingsForm({
                       setAccent(preset.accent);
                       setAccentDeep(preset.deep);
                     }}
-                    title={preset.name}
-                    aria-label={preset.name}
+                    title={t.admin[preset.key]}
+                    aria-label={t.admin[preset.key]}
                     aria-pressed={active}
                     className="size-10 rounded-xl border-2 transition hover:scale-105"
                     style={{
@@ -310,45 +336,65 @@ export function SettingsForm({
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <ColorField label="اللون المميّز" value={accent} onChange={setAccent} error={errors.colorAccent} />
-            <ColorField label="درجة أغمق" value={accentDeep} onChange={setAccentDeep} error={errors.colorAccentDeep} />
-            <ColorField label="اللون الداكن" value={night} onChange={setNight} error={errors.colorNight} />
-            <ColorField label="لون الخلفية" value={sand} onChange={setSand} error={errors.colorSand} />
+            <ColorField
+            label={t.admin.colorAccentLabel}
+            value={accent}
+            onChange={setAccent}
+            error={errors.colorAccent}
+          />
+            <ColorField
+            label={t.admin.colorAccentDeepLabel}
+            value={accentDeep}
+            onChange={setAccentDeep}
+            error={errors.colorAccentDeep}
+          />
+            <ColorField
+            label={t.admin.colorNightLabel}
+            value={night}
+            onChange={setNight}
+            error={errors.colorNight}
+          />
+            <ColorField
+            label={t.admin.colorSandLabel}
+            value={sand}
+            onChange={setSand}
+            error={errors.colorSand}
+          />
           </div>
 
           {/* live preview so the effect is visible before saving */}
           <div className="rounded-[13px] border border-line p-3" style={{ background: sand }}>
             <div className="mb-2 text-[11.5px] font-bold" style={{ color: accentDeep }}>
-              معاينة
+              {t.admin.previewLabel}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className="rounded-full px-4 py-2 text-[13px] font-extrabold"
                 style={{ background: `linear-gradient(140deg, ${accent}, ${accentDeep})`, color: night }}
               >
-                زر أساسي
+                {t.admin.previewPrimaryButton}
               </span>
               <span
                 className="rounded-full px-4 py-2 text-[13px] font-bold"
                 style={{ background: night, color: sand }}
               >
-                زر داكن
+                {t.admin.previewDarkButton}
               </span>
               <span
                 className="rounded-full px-3 py-1.5 text-[12px] font-bold"
                 style={{ background: `color-mix(in srgb, ${accent} 22%, white)`, color: accentDeep }}
               >
-                شارة
+                {t.admin.previewBadge}
               </span>
             </div>
           </div>
         </Card>
 
         {/* =============== location =============== */}
-        <Card icon="pin_drop" title="الموقع الجغرافي">
+        <Card icon="pin_drop" title={t.admin.cardLocation}>
           <Field
-            label="إحداثيات خرائط جوجل"
-            hint="انسخها من خرائط جوجل والصقها كما هي"
+            label={t.admin.fieldCoordinates}
+            hint={t.admin.fieldCoordinatesHint}
             error={errors.coordinates}
           >
             <TextInput
@@ -363,7 +409,7 @@ export function SettingsForm({
           </Field>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="مستوى التكبير" hint="١ (بعيد) – ٢٠ (قريب)">
+            <Field label={t.admin.fieldZoom} hint={t.admin.fieldZoomHint}>
               <TextInput
                 name="mapZoom"
                 type="number"
@@ -372,7 +418,7 @@ export function SettingsForm({
                 defaultValue={values.mapZoom}
               />
             </Field>
-            <Field label="العنوان النصّي">
+            <Field label={t.admin.fieldAddressLine}>
               <TextInput name="addressLine" defaultValue={values.addressLine} />
             </Field>
           </div>
@@ -380,20 +426,20 @@ export function SettingsForm({
           <div className="h-37.5 overflow-hidden rounded-[13px] border border-line bg-sand-200">
             <iframe
               src={mapSrc}
-              title="معاينة الموقع"
+              title={t.admin.locationPreview}
               loading="lazy"
               className="size-full border-0"
             />
           </div>
           <p className="m-0 text-[11.5px] text-muted">
-            المعاينة تتحدّث بعد الحفظ.
+            {t.admin.previewAfterSave}
           </p>
         </Card>
 
         {/* =============== booking commercials =============== */}
-        <Card icon="receipt_long" title="شروط الحجز">
+        <Card icon="receipt_long" title={t.admin.cardBooking}>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="رسوم الخدمة (٪)" error={errors.serviceFeePercent}>
+            <Field label={t.admin.fieldServiceFee} error={errors.serviceFeePercent}>
               <TextInput
                 name="serviceFeePercent"
                 type="number"
@@ -403,7 +449,11 @@ export function SettingsForm({
                 className="font-bold"
               />
             </Field>
-            <Field label="العربون (٪)" error={errors.depositPercent}>
+            <Field
+            label={t.admin.fieldDepositDefault}
+            hint={t.admin.fieldDepositDefaultHint}
+            error={errors.depositPercent}
+          >
               <TextInput
                 name="depositPercent"
                 type="number"
@@ -413,7 +463,7 @@ export function SettingsForm({
                 className="font-bold"
               />
             </Field>
-            <Field label="الإلغاء المجاني (ساعة)" error={errors.freeCancelHours}>
+            <Field label={t.admin.fieldFreeCancel} error={errors.freeCancelHours}>
               <TextInput
                 name="freeCancelHours"
                 type="number"
@@ -424,10 +474,10 @@ export function SettingsForm({
               />
             </Field>
             <div className="grid gap-3">
-              <Field label="وقت الدخول">
+              <Field label={t.admin.fieldCheckIn}>
                 <TextInput name="checkInTime" defaultValue={values.checkInTime} />
               </Field>
-              <Field label="وقت الخروج">
+              <Field label={t.admin.fieldCheckOut}>
                 <TextInput name="checkOutTime" defaultValue={values.checkOutTime} />
               </Field>
             </div>
@@ -444,30 +494,34 @@ export function SettingsForm({
               />
               <span>
                 <span className="block text-[13.5px] font-bold text-ink">
-                  تفعيل دفع العربون إلكترونيًا
+                  {t.admin.enableOnlineDeposit}
                 </span>
                 <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-                  {paymentStatusText}
+                  {paymentState === "ENABLED"
+                    ? t.admin.paymentEnabled
+                    : paymentState === "MISCONFIGURED"
+                      ? t.admin.paymentMisconfigured
+                      : t.admin.paymentDisabled}
                 </span>
               </span>
             </label>
             <p className="m-0 mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-bronze">
               <Icon name="info" size={14} className="mt-0.5 shrink-0" />
-              بوابة الدفع غير مربوطة بعد. الخطوات مكتوبة في{" "}
+              {t.admin.gatewayNotWired}{" "}
               <code dir="ltr" className="font-mono">src/lib/payments/index.ts</code>.
             </p>
           </div>
         </Card>
 
         {/* =============== home page + SEO =============== */}
-        <Card icon="image" title="الصفحة الرئيسية و SEO">
-          <Field label="عنوان الغلاف" error={errors.heroTitle}>
+        <Card icon="image" title={t.admin.cardHomeSeo}>
+          <Field label={t.admin.fieldHeroTitle} error={errors.heroTitle}>
             <TextInput name="heroTitle" defaultValue={values.heroTitle} />
           </Field>
-          <Field label="السطر الثاني (بلون مميّز)">
+          <Field label={t.admin.fieldHeroTitleAlt}>
             <TextInput name="heroTitleAlt" defaultValue={values.heroTitleAlt} />
           </Field>
-          <Field label="نص الغلاف">
+          <Field label={t.admin.fieldHeroSubtitle}>
             <TextArea name="heroSubtitle" rows={3} defaultValue={values.heroSubtitle} />
           </Field>
 
@@ -483,14 +537,14 @@ export function SettingsForm({
               )}
             </div>
             <span className="flex-1 text-[12px] leading-relaxed text-muted">
-              صورة غلاف الصفحة الرئيسية. تُستخدم صورة أول استراحة مميّزة إن لم تُحدَّد.
+              {t.admin.heroImageNote}
             </span>
             <button
               type="button"
               onClick={() => heroInput.current?.click()}
               disabled={pending}
-              title="رفع صورة الغلاف"
-              aria-label="رفع صورة الغلاف"
+              title={t.admin.uploadHeroImage}
+              aria-label={t.admin.uploadHeroImage}
               className="grid size-9 shrink-0 place-items-center rounded-[10px] bg-sand-100 text-ink hover:bg-gold-100 disabled:opacity-50"
             >
               <Icon name="upload" size={17} />
@@ -504,21 +558,85 @@ export function SettingsForm({
             />
           </div>
 
-          <Field label="نص «عن الموقع» في الفوتر">
+          <Field label={t.admin.fieldFooterAbout}>
             <TextArea name="footerAbout" rows={3} defaultValue={values.footerAbout} />
           </Field>
 
           <div className="h-px bg-line" />
 
-          <Field label="عنوان SEO" hint="يظهر في نتائج البحث">
+          <Field label={t.admin.fieldSeoTitle} hint={t.admin.fieldSeoTitleHint}>
             <TextInput name="seoTitle" defaultValue={values.seoTitle} maxLength={120} />
           </Field>
           <Field
-            label="وصف SEO"
-            hint={`الأفضل بين ١٢٠ و ١٦٠ حرفًا — حاليًا ${arNum(values.seoDescription.length)}`}
+            label={t.admin.fieldSeoDescription}
+            hint={t.admin.seoDescriptionHint(arNum(values.seoDescription.length, locale))}
           >
             <TextArea name="seoDescription" rows={3} defaultValue={values.seoDescription} maxLength={320} />
           </Field>
+        </Card>
+
+        {/* =============== English copy ===============
+            The site stores its marketing copy in the database, so the
+            dictionary alone cannot translate it — the hero, tagline and SEO
+            strings are values, not code. These fields are what make the English
+            site fully English. Every one is optional: blank falls back to the
+            Arabic text, so an operator who ignores this card still gets a
+            working English site rather than an empty hero. */}
+        <Card icon="public" title={t.admin.englishCopyCard}>
+          <p className="m-0 text-[12px] leading-relaxed text-muted">
+            {t.admin.englishCopyHint}
+          </p>
+
+          <Field label={t.admin.siteNameEnLabel}>
+            <TextInput name="siteNameEn" dir="ltr" defaultValue={values.siteNameEn} />
+          </Field>
+          <Field label={t.admin.taglineEnLabel}>
+            <TextInput name="taglineEn" dir="ltr" defaultValue={values.taglineEn} />
+          </Field>
+
+          <div className="h-px bg-line" />
+
+          <Field label={t.admin.heroTitleEnLabel}>
+            <TextInput name="heroTitleEn" dir="ltr" defaultValue={values.heroTitleEn} />
+          </Field>
+          <Field label={t.admin.heroTitleAltEnLabel}>
+            <TextInput name="heroTitleAltEn" dir="ltr" defaultValue={values.heroTitleAltEn} />
+          </Field>
+          <Field label={t.admin.heroSubtitleEnLabel}>
+            <TextArea name="heroSubtitleEn" dir="ltr" rows={3} defaultValue={values.heroSubtitleEn} />
+          </Field>
+          <Field label={t.admin.footerAboutEnLabel}>
+            <TextArea name="footerAboutEn" dir="ltr" rows={3} defaultValue={values.footerAboutEn} />
+          </Field>
+
+          <div className="h-px bg-line" />
+
+          <Field label={t.admin.seoTitleEnLabel}>
+            <TextInput name="seoTitleEn" dir="ltr" defaultValue={values.seoTitleEn} maxLength={120} />
+          </Field>
+          <Field label={t.admin.seoDescriptionEnLabel}>
+            <TextArea
+              name="seoDescriptionEn"
+              dir="ltr"
+              rows={3}
+              defaultValue={values.seoDescriptionEn}
+              maxLength={320}
+            />
+          </Field>
+
+          <div className="h-px bg-line" />
+
+          <Field label={t.admin.addressLineEnLabel}>
+            <TextInput name="addressLineEn" dir="ltr" defaultValue={values.addressLineEn} />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t.admin.checkInTimeEnLabel}>
+              <TextInput name="checkInTimeEn" dir="ltr" defaultValue={values.checkInTimeEn} />
+            </Field>
+            <Field label={t.admin.checkOutTimeEnLabel}>
+              <TextInput name="checkOutTimeEn" dir="ltr" defaultValue={values.checkOutTimeEn} />
+            </Field>
+          </div>
         </Card>
       </div>
 
@@ -529,7 +647,7 @@ export function SettingsForm({
           disabled={pending}
           className="w-full rounded-2xl bg-night-900 p-4 font-display text-[15px] font-extrabold text-sand-50 shadow-e2 transition hover:bg-night-700 disabled:opacity-60"
         >
-          {pending ? "جارٍ الحفظ…" : "حفظ الإعدادات"}
+          {pending ? t.common.saving : t.common.save}
         </button>
       </div>
     </form>

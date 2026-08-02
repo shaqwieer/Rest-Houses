@@ -115,7 +115,7 @@ const LISTINGS: SeedListing[] = [
   },
   {
     name: "استراحة واحة ليوا",
-    city: "liwa",
+    city: "abudhabi",
     area: "ليوا – الظفرة",
     pricePerNight: 2400,
     weekendPrice: 3000,
@@ -157,7 +157,7 @@ const LISTINGS: SeedListing[] = [
   },
   {
     name: "استراحة القصر الرملي",
-    city: "alain",
+    city: "abudhabi",
     area: "العين – الهيلي",
     pricePerNight: 3200,
     weekendPrice: 3900,
@@ -220,7 +220,7 @@ const LISTINGS: SeedListing[] = [
   },
   {
     name: "استراحة نخيل الوادي",
-    city: "alain",
+    city: "abudhabi",
     area: "وادي العين",
     pricePerNight: 1650,
     weekendPrice: 2050,
@@ -310,6 +310,124 @@ async function main() {
     console.log("   ⚠️  كلمة المرور هي الافتراضية — غيّر ADMIN_PASSWORD في .env");
   }
 
+  /* --- owner accounts, one per lifecycle state -------------------------- */
+  //
+  // Four owners covering every state the platform can put an owner in, so the
+  // approval workflow, the membership rules and the public visibility predicate
+  // can all be exercised by hand without editing the database. The password is
+  // the same for all of them and is deliberately obvious — these exist to be
+  // logged into during verification.
+  //
+  // The *expired* owner is the interesting one: status APPROVED with a
+  // membership date in the past. That combination is what proves expiry is
+  // derived at query time rather than stored — nothing has to flip a flag for
+  // their listings to disappear.
+  const ownerPassword = process.env.OWNER_PASSWORD || "OwnerPass123!";
+  const ownerHash = await bcrypt.hash(ownerPassword, 10);
+
+  const ownerSeeds = [
+    {
+      email: "owner.active@example.ae",
+      fullName: "سالم المنصوري",
+      businessName: "استراحات المنصوري",
+      whatsapp: "971501110001",
+      status: "APPROVED",
+      // A year out — comfortably active.
+      membershipDays: 365,
+      city: "dubai",
+    },
+    {
+      email: "owner.pending@example.ae",
+      fullName: "ناصر الكعبي",
+      businessName: "مخيمات الكعبي",
+      whatsapp: "971501110002",
+      status: "PENDING",
+      membershipDays: null,
+      city: "abudhabi",
+    },
+    {
+      email: "owner.expired@example.ae",
+      fullName: "خليفة الشامسي",
+      businessName: "شاليهات الشامسي",
+      whatsapp: "971501110003",
+      status: "APPROVED",
+      // Yesterday — approved, but out of membership.
+      membershipDays: -1,
+      city: "abudhabi",
+    },
+    {
+      email: "owner.suspended@example.ae",
+      fullName: "راشد النعيمي",
+      businessName: "استراحات النعيمي",
+      whatsapp: "971501110004",
+      status: "SUSPENDED",
+      membershipDays: 365,
+      city: "sharjah",
+    },
+    {
+      email: "owner.rejected@example.ae",
+      fullName: "مبارك الظاهري",
+      businessName: "",
+      whatsapp: "971501110005",
+      status: "REJECTED",
+      membershipDays: null,
+      city: "abudhabi",
+    },
+  ] as const;
+
+  const ownerIds: Record<string, string> = {};
+
+  for (const o of ownerSeeds) {
+    const user = await prisma.user.upsert({
+      where: { email: o.email },
+      update: { passwordHash: ownerHash, name: o.fullName, role: "OWNER" },
+      create: {
+        email: o.email,
+        name: o.fullName,
+        passwordHash: ownerHash,
+        role: "OWNER",
+      },
+    });
+
+    const membershipExpiresAt =
+      o.membershipDays === null
+        ? null
+        : new Date(Date.now() + o.membershipDays * 86_400_000);
+
+    const profile = await prisma.ownerProfile.upsert({
+      where: { userId: user.id },
+      update: {
+        fullName: o.fullName,
+        businessName: o.businessName,
+        whatsapp: o.whatsapp,
+        status: o.status,
+        membershipExpiresAt,
+        city: o.city,
+        rejectionReason:
+          o.status === "REJECTED" ? "بيانات التحقق غير مكتملة (حساب تجريبي)" : null,
+      },
+      create: {
+        userId: user.id,
+        fullName: o.fullName,
+        phone: o.whatsapp,
+        whatsapp: o.whatsapp,
+        businessName: o.businessName,
+        city: o.city,
+        status: o.status,
+        membershipExpiresAt,
+        rejectionReason:
+          o.status === "REJECTED" ? "بيانات التحقق غير مكتملة (حساب تجريبي)" : null,
+      },
+    });
+
+    ownerIds[o.email] = profile.id;
+  }
+
+  console.log(`✅ حسابات المُلّاك: ${ownerSeeds.length} (كلمة المرور: ${ownerPassword})`);
+  for (const o of ownerSeeds) {
+    console.log(`   • ${o.email} — ${o.status}`);
+  }
+
   /* --- site settings ---------------------------------------------------- */
   const siteName = process.env.SITE_NAME || "استراحات الرمال";
   const whatsapp = process.env.WHATSAPP_NUMBER || "+971500000000";
@@ -328,11 +446,55 @@ async function main() {
       email,
       instagram: "https://instagram.com/",
       addressLine: "دبي — الإمارات العربية المتحدة",
+
+      // English copy. Without these the English site falls back to the Arabic
+      // hero, which is the most visible text on the page.
+      siteNameEn: "Sands Rest Houses",
+      taglineEn: "Rest houses & chalets across the UAE",
+      addressLineEn: "Dubai — United Arab Emirates",
+      checkInTimeEn: "4 PM",
+      checkOutTimeEn: "12 noon",
+      seoTitleEn: "Book rest houses and chalets in the UAE",
+      seoDescriptionEn:
+        "Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.",
+      heroTitleEn: "Your rest house in the heart of the desert",
+      heroTitleAltEn: "is one booking away",
+      heroSubtitleEn:
+        "Choose from carefully selected rest houses and chalets in Lahbab, Liwa and Al Ain — clear pricing, a live calendar, and direct confirmation with the owner.",
+      footerAboutEn:
+        "An Emirati platform for booking desert rest houses and chalets — verified in person, with clear pricing.",
     },
   });
   console.log(`✅ إعدادات الموقع: «${siteName}» — واتساب ${whatsapp}`);
 
   /* --- listings --------------------------------------------------------- */
+  //
+  // The first four sample listings are handed to the four owner states, and a
+  // per-listing deposit rate is set on some of them. That combination is what
+  // makes the rules verifiable by eye on a seeded database:
+  //
+  //   index 0 → active owner    → visible, uses that owner's WhatsApp number
+  //   index 1 → expired owner   → HIDDEN from the public site, still `published`
+  //   index 2 → suspended owner → HIDDEN
+  //   index 3 → pending owner   → HIDDEN
+  //   index 4+ → no owner       → visible (platform-owned, the pre-existing case)
+  //
+  // Listings 1–3 staying `published: true` is the point: nothing unpublished
+  // them, they are filtered at query time, and reactivating their owner brings
+  // them straight back. See `publicListingWhere()` in src/lib/listings.ts.
+  const ownerAssignment: (string | null)[] = [
+    ownerIds["owner.active@example.ae"] ?? null,
+    ownerIds["owner.expired@example.ae"] ?? null,
+    ownerIds["owner.suspended@example.ae"] ?? null,
+    ownerIds["owner.pending@example.ae"] ?? null,
+  ];
+
+  // Distinct rates so the deposit column is visibly per-listing rather than
+  // one platform figure repeated. `null` means "use the platform default";
+  // `0` means "no deposit", which is a different thing and is worth having a
+  // sample of.
+  const depositAssignment: (number | null)[] = [50, 25, null, 0];
+
   let created = 0;
   let updated = 0;
 
@@ -341,6 +503,8 @@ async function main() {
     const existing = await prisma.listing.findUnique({ where: { slug } });
 
     const data = {
+      ownerId: ownerAssignment[index] ?? null,
+      depositPercent: index < depositAssignment.length ? depositAssignment[index] : null,
       slug,
       name: item.name,
       description: item.description,
@@ -460,6 +624,8 @@ async function main() {
         serviceFee,
         total,
         depositDue: Math.round(total * 0.3),
+        // Snapshotted alongside the amount, exactly as the booking action does.
+        depositPercent: 30,
         status: r.status,
       },
     });
@@ -468,6 +634,8 @@ async function main() {
 
   console.log("\n🎉 تمت التهيئة. شغّل  npm run dev  ثم افتح http://localhost:3000");
   console.log(`   لوحة التحكم: http://localhost:3000/admin  (${adminEmail})`);
+  console.log("   لوحة المالك:  http://localhost:3000/owner   (owner.active@example.ae)");
+  console.log("   تسجيل مالك:   http://localhost:3000/register/owner");
 }
 
 main()

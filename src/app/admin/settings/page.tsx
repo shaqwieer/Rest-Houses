@@ -1,9 +1,12 @@
 import { SettingsForm } from "@/components/admin/settings-form";
 import { getSettings } from "@/lib/settings";
 import { depositPaymentStatus } from "@/lib/payments";
+import { requireAdminPage } from "@/lib/auth";
 
 /** Site settings — the config-driven branding surface. */
 export default async function AdminSettingsPage() {
+  await requireAdminPage();
+
   const settings = await getSettings();
 
   return (
@@ -43,8 +46,22 @@ export default async function AdminSettingsPage() {
         footerAbout: settings.footerAbout,
         seoTitle: settings.seoTitle ?? "",
         seoDescription: settings.seoDescription ?? "",
+
+        // English copy — blank means "fall back to the Arabic value".
+        siteNameEn: settings.siteNameEn ?? "",
+        taglineEn: settings.taglineEn ?? "",
+        addressLineEn: settings.addressLineEn ?? "",
+        checkInTimeEn: settings.checkInTimeEn ?? "",
+        checkOutTimeEn: settings.checkOutTimeEn ?? "",
+        seoTitleEn: settings.seoTitleEn ?? "",
+        seoDescriptionEn: settings.seoDescriptionEn ?? "",
+        heroTitleEn: settings.heroTitleEn ?? "",
+        heroTitleAltEn: settings.heroTitleAltEn ?? "",
+        heroSubtitleEn: settings.heroSubtitleEn ?? "",
+        footerAboutEn: settings.footerAboutEn ?? "",
       }}
-      paymentStatusText={depositPaymentStatus(settings)}
+      // A code, not a sentence — the form resolves it against the dictionary.
+      paymentState={depositPaymentStatus(settings)}
     />
   );
 }

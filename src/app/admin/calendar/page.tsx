@@ -3,6 +3,8 @@ import { AvailabilityEditor } from "@/components/admin/availability-editor";
 import { Icon } from "@/components/ui/icon";
 import { prisma } from "@/lib/prisma";
 import { todayISO } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
+import { requireAdminPage } from "@/lib/auth";
 
 /** Availability editor. `?listing=<id>` selects which calendar is shown. */
 export default async function AdminCalendarPage({
@@ -10,7 +12,9 @@ export default async function AdminCalendarPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const sp = await searchParams;
+  await requireAdminPage();
+
+  const [sp, { t }] = await Promise.all([searchParams, getI18n()]);
 
   const listings = await prisma.listing.findMany({
     select: { id: true, name: true },
@@ -22,15 +26,15 @@ export default async function AdminCalendarPage({
       <div className="rounded-[20px] border border-dashed border-sand-300 bg-surface p-8 text-center">
         <Icon name="calendar_month" size={46} className="mx-auto text-sand-400" />
         <h1 className="mt-3.5 mb-2 font-display text-[17px] font-bold text-ink">
-          لا توجد استراحات لإدارة تقويمها
+          {t.admin.noListingsForCalendar}
         </h1>
-        <p className="m-0 mb-4 text-[13.5px] text-muted">أضف استراحة أولًا.</p>
+        <p className="m-0 mb-4 text-[13.5px] text-muted">{t.admin.addListingFirstShort}</p>
         <Link
           href="/admin/listings/new"
           className="inline-flex items-center gap-2 rounded-full bg-night-900 px-5 py-3 text-[14px] font-bold text-sand-50 no-underline hover:no-underline"
         >
           <Icon name="add" size={18} />
-          إضافة استراحة
+          {t.admin.quickAddListing}
         </Link>
       </div>
     );

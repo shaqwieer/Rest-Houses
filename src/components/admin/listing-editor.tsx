@@ -9,20 +9,34 @@ import { Chip, Field, Select, TextArea, TextInput } from "@/components/ui/field"
 import { useToast } from "@/components/ui/toast";
 import {
   addListingImages,
+  addOwnerListingImages,
   deleteListingImage,
+  deleteOwnerListingImage,
   makeImageCover,
+  makeOwnerImageCover,
   saveListing,
+  saveOwnerListing,
 } from "@/app/actions/listings";
-import { AMENITIES, CATEGORIES, CITIES } from "@/lib/constants";
+import { AMENITIES, CATEGORIES, CITIES, label } from "@/lib/constants";
+import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
 
 /**
  * Listing create/edit form — mobile-first, single column, thumb-sized controls.
  *
+ * One component serves both dashboards, switched by `scope`:
+ *   • "admin" — every field, including the editorial `verified`/`featured`
+ *     badges and the owner assignment
+ *   • "owner" — everything except those, because a listing's owner marking it
+ *     "verified" would defeat the badge and self-featuring would let owners
+ *     promote themselves onto the home page. The server enforces this
+ *     independently (see `listingColumns` in actions/listings.ts); hiding the
+ *     controls is the UX half of the same rule.
+ *
  * Images are handled separately from the text fields, and only for a listing
  * that already exists: uploading needs a listing id to attach rows to. On a new
- * listing the gallery block therefore tells the owner to save first, rather than
- * silently dropping their photos.
+ * listing the gallery block therefore says to save first, rather than silently
+ * dropping the photos.
  */
 
 export type ListingDraft = {
@@ -36,6 +50,8 @@ export type ListingDraft = {
   capacity: number;
   lat: number;
   lng: number;
+  /** null = "use the platform default" — distinct from 0, "no deposit". */
+  depositPercent: number | null;
   amenityIds: string[];
   categoryIds: string[];
   verified: boolean;
@@ -43,12 +59,31 @@ export type ListingDraft = {
   published: boolean;
   ownerName: string;
   ownerWhatsapp: string;
+  ownerId: string | null;
   images: { id: string; url: string; alt: string }[];
 };
 
-export function ListingEditor({ draft }: { draft: ListingDraft }) {
+export type OwnerOption = { id: string; name: string };
+
+export function ListingEditor({
+  draft,
+  scope = "admin",
+  platformDepositPercent,
+  owners = [],
+  ownerWhatsapp,
+}: {
+  draft: ListingDraft;
+  scope?: "admin" | "owner";
+  /** Shown as the fallback hint next to the deposit field. */
+  platformDepositPercent: number;
+  /** Admin only: the owners a listing can be assigned to. */
+  owners?: OwnerOption[];
+  /** Owner only: the number their listings will use, shown read-only. */
+  ownerWhatsapp?: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
+  const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -59,6 +94,8 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
   const [coordinates, setCoordinates] = useState(`${draft.lat}, ${draft.lng}`);
 
   const isNew = draft.id === null;
+  const isOwner = scope === "owner";
+  const backHref = isOwner ? "/owner/listings" : "/admin/listings";
 
   function toggle(list: string[], setList: (v: string[]) => void, id: string) {
     setList(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
@@ -74,8 +111,8 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
     const lat = Number(latRaw);
     const lng = Number(lngRaw);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setErrors({ coordinates: "اكتب الإحداثيات بالصيغة: 24.7614, 55.3340" });
-      toast("الإحداثيات غير صحيحة", "error");
+      setErrors({ coordinates: t.admin.coordinatesFormat });
+      toast(t.admin.coordinatesInvalid, "error");
       return;
     }
     formData.set("lat", String(lat));
@@ -86,12 +123,14 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
     for (const id of categories) formData.append("categories", id);
 
     startTransition(async () => {
-      const result = await saveListing(formData);
+      const result = isOwner
+        ? await saveOwnerListing(formData)
+        : await saveListing(formData);
       if (result.ok) {
-        toast(result.message ?? "تم الحفظ");
+        toast(result.message ?? t.common.saved);
         if (isNew && result.id) {
           // Land on the saved listing so images can be uploaded next.
-          router.replace(`/admin/listings/${result.id}`);
+          router.replace(`${backHref}/${result.id}`);
         } else {
           router.refresh();
         }
@@ -108,8 +147,13 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
     setUploading(true);
     startTransition(async () => {
-      const result = await addListingImages(draft.id!, list);
-      toast(result.ok ? (result.message ?? "تم الرفع") : result.error, result.ok ? "ok" : "error");
+      const result = isOwner
+        ? await addOwnerListingImages(draft.id!, list)
+        : await addListingImages(draft.id!, list);
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
       if (result.ok) router.refresh();
@@ -118,16 +162,24 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
   function onDeleteImage(imageId: string) {
     startTransition(async () => {
-      const result = await deleteListingImage(imageId);
-      toast(result.ok ? (result.message ?? "تم") : result.error, result.ok ? "ok" : "error");
+      const result = isOwner
+        ? await deleteOwnerListingImage(imageId)
+        : await deleteListingImage(imageId);
+      toast(
+        result.ok ? (result.message ?? t.common.deleted) : result.error,
+        result.ok ? "ok" : "error",
+      );
       if (result.ok) router.refresh();
     });
   }
 
   function onMakeCover(imageId: string) {
     startTransition(async () => {
-      const result = await makeImageCover(imageId);
-      toast(result.ok ? (result.message ?? "تم") : result.error, result.ok ? "ok" : "error");
+      const result = isOwner ? await makeOwnerImageCover(imageId) : await makeImageCover(imageId);
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
       if (result.ok) router.refresh();
     });
   }
@@ -138,15 +190,16 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
     <div className="animate-fade-up">
       <div className="mb-4.5 flex items-center gap-3">
         <Link
-          href="/admin/listings"
-          aria-label="رجوع"
+          href={backHref}
+          aria-label={t.common.back}
           className="grid size-9 place-items-center rounded-xl border border-line bg-surface text-ink no-underline hover:no-underline"
         >
-          {/* RTL: "back" points right */}
-          <Icon name="arrow_forward" size={20} />
+          {/* The glyph points back along the reading direction, so it flips with
+              the document: "forward" arrow in RTL is visually a back arrow. */}
+          <Icon name={locale === "ar" ? "arrow_forward" : "arrow_back"} size={20} />
         </Link>
         <h1 className="m-0 font-display text-[19px] font-extrabold text-ink">
-          {isNew ? "إضافة استراحة جديدة" : "تعديل بيانات الاستراحة"}
+          {isNew ? t.admin.newListingTitle : t.admin.editListingTitle}
         </h1>
       </div>
 
@@ -158,12 +211,12 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
         {/* ---- images ---- */}
         <div>
-          <div className={sectionLabel}>صور الاستراحة</div>
+          <div className={sectionLabel}>{t.admin.photosLabel}</div>
 
           {isNew ? (
             <p className="m-0 flex items-center gap-2 rounded-[13px] border border-dashed border-sand-300 bg-sand-50 px-3.5 py-3 text-[12.5px] text-muted">
               <Icon name="info" size={18} className="text-bronze" />
-              احفظ الاستراحة أولًا، ثم ستتمكّن من رفع الصور.
+              {t.admin.saveBeforePhotos}
             </p>
           ) : (
             <>
@@ -177,18 +230,18 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
                     {i === 0 && (
                       <span className="absolute bottom-1 start-1 rounded-md bg-night-900/85 px-1.5 py-0.5 text-[9.5px] font-bold text-gold-300">
-                        الغلاف
+                        {t.admin.coverPhoto}
                       </span>
                     )}
 
-                    <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-night-900/55 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                    <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-night-900/55 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
                       {i !== 0 && (
                         <button
                           type="button"
                           onClick={() => onMakeCover(img.id)}
                           disabled={pending}
-                          title="اجعلها الغلاف"
-                          aria-label="اجعلها الغلاف"
+                          title={t.admin.makeCover}
+                          aria-label={t.admin.makeCover}
                           className="grid size-7.5 place-items-center rounded-lg bg-surface text-ink"
                         >
                           <Icon name="star" size={16} />
@@ -198,8 +251,8 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                         type="button"
                         onClick={() => onDeleteImage(img.id)}
                         disabled={pending}
-                        title="حذف الصورة"
-                        aria-label="حذف الصورة"
+                        title={t.admin.deletePhoto}
+                        aria-label={t.admin.deletePhoto}
                         className="grid size-7.5 place-items-center rounded-lg bg-busy text-white"
                       >
                         <Icon name="delete" size={16} />
@@ -216,7 +269,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                 >
                   <Icon name={uploading ? "upload" : "add_photo_alternate"} size={22} />
                   <span className="text-[11px] font-semibold">
-                    {uploading ? "جارٍ الرفع…" : "إضافة"}
+                    {uploading ? t.admin.uploading : t.common.add}
                   </span>
                 </button>
               </div>
@@ -229,9 +282,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                 onChange={(e) => onPickFiles(e.target.files)}
                 className="hidden"
               />
-              <p className="m-0 mt-2 text-[11.5px] text-muted">
-                JPG أو PNG أو WebP — حتى ٢٠٠ ميغابايت للصورة. أول صورة هي الغلاف.
-              </p>
+              <p className="m-0 mt-2 text-[11.5px] text-muted">{t.admin.photoHint}</p>
             </>
           )}
         </div>
@@ -239,38 +290,38 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
         <div className="h-px bg-line" />
 
         {/* ---- basics ---- */}
-        <Field label="اسم الاستراحة" required error={errors.name}>
+        <Field label={t.admin.listingName} required error={errors.name}>
           <TextInput
             name="name"
             defaultValue={draft.name}
-            placeholder="مثال: استراحة الرمال الذهبية"
+            placeholder={t.admin.listingNamePlaceholder}
             required
             invalid={Boolean(errors.name)}
           />
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="المدينة" required error={errors.city}>
+          <Field label={t.listings.city} required error={errors.city}>
             <Select name="city" defaultValue={draft.city} required>
               {CITIES.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.ar}
+                  {label(c, locale)}
                 </option>
               ))}
             </Select>
           </Field>
 
-          <Field label="المنطقة / الموقع" error={errors.area}>
-            <TextInput name="area" defaultValue={draft.area} placeholder="لهباب – دبي" />
+          <Field label={t.admin.areaLabel} error={errors.area}>
+            <TextInput
+              name="area"
+              defaultValue={draft.area}
+              placeholder={t.admin.areaPlaceholder}
+            />
           </Field>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field
-            label="سعر الليلة (د.إ)"
-            required
-            error={errors.pricePerNight}
-          >
+          <Field label={t.admin.pricePerNightLabel} required error={errors.pricePerNight}>
             <TextInput
               name="pricePerNight"
               type="number"
@@ -283,8 +334,8 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
           </Field>
 
           <Field
-            label="سعر نهاية الأسبوع"
-            hint="اتركه صفرًا ليساوي السعر العادي"
+            label={t.admin.weekendPriceLabel}
+            hint={t.admin.weekendPriceHint}
             error={errors.weekendPrice}
           >
             <TextInput
@@ -297,7 +348,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
             />
           </Field>
 
-          <Field label="السعة (ضيف)" required error={errors.capacity}>
+          <Field label={t.admin.capacityLabel} required error={errors.capacity}>
             <TextInput
               name="capacity"
               type="number"
@@ -310,12 +361,47 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
           </Field>
         </div>
 
-        <Field label="الوصف" error={errors.description}>
+        {/* ---- deposit ----
+            Left blank the listing inherits the platform default; an explicit 0
+            means no deposit at all. The hint names the default so an owner can
+            see what "blank" resolves to without leaving the page. The amount is
+            always recomputed on the server at booking time — nothing here is
+            trusted for money. */}
+        <Field
+          label={t.owner.depositPercent}
+          hint={
+            errors.depositPercent
+              ? undefined
+              : `${t.owner.depositPercentHint} ${t.owner.usingPlatformDefault(
+                  arNum(platformDepositPercent, locale),
+                )}`
+          }
+          error={errors.depositPercent}
+        >
+          <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 focus-within:border-gold-500 focus-within:bg-surface">
+            <Icon name="savings" size={20} className="text-bronze" />
+            <input
+              name="depositPercent"
+              type="number"
+              min={0}
+              max={100}
+              step={1}
+              defaultValue={draft.depositPercent ?? ""}
+              placeholder={String(platformDepositPercent)}
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] font-bold text-ink outline-none"
+            />
+            <span className="shrink-0 text-[12.5px] font-semibold text-muted">
+              {t.owner.depositPercentSuffix}
+            </span>
+          </span>
+        </Field>
+
+        <Field label={t.admin.descriptionLabel} error={errors.description}>
           <TextArea
             name="description"
             rows={5}
             defaultValue={draft.description}
-            placeholder="اكتب وصفًا موجزًا يبرز ما يميّز استراحتك."
+            placeholder={t.admin.descriptionPlaceholder}
           />
         </Field>
 
@@ -323,7 +409,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
         {/* ---- categories ---- */}
         <div>
-          <div className={sectionLabel}>المناسبات المناسبة</div>
+          <div className={sectionLabel}>{t.admin.occasionsLabel}</div>
           <div className="flex flex-wrap gap-1.5">
             {CATEGORIES.map((c) => (
               <Chip
@@ -332,7 +418,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                 onClick={() => toggle(categories, setCategories, c.id)}
               >
                 <Icon name={c.icon as never} size={16} />
-                {c.ar}
+                {label(c, locale)}
               </Chip>
             ))}
           </div>
@@ -341,8 +427,10 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
         {/* ---- amenities ---- */}
         <div>
           <div className={sectionLabel}>
-            المرافق المتوفرة{" "}
-            <span className="font-medium text-muted">({arNum(amenities.length)} مُحدَّد)</span>
+            {t.listings.amenities}{" "}
+            <span className="font-medium text-muted">
+              ({t.admin.selectedCount(arNum(amenities.length, locale))})
+            </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {AMENITIES.map((a) => (
@@ -352,7 +440,7 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
                 onClick={() => toggle(amenities, setAmenities, a.id)}
               >
                 <Icon name={a.icon as never} size={16} />
-                {a.ar}
+                {label(a, locale)}
               </Chip>
             ))}
           </div>
@@ -362,8 +450,8 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
 
         {/* ---- location ---- */}
         <Field
-          label="الموقع على الخريطة"
-          hint="انسخ الإحداثيات من خرائط جوجل والصقها هنا"
+          label={t.admin.mapLocationLabel}
+          hint={t.admin.mapLocationHint}
           error={errors.coordinates}
         >
           <span className="flex items-center gap-2.5 rounded-[13px] border border-line bg-sand-50 px-3.5 focus-within:border-gold-500 focus-within:bg-surface">
@@ -374,31 +462,71 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
               dir="ltr"
               inputMode="decimal"
               placeholder="24.7614, 55.3340"
-              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-end text-[14.5px] text-ink outline-none"
+              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] text-ink outline-none"
             />
           </span>
         </Field>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="اسم المالك" error={errors.ownerName}>
-            <TextInput name="ownerName" defaultValue={draft.ownerName} placeholder="أبو سلطان" />
-          </Field>
+        {/* ---- contact / owner ---- */}
+        {isOwner ? (
+          // An owner does not get a per-listing contact field: their listings all
+          // resolve to the number on their profile, which is what makes changing
+          // it once update every listing at once. Showing it read-only here makes
+          // that relationship visible instead of leaving them hunting for a field
+          // that isn't there.
+          <div className="flex items-center gap-3 rounded-[13px] border border-line bg-sand-50 px-3.5 py-3">
+            <Icon name="chat" size={20} className="text-wa" />
+            <span className="flex-1">
+              <span className="block text-[12.5px] font-bold text-bronze">
+                {t.owner.whatsapp}
+              </span>
+              <span className="block text-[14px] font-bold text-ink" dir="ltr">
+                {ownerWhatsapp || "—"}
+              </span>
+            </span>
+            <Link
+              href="/owner/profile"
+              className="shrink-0 text-[12.5px] font-bold text-bronze no-underline hover:no-underline"
+            >
+              {t.common.edit}
+            </Link>
+          </div>
+        ) : (
+          <>
+            {owners.length > 0 && (
+              <Field label={t.admin.assignOwner} hint={t.admin.assignOwnerHint}>
+                <Select name="ownerId" defaultValue={draft.ownerId ?? ""}>
+                  <option value="">{t.admin.platformOwned}</option>
+                  {owners.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
 
-          <Field
-            label="واتساب المالك"
-            hint="اتركه فارغًا لاستخدام رقم الموقع العام"
-            error={errors.ownerWhatsapp}
-          >
-            <TextInput
-              name="ownerWhatsapp"
-              defaultValue={draft.ownerWhatsapp}
-              dir="ltr"
-              inputMode="tel"
-              placeholder="+971 50 123 4567"
-              className="text-end"
-            />
-          </Field>
-        </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t.admin.ownerNameLabel} error={errors.ownerName}>
+                <TextInput name="ownerName" defaultValue={draft.ownerName} />
+              </Field>
+
+              <Field
+                label={t.admin.ownerWhatsappLabel}
+                hint={t.admin.ownerWhatsappHint}
+                error={errors.ownerWhatsapp}
+              >
+                <TextInput
+                  name="ownerWhatsapp"
+                  defaultValue={draft.ownerWhatsapp}
+                  dir="ltr"
+                  inputMode="tel"
+                  placeholder="+971 50 123 4567"
+                />
+              </Field>
+            </div>
+          </>
+        )}
 
         <div className="h-px bg-line" />
 
@@ -408,23 +536,27 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
             name="published"
             defaultChecked={draft.published}
             icon="public"
-            label="منشورة على الموقع"
-            hint="عند إيقافها لن تظهر للزوار"
+            label={t.admin.publishedToggle}
+            hint={t.admin.publishedToggleHint}
           />
-          <ToggleRow
-            name="verified"
-            defaultChecked={draft.verified}
-            icon="verified"
-            label="موثّقة"
-            hint="تظهر شارة «موثّقة» على البطاقة"
-          />
-          <ToggleRow
-            name="featured"
-            defaultChecked={draft.featured}
-            icon="star"
-            label="مميّزة في الصفحة الرئيسية"
-            hint="تظهر في قسم «استراحات مميّزة»"
-          />
+          {!isOwner && (
+            <>
+              <ToggleRow
+                name="verified"
+                defaultChecked={draft.verified}
+                icon="verified"
+                label={t.admin.verifiedToggle}
+                hint={t.admin.verifiedToggleHint}
+              />
+              <ToggleRow
+                name="featured"
+                defaultChecked={draft.featured}
+                icon="star"
+                label={t.admin.featuredToggle}
+                hint={t.admin.featuredToggleHint}
+              />
+            </>
+          )}
         </div>
 
         {/* ---- save ---- */}
@@ -434,13 +566,17 @@ export function ListingEditor({ draft }: { draft: ListingDraft }) {
             disabled={pending}
             className="flex-1 rounded-2xl bg-night-900 p-4 font-display text-[15px] font-extrabold text-sand-50 shadow-e2 transition hover:bg-night-700 disabled:opacity-60"
           >
-            {pending ? "جارٍ الحفظ…" : isNew ? "إنشاء الاستراحة" : "حفظ التعديلات"}
+            {pending
+              ? t.common.saving
+              : isNew
+                ? t.admin.createListing
+                : t.admin.saveChanges}
           </button>
           <Link
-            href="/admin/listings"
+            href={backHref}
             className="rounded-2xl border border-line bg-surface px-5 py-4 text-[14.5px] font-bold text-ink no-underline hover:no-underline"
           >
-            إلغاء
+            {t.common.cancel}
           </Link>
         </div>
       </form>

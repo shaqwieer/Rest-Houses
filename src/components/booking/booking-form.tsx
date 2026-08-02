@@ -8,6 +8,7 @@ import { Field, TextArea, TextInput } from "@/components/ui/field";
 import { createBookingRequest } from "@/app/actions/booking";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
+import { useLocale } from "@/lib/i18n/provider";
 
 /**
  * Booking request form.
@@ -41,6 +42,7 @@ export function BookingForm({
   depositPercent: number;
 }) {
   const router = useRouter();
+  const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
 
   const [guests, setGuests] = useState(initialGuests);
@@ -97,25 +99,30 @@ export function BookingForm({
 
       {/* ---- step 1: stay ---- */}
       <div>
-        {stepHeading("١", "تفاصيل الإقامة")}
+        {stepHeading(locale === "ar" ? "١" : "1", t.booking.stayDetails)}
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-bold text-bronze">تاريخ الوصول</span>
+            <span className="text-[12.5px] font-bold text-bronze">{t.booking.checkInDate}</span>
             <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 py-3 text-[14.5px] font-semibold text-ink">
               <Icon name="calendar_today" size={19} className="text-gold-600" />
-              {arDayMonth(checkIn)}
+              {arDayMonth(checkIn, locale)}
             </span>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-bold text-bronze">تاريخ المغادرة</span>
+            <span className="text-[12.5px] font-bold text-bronze">{t.booking.checkOutDate}</span>
             <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 py-3 text-[14.5px] font-semibold text-ink">
               <Icon name="event" size={19} className="text-gold-600" />
-              {arDayMonth(checkOut)}
+              {arDayMonth(checkOut, locale)}
             </span>
           </div>
 
-          <Field label="عدد الضيوف" required error={fieldErrors.guests} hint={`الحد الأقصى ${arNum(capacity)}`}>
+          <Field
+            label={t.booking.guestCount}
+            required
+            error={fieldErrors.guests}
+            hint={t.booking.maxGuests(arNum(capacity, locale))}
+          >
             <TextInput
               name="guests"
               type="number"
@@ -133,7 +140,7 @@ export function BookingForm({
           href={`/listings/${encodeURIComponent(listingSlug)}#availability`}
           className="mt-2.5 inline-block text-[12.5px] font-semibold text-bronze underline underline-offset-3"
         >
-          تغيير التواريخ من التقويم
+          {t.booking.changeDates}
         </Link>
       </div>
 
@@ -141,19 +148,19 @@ export function BookingForm({
 
       {/* ---- step 2: contact ---- */}
       <div>
-        {stepHeading("٢", "بيانات التواصل")}
+        {stepHeading(locale === "ar" ? "٢" : "2", t.booking.contactDetails)}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="الاسم الكامل" required error={fieldErrors.customerName}>
+          <Field label={t.booking.fullName} required error={fieldErrors.customerName}>
             <TextInput
               name="customerName"
-              placeholder="مثال: خالد المنصوري"
+              placeholder={t.booking.fullNamePlaceholder}
               autoComplete="name"
               required
               invalid={Boolean(fieldErrors.customerName)}
             />
           </Field>
 
-          <Field label="رقم الجوال (واتساب)" required error={fieldErrors.customerPhone}>
+          <Field label={t.booking.phone} required error={fieldErrors.customerPhone}>
             <TextInput
               name="customerPhone"
               type="tel"
@@ -171,7 +178,7 @@ export function BookingForm({
         </div>
 
         <Field
-          label="البريد الإلكتروني (اختياري)"
+          label={t.booking.email}
           error={fieldErrors.customerEmail}
           className="mt-3"
         >
@@ -186,11 +193,11 @@ export function BookingForm({
           />
         </Field>
 
-        <Field label="ملاحظات إضافية" className="mt-3">
+        <Field label={t.booking.extraNotes} className="mt-3">
           <TextArea
             name="notes"
             rows={4}
-            placeholder="مثال: نحتاج تجهيز المجلس قبل المغرب، ووجود ألعاب أطفال."
+            placeholder={t.booking.notesPlaceholder}
           />
         </Field>
       </div>
@@ -201,12 +208,18 @@ export function BookingForm({
       <div className="flex gap-3 rounded-2xl border border-line bg-sand-50 p-3.5">
         <Icon name="policy" size={21} className="shrink-0 text-bronze" />
         <p className="m-0 text-[12.5px] leading-[1.85] text-muted">
-          بإرسال الطلب فإنك توافق على{" "}
+          {t.booking.policyIntro}{" "}
           <Link href="/policies" className="text-bronze">
-            سياسة الحجز والإلغاء
+            {t.booking.policyLink}
           </Link>
-          . الإلغاء مجاني حتى {arNum(freeCancelHours)} ساعة قبل موعد الوصول، ويُستحق عربون{" "}
-          {arNum(depositPercent)}٪ عند تأكيد المالك.
+          {/* A 0% deposit gets its own sentence rather than "a 0% deposit is
+              due", which reads as a bug to a customer. */}
+          {depositPercent > 0
+            ? t.booking.policyDetail(
+                arNum(freeCancelHours, locale),
+                arNum(depositPercent, locale),
+              )
+            : t.booking.policyDetailNoDeposit(arNum(freeCancelHours, locale))}
         </p>
       </div>
 
@@ -218,19 +231,17 @@ export function BookingForm({
         {pending ? (
           <>
             <Icon name="schedule" size={22} />
-            جارٍ إرسال الطلب…
+            {t.booking.submitting}
           </>
         ) : (
           <>
             <Icon name="send" size={22} />
-            إرسال الطلب عبر الواتساب
+            {t.booking.submit}
           </>
         )}
       </button>
 
-      <p className="m-0 text-center text-[12px] text-muted">
-        لا يُطلب أي دفع عبر الموقع — يتواصل معك المالك للتأكيد.
-      </p>
+      <p className="m-0 text-center text-[12px] text-muted">{t.booking.noPaymentOnline}</p>
     </form>
   );
 }
