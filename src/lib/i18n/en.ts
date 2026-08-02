@@ -359,6 +359,7 @@ export const en: Dictionary = {
     ownerPortalPoint2: "One calendar for all of your rest houses",
     ownerPortalPoint3: "Reply to a customer with one tap on WhatsApp",
     loginHint: "Enter your email address and password to reach your dashboard.",
+    sessionExpired: "Your session has expired, or the account is no longer available. Please sign in again.",
     backToSite: "Back to the site",
     checking: "Checking…",
     enterDashboard: "Sign in to the dashboard",
@@ -573,6 +574,15 @@ export const en: Dictionary = {
     capacityLabel: "Capacity (guests)",
     descriptionLabel: "Description",
     descriptionPlaceholder: "Write a short description highlighting what makes it special.",
+    englishListingCard: "English version of this rest house",
+    englishListingHint:
+      "These are the words a visitor reading the English site sees. Leave one blank and the Arabic text shows instead — translating is optional, field by field.",
+    listingNameEnLabel: "Rest house name (English)",
+    listingNameEnPlaceholder: "Golden Sands Rest House",
+    areaEnLabel: "Area / location (English)",
+    areaEnPlaceholder: "Lahbab – Dubai",
+    descriptionEnLabel: "Description (English)",
+    descriptionEnPlaceholder: "A short description in English.",
     occasionsLabel: "Suitable occasions",
     selectedCount: (n) => `${n} selected`,
     mapLocationLabel: "Location on the map",
@@ -995,5 +1005,13 @@ export const en: Dictionary = {
     body: "The link you followed may be out of date, or the rest house has been removed from the site.",
     home: "Back to home",
     browse: "Browse rest houses",
+  },
+
+  error: {
+    title: "This page could not be shown",
+    body: "Something went wrong while loading it. Try again — and if it keeps happening, browse the other rest houses and we will look into it.",
+    retry: "Try again",
+    updating: "Refreshing the page…",
+    reference: "Error reference",
   },
 };

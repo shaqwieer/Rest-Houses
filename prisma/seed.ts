@@ -74,6 +74,16 @@ type SeedListing = {
   name: string;
   city: string;
   area: string;
+  /**
+   * English name/area/description. Filled in for every seeded rest house on
+   * purpose: the demo catalogue is what an operator judges the English site by,
+   * and a half-Arabic English page reads as a bug rather than as a field they
+   * forgot to fill in. Owner-created listings start with these blank and fall
+   * back to Arabic — see `localizeListing()` in src/lib/listings.ts.
+   */
+  nameEn: string;
+  areaEn: string;
+  descriptionEn: string;
   pricePerNight: number;
   weekendPrice: number;
   capacity: number;
@@ -94,8 +104,10 @@ type SeedListing = {
 const LISTINGS: SeedListing[] = [
   {
     name: "استراحة الرمال الذهبية",
+    nameEn: "Golden Sands Rest House",
     city: "dubai",
     area: "لهباب – دبي",
+    areaEn: "Lahbab – Dubai",
     pricePerNight: 1800,
     weekendPrice: 2300,
     capacity: 60,
@@ -111,12 +123,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [3, 4, 10, 11, 17, 18, 24, 25],
     description:
       "استراحة واسعة على أطراف كثبان لهباب، تجمع بين المجلس العربي التقليدي ومساحات خارجية مضاءة بعناية. مثالية للتجمعات العائلية والمناسبات الهادئة، مع مسبح خاص مسوَّر ومطبخ تحضيري مستقل يسهّل استضافة الولائم الكبيرة.",
+    descriptionEn:
+      "A spacious rest house on the edge of the Lahbab dunes, pairing a traditional Arabic majlis with carefully lit outdoor spaces. Ideal for family gatherings and quiet occasions, with a walled private pool and a separate prep kitchen that makes hosting a large banquet straightforward.",
     ownerName: "أبو سلطان",
   },
   {
     name: "استراحة واحة ليوا",
+    nameEn: "Liwa Oasis Rest House",
     city: "abudhabi",
     area: "ليوا – الظفرة",
+    areaEn: "Liwa – Al Dhafra",
     pricePerNight: 2400,
     weekendPrice: 3000,
     capacity: 80,
@@ -132,12 +148,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [1, 2, 8, 9, 15, 16, 22, 23, 29, 30],
     description:
       "إطلالة مباشرة على كثبان ليوا الحمراء، مع صالة مناسبات مغلقة تتسع لثمانين ضيفًا وخيمة شتوية مجهزة بالكامل. الموقع هادئ تمامًا بعد المغرب وسماؤه صافية لرصد النجوم.",
+    descriptionEn:
+      "Looking straight out over the red dunes of Liwa, with an enclosed function hall seating eighty and a fully equipped winter tent. Completely quiet after sunset, and the sky here is clear enough for stargazing.",
     ownerName: "سالم المنصوري",
   },
   {
     name: "استراحة نجوم الصحراء",
+    nameEn: "Desert Stars Rest House",
     city: "dubai",
     area: "الفقع – دبي",
+    areaEn: "Al Faqa – Dubai",
     pricePerNight: 1250,
     weekendPrice: 1600,
     capacity: 40,
@@ -153,12 +173,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [5, 6, 12, 13, 19, 20],
     description:
       "مخيم شتوي بطابع بدوي معاصر، بعيد عن التلوث الضوئي — الخيار الأمثل لأمسيات رصد النجوم والتجمعات الصغيرة. يشمل وجارًا للنار وجلسات أرضية تقليدية.",
+    descriptionEn:
+      "A winter camp with a contemporary Bedouin character, far enough from light pollution to be the right choice for a stargazing evening or a small gathering. Includes a fire pit and traditional floor seating.",
     ownerName: "راشد الكعبي",
   },
   {
     name: "استراحة القصر الرملي",
+    nameEn: "Sand Palace Rest House",
     city: "abudhabi",
     area: "العين – الهيلي",
+    areaEn: "Al Ain – Hili",
     pricePerNight: 3200,
     weekendPrice: 3900,
     capacity: 120,
@@ -174,12 +198,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [7, 8, 9, 14, 21, 22, 28],
     description:
       "أفخم ما في العين: قاعة أعراس مكيفة، مسبح لامتناهٍ، ومجلس رجالي ونسائي منفصلان مع خدمة ضيافة كاملة. مواقف تتسع لأربعين سيارة وبوابة دخول مستقلة للعرائس.",
+    descriptionEn:
+      "The grandest venue in Al Ain: an air-conditioned wedding hall, an infinity pool, and separate men's and women's majlis with full hospitality service. Parking for forty cars and a private entrance for the bridal party.",
     ownerName: "أم خالد",
   },
   {
     name: "استراحة سدرة",
+    nameEn: "Sidra Rest House",
     city: "sharjah",
     area: "البدائر – الشارقة",
+    areaEn: "Al Badayer – Sharjah",
     pricePerNight: 950,
     weekendPrice: 1200,
     capacity: 30,
@@ -195,12 +223,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [2, 3, 16, 17, 26],
     description:
       "استراحة اقتصادية أنيقة قرب كثبان البدائر، مناسبة للتجمعات الصغيرة ورحلات نهاية الأسبوع. بسيطة ونظيفة، وقريبة من الطريق الرئيسي.",
+    descriptionEn:
+      "A neat, affordable rest house near the Al Badayer dunes, suited to small gatherings and weekend trips. Simple and clean, and close to the main road.",
     ownerName: "محمد البلوشي",
   },
   {
     name: "استراحة الظفرة",
+    nameEn: "Al Dhafra Rest House",
     city: "abudhabi",
     area: "الظفرة – أبوظبي",
+    areaEn: "Al Dhafra – Abu Dhabi",
     pricePerNight: 2100,
     weekendPrice: 2600,
     capacity: 70,
@@ -216,12 +248,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [4, 5, 11, 12, 18, 19, 25, 26],
     description:
       "مساحات خضراء واسعة ومسبح مُدفّأ، مع مطبخ تحضيري مستقل يسهّل استضافة الولائم الكبيرة. إضاءة خارجية كاملة تجعل الجلسات الليلية مريحة صيفًا وشتاءً.",
+    descriptionEn:
+      "Wide green lawns and a heated pool, with a separate prep kitchen that makes hosting a large banquet straightforward. Full exterior lighting keeps evening seating comfortable in summer and winter alike.",
     ownerName: "خليفة الحمادي",
   },
   {
     name: "استراحة نخيل الوادي",
+    nameEn: "Valley Palms Rest House",
     city: "abudhabi",
     area: "وادي العين",
+    areaEn: "Wadi Al Ain",
     pricePerNight: 1650,
     weekendPrice: 2050,
     capacity: 50,
@@ -237,12 +273,16 @@ const LISTINGS: SeedListing[] = [
     blocked: [6, 13, 20, 27],
     description:
       "محاطة بمزرعة نخيل مثمرة، بمسبح أطفال منفصل وملعب كرة قدم بأرضية عشبية. اختيار مثالي للعائلات التي معها أطفال صغار.",
+    descriptionEn:
+      "Surrounded by a working date farm, with a separate children's pool and a grass football pitch. An ideal choice for families with young children.",
     ownerName: "عبدالله النعيمي",
   },
   {
     name: "استراحة الكثبان الحمراء",
+    nameEn: "Red Dunes Rest House",
     city: "dubai",
     area: "لهباب – دبي",
+    areaEn: "Lahbab – Dubai",
     pricePerNight: 2900,
     weekendPrice: 3500,
     capacity: 100,
@@ -258,6 +298,8 @@ const LISTINGS: SeedListing[] = [
     blocked: [1, 7, 8, 14, 15, 21, 28, 29],
     description:
       "تصميم معماري معاصر مستوحى من الطين والحجر، مع سطح مفتوح يطل على أعلى كثبان لهباب. نظام صوتي وشاشة عرض كبيرة للمناسبات، وكاميرات مراقبة على كامل المحيط.",
+    descriptionEn:
+      "Contemporary architecture drawing on clay and stone, with an open roof terrace overlooking the highest of the Lahbab dunes. A sound system and a large projector screen for events, and CCTV across the whole perimeter.",
     ownerName: "سيف الظاهري",
   },
 ];
@@ -510,6 +552,9 @@ async function main() {
       description: item.description,
       city: item.city,
       area: item.area,
+      nameEn: item.nameEn,
+      descriptionEn: item.descriptionEn,
+      areaEn: item.areaEn,
       lat: item.lat,
       lng: item.lng,
       pricePerNight: item.pricePerNight,

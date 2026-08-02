@@ -271,6 +271,30 @@ model Listing {
   // filter chips stay stable even if the Arabic label is re-worded later.
   city String
   area String @default("")
+
+  // ---------------------------------------------------------------------
+  // English siblings for the three fields an owner writes in free text.
+  //
+  // Everything else on a listing is already bilingual for free: city, amenity
+  // and category labels are ids resolved through `label()` in
+  // src/lib/constants.ts, and prices and capacities are numbers. These three
+  // are the only stored *prose*, which is why an otherwise-English page still
+  // showed an Arabic title, an Arabic description and an Arabic location —
+  // exactly the gap reported after the bilingual release.
+  //
+  // Modelled on the `*En` columns of SiteSettings, and for the same reason:
+  // nullable with no default, so null/blank means "fall back to the Arabic
+  // value" via `localizeListing()` in src/lib/listings.ts. That makes the
+  // migration pure DDL with nothing to backfill, and it means an owner who
+  // never fills these in keeps precisely the behaviour they have today.
+  //
+  // `slug` is deliberately NOT duplicated. One listing keeps one Arabic-derived
+  // URL in both languages — see the locale-cookie note in src/lib/i18n/config.ts
+  // for why the two languages share a URL at all.
+  // ---------------------------------------------------------------------
+  nameEn        String?
+  descriptionEn String?
+  areaEn        String?
   lat  Float  @default(24.7614)
   lng  Float  @default(55.3340)
 

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { prisma } from "./prisma";
 import type { SiteSettings } from "@prisma/client";
-import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
+import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 
 /**
  * Site settings access.
@@ -83,24 +83,13 @@ const FALLBACK = {
 export type Settings = SiteSettings;
 
 /**
- * Pick the right language for a piece of stored copy.
+ * Re-exported so the settings call sites below read as they always did.
  *
- * The English column is optional everywhere, so an operator who has not filled
- * it in still gets a working English site — with the Arabic text in those
- * specific fields rather than an empty hero. Falling back is deliberately
- * silent: a blank heading is a far worse failure than an untranslated one.
+ * The implementation moved to src/lib/i18n/config.ts when listings gained their
+ * own English columns: the listing card resolves a rest house's name in the
+ * browser, and a client bundle cannot import this module (Prisma).
  */
-export function localized(
-  arabic: string | null | undefined,
-  english: string | null | undefined,
-  locale: Locale = DEFAULT_LOCALE,
-): string {
-  if (locale === "en") {
-    const en = (english ?? "").trim();
-    if (en) return en;
-  }
-  return (arabic ?? "").trim();
-}
+export { localized };
 
 /**
  * Every localisable settings field, resolved for one locale at once.

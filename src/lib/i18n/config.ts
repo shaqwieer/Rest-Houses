@@ -50,6 +50,38 @@ export function normalizeLocale(value: unknown): Locale {
   return isLocale(value) ? value : DEFAULT_LOCALE;
 }
 
+/**
+ * Pick the right language for one piece of *stored* copy.
+ *
+ * This is the counterpart to the dictionaries: those hold text the developers
+ * wrote, this resolves text an operator or an owner typed into the database —
+ * the site name and hero (SiteSettings.*En) and a rest house's own name,
+ * description and area (Listing.*En).
+ *
+ * The English column is optional in every one of those places, so an operator
+ * who has not filled it in still gets a working English site — with the Arabic
+ * text in those specific fields rather than an empty heading. Falling back is
+ * deliberately silent: a blank title is a far worse failure than an untranslated
+ * one.
+ *
+ * It lives in this module, rather than beside the settings queries where it
+ * started, because client components need it too — the listing card resolves a
+ * rest house's name in the browser, exactly as it already resolves the city and
+ * amenity labels. Anything importing `src/lib/settings.ts` pulls in Prisma and
+ * cannot cross into a client bundle.
+ */
+export function localized(
+  arabic: string | null | undefined,
+  english: string | null | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (locale === "en") {
+    const en = (english ?? "").trim();
+    if (en) return en;
+  }
+  return (arabic ?? "").trim();
+}
+
 export type Direction = "rtl" | "ltr";
 
 /** Arabic renders right-to-left; English left-to-right. */

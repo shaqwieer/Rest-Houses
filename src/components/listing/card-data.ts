@@ -16,6 +16,17 @@ export type ListingCardData = {
   name: string;
   city: string;
   area: string;
+  /**
+   * The English siblings travel to the card *unresolved*.
+   *
+   * `<ListingCard>` is a client component that already reads the locale from
+   * context to label the city and the amenity chips, so it resolves the name
+   * and area the same way. Picking the language here instead would mean
+   * threading a `locale` argument through all four call sites — and the card
+   * would then have two different mechanisms for the same job.
+   */
+  nameEn: string | null;
+  areaEn: string | null;
   pricePerNight: number;
   capacity: number;
   rating: number;
@@ -32,6 +43,8 @@ export function toCardData(listing: ListingCardData): ListingCardData {
     name: listing.name,
     city: listing.city,
     area: listing.area,
+    nameEn: listing.nameEn,
+    areaEn: listing.areaEn,
     pricePerNight: listing.pricePerNight,
     capacity: listing.capacity,
     rating: listing.rating,

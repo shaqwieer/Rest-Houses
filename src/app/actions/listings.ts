@@ -52,6 +52,22 @@ const VALID_CITY_IDS = CITIES.map((c) => c.id);
 const VALID_AMENITY_IDS = new Set(AMENITIES.map((a) => a.id));
 const VALID_CATEGORY_IDS = new Set(CATEGORIES.map((c) => c.id));
 
+/**
+ * An optional free-text column: trimmed, capped, and blank stored as null.
+ *
+ * Used for the `*En` fields, where "" and NULL would both mean "fall back to
+ * Arabic". Collapsing them keeps one representation in the database instead of
+ * two that behave alike but read differently.
+ */
+function blankToNull(max: number) {
+  return z
+    .string()
+    .trim()
+    .max(max)
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null));
+}
+
 function listingSchema(t: Dictionary) {
   return z.object({
     name: z.string().trim().min(3, t.validation.nameTooShort).max(160),
@@ -60,6 +76,19 @@ function listingSchema(t: Dictionary) {
       message: t.validation.invalidCity,
     }),
     area: z.string().trim().max(160).default(""),
+    /**
+     * English versions of the three free-text fields.
+     *
+     * No minimum length, unlike `name`: leaving one blank is the documented way
+     * to say "show the Arabic to English readers too", so a 2-character English
+     * name being rejected while an empty one is accepted would be nonsense.
+     * Normalised to null when blank rather than stored as "" — `localized()`
+     * treats both the same, but null is what the column means and it keeps
+     * "never translated" distinguishable in the data.
+     */
+    nameEn: blankToNull(160),
+    descriptionEn: blankToNull(5000),
+    areaEn: blankToNull(160),
     pricePerNight: z.coerce
       .number()
       .int()
@@ -114,6 +143,9 @@ function readListingForm(formData: FormData, t: Dictionary) {
     description: formData.get("description") ?? "",
     city: formData.get("city"),
     area: formData.get("area") ?? "",
+    nameEn: formData.get("nameEn") ?? "",
+    descriptionEn: formData.get("descriptionEn") ?? "",
+    areaEn: formData.get("areaEn") ?? "",
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
     capacity: formData.get("capacity"),
@@ -186,6 +218,12 @@ function listingColumns(
     description: data.description,
     city: data.city,
     area: data.area,
+    // Owner-writable in both dashboards: translating your own listing is not an
+    // editorial privilege, and an owner is the only person who knows what their
+    // rest house should be called in English.
+    nameEn: data.nameEn,
+    descriptionEn: data.descriptionEn,
+    areaEn: data.areaEn,
     pricePerNight: data.pricePerNight,
     weekendPrice: data.weekendPrice,
     capacity: data.capacity,

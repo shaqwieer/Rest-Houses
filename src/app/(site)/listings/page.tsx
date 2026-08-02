@@ -6,7 +6,7 @@ import { FiltersAside, FiltersTrigger } from "@/components/listing/filters-panel
 import { ResultsToolbar } from "@/components/listing/results-toolbar";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
-import { findListings, type ListingFilters } from "@/lib/listings";
+import { findListings, localizeListing, type ListingFilters } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { localizeSettings } from "@/lib/settings";
 import { getI18n } from "@/lib/i18n/server";
@@ -76,16 +76,21 @@ export default async function ListingsPage({
   const filters = parseFilters(sp);
   const listings = await findListings(filters);
 
-  const mapPoints = listings.map((l) => ({
-    id: l.id,
-    lat: l.lat,
-    lng: l.lng,
-    name: l.name,
-    area: l.area,
-    price: l.pricePerNight,
-    capacity: l.capacity,
-    href: `/listings/${encodeURIComponent(l.slug)}`,
-  }));
+  // The marker popups are prose too — an English visitor panning the map should
+  // not meet Arabic names there alone.
+  const mapPoints = listings.map((listing) => {
+    const l = localizeListing(listing, locale);
+    return {
+      id: listing.id,
+      lat: listing.lat,
+      lng: listing.lng,
+      name: l.name,
+      area: l.area,
+      price: listing.pricePerNight,
+      capacity: listing.capacity,
+      href: `/listings/${encodeURIComponent(listing.slug)}`,
+    };
+  });
 
   const heading =
     filters.city && filters.city !== "all"

@@ -7,7 +7,7 @@ import { BookingCard, CalendarSection, MobileBookingBar } from "@/components/lis
 import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
-import { getListingBySlug, getUnavailableDates } from "@/lib/listings";
+import { getListingBySlug, getUnavailableDates, localizeListing } from "@/lib/listings";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { cityLabel, label as pickLabel } from "@/lib/constants";
 import { arNum, arRating, arTimeAgo } from "@/lib/format";
@@ -51,23 +51,27 @@ export async function generateMetadata({
 
   const settings = await getSettings();
   const s = localizeSettings(settings, locale);
-  const where = listing.area || cityLabel(listing.city, locale);
+  // Title, description and the OG card all read the *localised* prose, so an
+  // English search result is English end to end rather than an English sentence
+  // wrapped around an Arabic name.
+  const l = localizeListing(listing, locale);
+  const where = l.area;
 
   const description = (
     locale === "en"
-      ? `${listing.name} in ${where} — sleeps up to ${listing.capacity} guests, from ${listing.pricePerNight} AED per night. ${listing.description}`
-      : `${listing.name} في ${where} — تتسع حتى ${listing.capacity} ضيف، السعر من ${listing.pricePerNight} د.إ لليلة. ${listing.description}`
+      ? `${l.name} in ${where} — sleeps up to ${listing.capacity} guests, from ${listing.pricePerNight} AED per night. ${l.description}`
+      : `${l.name} في ${where} — تتسع حتى ${listing.capacity} ضيف، السعر من ${listing.pricePerNight} د.إ لليلة. ${l.description}`
   ).slice(0, 300);
 
   const path = `/listings/${encodeURIComponent(listing.slug)}`;
 
   return {
-    title: `${listing.name} — ${where}`,
+    title: `${l.name} — ${where}`,
     description,
     alternates: { canonical: path },
     openGraph: {
       type: "article",
-      title: `${listing.name} — ${where}`,
+      title: `${l.name} — ${where}`,
       description,
       url: absoluteUrl(path),
       siteName: s.siteName,
@@ -75,10 +79,10 @@ export async function generateMetadata({
       // Dynamic OG card, generated per listing — see src/app/api/og/route.tsx
       images: [
         {
-          url: `/api/og?title=${encodeURIComponent(listing.name)}&area=${encodeURIComponent(where)}&price=${listing.pricePerNight}&capacity=${listing.capacity}`,
+          url: `/api/og?title=${encodeURIComponent(l.name)}&area=${encodeURIComponent(where)}&price=${listing.pricePerNight}&capacity=${listing.capacity}`,
           width: 1200,
           height: 630,
-          alt: listing.name,
+          alt: l.name,
         },
       ],
     },
@@ -106,7 +110,10 @@ export default async function ListingDetailPage({
   ]);
 
   const s = localizeSettings(settings, locale);
-  const where = listing.area || cityLabel(listing.city, locale);
+  // The name, description and area an English visitor reads. Every use below
+  // goes through `l`, never through the raw Arabic column.
+  const l = localizeListing(listing, locale);
+  const where = l.area;
 
   // The deposit shown here is the same value the server will charge: resolved
   // from the listing's own rate, falling back to the platform default only when
@@ -130,8 +137,8 @@ export default async function ListingDetailPage({
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "LodgingBusiness",
-    name: listing.name,
-    description: listing.description,
+    name: l.name,
+    description: l.description,
     url: absoluteUrl(`/listings/${encodeURIComponent(listing.slug)}`),
     image: listing.images.map((i) => i.url),
     // The owner's number, not the site's — the same resolution the contact
@@ -142,7 +149,7 @@ export default async function ListingDetailPage({
     address: {
       "@type": "PostalAddress",
       addressLocality: cityLabel(listing.city, locale),
-      addressRegion: listing.area,
+      addressRegion: l.area,
       addressCountry: "AE",
     },
     geo: { "@type": "GeoCoordinates", latitude: listing.lat, longitude: listing.lng },
@@ -205,12 +212,12 @@ export default async function ListingDetailPage({
               {t.listings.title}
             </Link>
             <Icon name={chevron} size={15} />
-            <span className="font-semibold text-ink">{listing.name}</span>
+            <span className="font-semibold text-ink">{l.name}</span>
           </nav>
 
           <Gallery
             listingId={listing.id}
-            name={listing.name}
+            name={l.name}
             images={listing.images}
             verified={listing.verified}
           />
@@ -223,7 +230,7 @@ export default async function ListingDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line pb-5">
               <div className="min-w-0">
                 <h1 className="m-0 mb-2 font-display text-[clamp(22px,2.8vw,34px)] font-extrabold leading-tight text-ink">
-                  {listing.name}
+                  {l.name}
                 </h1>
                 <div className="flex flex-wrap items-center gap-3.5 text-[14px] text-muted">
                   <span className="inline-flex items-center gap-1.5">
@@ -259,7 +266,7 @@ export default async function ListingDetailPage({
                 {t.listing.descriptionTitle}
               </h2>
               <p className="m-0 mb-4 text-[15.5px] leading-[2] text-ink/86">
-                {listing.description}
+                {l.description}
               </p>
 
               <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -336,7 +343,7 @@ export default async function ListingDetailPage({
                       id: listing.id,
                       lat: listing.lat,
                       lng: listing.lng,
-                      name: listing.name,
+                      name: l.name,
                       area: where,
                       capacity: listing.capacity,
                     },

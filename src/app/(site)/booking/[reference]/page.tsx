@@ -6,6 +6,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
+import { localizeListing } from "@/lib/listings";
 import { publicOwnerFields } from "@/lib/owners";
 import { isDepositPaymentEnabled } from "@/lib/payments";
 import { arDayMonth } from "@/lib/dates";
@@ -53,8 +54,13 @@ export default async function BookingConfirmationPage({
       listing: {
         select: {
           name: true,
+          nameEn: true,
           slug: true,
           area: true,
+          areaEn: true,
+          city: true,
+          description: true,
+          descriptionEn: true,
           ownerName: true,
           ownerWhatsapp: true,
           owner: { select: publicOwnerFields() },
@@ -67,6 +73,9 @@ export default async function BookingConfirmationPage({
 
   const settings = await getSettings();
   const s = localizeSettings(settings, locale);
+  // The whole confirmation, including the WhatsApp text the guest is about to
+  // send, is written in the language they booked in.
+  const l = localizeListing(booking.listing, locale);
 
   const contact = resolveListingWhatsapp(
     booking.listing,
@@ -77,8 +86,8 @@ export default async function BookingConfirmationPage({
   const message = bookingRequestMessage({
     siteName: s.siteName,
     reference: booking.reference,
-    listingName: booking.listing.name,
-    listingArea: booking.listing.area,
+    listingName: l.name,
+    listingArea: l.area,
     listingUrl: absoluteUrl(`/listings/${encodeURIComponent(booking.listing.slug)}`),
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
@@ -121,7 +130,7 @@ export default async function BookingConfirmationPage({
           <h2 className="m-0 mb-4 font-display text-[16px] font-extrabold text-ink">
             {t.booking.summaryTitle}
           </h2>
-          <Row label={t.admin.listings} value={booking.listing.name} />
+          <Row label={t.admin.listings} value={l.name} />
           <Row
             label={t.listing.dates}
             value={`${arDayMonth(booking.checkIn, locale)} – ${arDayMonth(booking.checkOut, locale)}`}

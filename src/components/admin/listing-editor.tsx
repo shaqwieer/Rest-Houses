@@ -45,6 +45,15 @@ export type ListingDraft = {
   description: string;
   city: string;
   area: string;
+  /**
+   * English versions of the three free-text fields. All optional — blank means
+   * "show the Arabic text to English readers too", which is what
+   * `localizeListing()` in src/lib/listings.ts does. See the English card below
+   * the description, and the note on `nameEn` in prisma/schema.prisma.
+   */
+  nameEn: string;
+  descriptionEn: string;
+  areaEn: string;
   pricePerNight: number;
   weekendPrice: number;
   capacity: number;
@@ -404,6 +413,64 @@ export function ListingEditor({
             placeholder={t.admin.descriptionPlaceholder}
           />
         </Field>
+
+        <div className="h-px bg-line" />
+
+        {/* ---- English version ----
+            The name, the area line and the description are the only stored
+            prose on a listing; everything else (city, amenities, occasions) is
+            an id the interface already translates on its own. Without these
+            three boxes the English site showed an English frame around Arabic
+            content, which is what was reported.
+
+            Grouped in one block rather than paired with each Arabic field so
+            the common case — an owner who writes Arabic and stops — stays a
+            short form they can scroll past. `dir="ltr"` on the inputs because
+            the surrounding document is RTL and English typed into an RTL box
+            puts its punctuation on the wrong end. */}
+        <div className="rounded-[20px] border border-dashed border-sand-300 bg-sand-50 p-3.5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Icon name="public" size={18} className="text-bronze" />
+            <span className="text-[12.5px] font-bold text-bronze">
+              {t.admin.englishListingCard}
+            </span>
+          </div>
+          <p className="m-0 mb-3 text-[11.5px] leading-relaxed text-muted">
+            {t.admin.englishListingHint}
+          </p>
+
+          <div className="flex flex-col gap-3">
+            <Field label={t.admin.listingNameEnLabel} error={errors.nameEn}>
+              <TextInput
+                name="nameEn"
+                dir="ltr"
+                defaultValue={draft.nameEn}
+                placeholder={t.admin.listingNameEnPlaceholder}
+                invalid={Boolean(errors.nameEn)}
+              />
+            </Field>
+
+            <Field label={t.admin.areaEnLabel} error={errors.areaEn}>
+              <TextInput
+                name="areaEn"
+                dir="ltr"
+                defaultValue={draft.areaEn}
+                placeholder={t.admin.areaEnPlaceholder}
+                invalid={Boolean(errors.areaEn)}
+              />
+            </Field>
+
+            <Field label={t.admin.descriptionEnLabel} error={errors.descriptionEn}>
+              <TextArea
+                name="descriptionEn"
+                dir="ltr"
+                rows={5}
+                defaultValue={draft.descriptionEn}
+                placeholder={t.admin.descriptionEnPlaceholder}
+              />
+            </Field>
+          </div>
+        </div>
 
         <div className="h-px bg-line" />
 

@@ -188,7 +188,14 @@ export async function listListingsForAdmin(opts: {
 
   const term = (opts.search ?? "").trim();
   if (term) {
-    where.OR = [{ name: { contains: term } }, { area: { contains: term } }];
+    // Both languages, matching the public grid's search — an admin who knows a
+    // listing only by its English name must be able to find it here.
+    where.OR = [
+      { name: { contains: term, mode: "insensitive" } },
+      { nameEn: { contains: term, mode: "insensitive" } },
+      { area: { contains: term, mode: "insensitive" } },
+      { areaEn: { contains: term, mode: "insensitive" } },
+    ];
   }
   if (opts.ownerId && opts.ownerId !== "all") {
     where.ownerId = opts.ownerId === "none" ? null : opts.ownerId;

@@ -417,6 +417,7 @@ export const ar = {
     ownerPortalPoint2: "تقويم واحد لكل استراحاتك",
     ownerPortalPoint3: "ردّ على العميل بضغطة واحدة على الواتساب",
     loginHint: "أدخل بريدك الإلكتروني وكلمة المرور للوصول إلى لوحة التحكم.",
+    sessionExpired: "انتهت صلاحية جلستك أو لم يعد الحساب متاحًا. سجّل الدخول من جديد.",
     backToSite: "الرجوع إلى الموقع",
     checking: "جارٍ التحقّق…",
     enterDashboard: "دخول لوحة التحكم",
@@ -643,6 +644,15 @@ export const ar = {
     capacityLabel: "السعة (ضيف)",
     descriptionLabel: "الوصف",
     descriptionPlaceholder: "اكتب وصفًا موجزًا يبرز ما يميّز استراحتك.",
+    englishListingCard: "النسخة الإنجليزية للاستراحة",
+    englishListingHint:
+      "هذه الحقول هي ما يقرأه زائر الواجهة الإنجليزية. اتركها فارغة ليظهر النص العربي كما هو — الترجمة اختيارية حقلًا بحقل.",
+    listingNameEnLabel: "اسم الاستراحة (إنجليزي)",
+    listingNameEnPlaceholder: "Golden Sands Rest House",
+    areaEnLabel: "المنطقة / الموقع (إنجليزي)",
+    areaEnPlaceholder: "Lahbab – Dubai",
+    descriptionEnLabel: "الوصف (إنجليزي)",
+    descriptionEnPlaceholder: "A short description in English.",
     occasionsLabel: "المناسبات المناسبة",
     selectedCount: (n: string) => `${n} مُحدَّد`,
     mapLocationLabel: "الموقع على الخريطة",
@@ -1069,6 +1079,14 @@ export const ar = {
     body: "الرابط الذي وصلت منه قد يكون قديمًا، أو أن الاستراحة أُزيلت من الموقع.",
     home: "العودة للرئيسية",
     browse: "تصفّح الاستراحات",
+  },
+
+  error: {
+    title: "تعذّر عرض هذه الصفحة",
+    body: "حدث خلل مؤقت أثناء التحميل. أعد المحاولة — وإن تكرّر الأمر فتصفّح بقية الاستراحات وسنعالجه.",
+    retry: "إعادة المحاولة",
+    updating: "جارٍ تحديث الصفحة…",
+    reference: "رمز الخطأ",
   },
 };
 // NOTE: deliberately **not** `as const`. Narrowing every value to its own
