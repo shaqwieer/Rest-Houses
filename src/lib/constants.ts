@@ -17,6 +17,30 @@ import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
  * `icon` is a Material Symbols Rounded ligature name, matching the design.
  */
 
+/* --------------------------------------------------------------------------
+ * The stand-in photograph.
+ *
+ * Used wherever a real photo is missing: a listing whose owner has not uploaded
+ * one yet, and the home page banner when no hero image has been set in
+ * /admin/settings. A desert-and-skyline shot rather than a grey placeholder
+ * box — a brand-new listing on the grid should look like a rest house, not like
+ * a broken card, because the empty state is what an owner sees the minute after
+ * they publish.
+ *
+ * A file in /public, deliberately, not a database row: it must render on a
+ * fresh install with an empty `ListingImage` table, and it must never be
+ * something an admin can accidentally delete from the gallery editor. It is
+ * resolved at render time only — nothing ever writes this path into the
+ * database, so the day an owner uploads a real photo it simply disappears with
+ * no orphan row left behind.
+ *
+ * Kept at 1920px wide (~110 KB). The source was 7595px/4.9 MB, which the image
+ * optimiser would have had to decode and re-encode for every card size on a
+ * cold cache — on the single-core VPS this runs on, that is seconds of CPU for
+ * a picture nobody chose.
+ * -------------------------------------------------------------------------- */
+export const DEFAULT_PHOTO_URL = "/default-photo.webp";
+
 /** Anything with a label in both languages. */
 export type Localized = { ar: string; en: string };
 

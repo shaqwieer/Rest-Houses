@@ -237,6 +237,44 @@ Go to **/admin/settings**. You can change:
 
 Saving takes effect immediately across the whole site.
 
+### Arabic and English: what translates itself and what you type twice
+
+The site runs in two languages off one set of URLs (the choice is a cookie —
+see the header note in `src/lib/i18n/config.ts` for why there is no `/en/`
+prefix). Translation happens on two completely different tiers, and knowing
+which is which saves a lot of "why is this still Arabic":
+
+**Tier 1 — text the developers wrote.** Every label, button, heading, validation
+message and empty state lives in `src/lib/i18n/ar.ts` and `en.ts`. Switching
+language switches all of it, instantly, with nothing to fill in.
+`src/lib/i18n/en.ts` is typed as `typeof ar`, so a missing key fails
+`npm run typecheck` rather than rendering a blank.
+
+**Tier 2 — text *you* typed into the database.** A dictionary cannot translate
+words that did not exist when the code was written. Those have an English
+sibling column each, and they are the only things anyone has to enter twice:
+
+| Where | Fields | Filled in at |
+|---|---|---|
+| Site copy | site name, tagline, hero heading + body, footer blurb, address, check-in/out times, SEO title + description | **/admin/settings** → "English copy" card |
+| A rest house | name, area/location line, description | **the listing editor** → "English version" card, in both `/admin` and `/owner` |
+
+Everything else on a listing translates itself, because it is stored as an id
+rather than as words: the emirate, the amenity chips and the occasion tags all
+resolve through `label()` in `src/lib/constants.ts`, which carries both
+languages for every entry.
+
+Every English field is **optional**. Leave one blank and English readers see the
+Arabic text for that field alone — `localized()` in `src/lib/i18n/config.ts`
+falls back per field, not per record, so a listing with an English name but no
+English description shows the English name and the Arabic description rather
+than reverting wholesale. That is deliberate: a half-translated listing beats a
+blank heading.
+
+Search covers both languages at once, in the public grid and in `/admin`, so a
+rest house is findable by either name no matter which language the visitor is
+reading.
+
 ### How the theming actually works
 
 Four hex values are stored in the database. On every request the root layout
@@ -453,6 +491,21 @@ variable and nothing that *calls* it.
 | `local` | `public/uploads/` on disk | ✅ default outside Docker |
 | `cloudinary` | Cloudinary | adapter written — see below |
 | `s3` | S3 / R2 / Spaces / MinIO | adapter written — see below |
+
+### The stand-in photo
+
+`public/default-photo.webp` is what renders wherever a real photograph is
+missing — a listing whose owner has not uploaded one yet, and the home page
+banner when no hero image has been set in **/admin/settings**. It is resolved at
+render time (`DEFAULT_PHOTO_URL` in `src/lib/constants.ts`, applied by `toView()`
+in `src/lib/listings.ts`), never written into the database, so the moment an
+owner uploads a real photo it disappears with no orphan row behind it. Swap the
+picture by replacing the file; nothing else needs changing.
+
+Keep the replacement around 1600–1920px wide and a few hundred KB. It is the
+source the image optimiser decodes and re-encodes for every card size on a cold
+cache, and a multi-megabyte original costs seconds of CPU on a small VPS for a
+picture nobody chose.
 
 ### `db` — images in the database
 

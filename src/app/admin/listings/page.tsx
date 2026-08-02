@@ -8,7 +8,8 @@ import {
 } from "@/components/admin/table-shell";
 import { requireAdminPage } from "@/lib/auth";
 import { listListingsForAdmin, readPage } from "@/lib/admin-queries";
-import { cityLabel } from "@/lib/constants";
+import { localizeListing } from "@/lib/listings";
+import { DEFAULT_PHOTO_URL } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 
@@ -38,6 +39,15 @@ export default async function AdminListingsPage({
   const published = publishedRaw === "yes" || publishedRaw === "no" ? publishedRaw : "all";
 
   const result = await listListingsForAdmin({ page, search, ownerId, published });
+
+  // Named rather than spread from `localizeListing()`: the row is a client
+  // component, so every field handed to it is serialised into the RSC payload.
+  // Spreading would ship each listing's full description to the browser for a
+  // grid that never renders one — the same waste `toCardData()` exists to avoid.
+  const rows = result.rows.map((listing) => {
+    const { name, area } = localizeListing(listing, locale);
+    return { listing, name, area };
+  });
 
   return (
     <div className="animate-fade-up">
@@ -83,17 +93,17 @@ export default async function AdminListingsPage({
         </div>
       ) : (
         <div className="grid gap-2.5 lg:grid-cols-2">
-          {result.rows.map((listing) => (
+          {rows.map(({ listing, name, area }) => (
             <AdminListingRow
               key={listing.id}
               listing={{
                 id: listing.id,
                 slug: listing.slug,
-                name: listing.name,
-                area: listing.area || cityLabel(listing.city, locale),
+                name,
+                area,
                 pricePerNight: listing.pricePerNight,
                 capacity: listing.capacity,
-                coverUrl: listing.images[0]?.url ?? null,
+                coverUrl: listing.images[0]?.url ?? DEFAULT_PHOTO_URL,
                 published: listing.published,
                 verified: listing.verified,
                 featured: listing.featured,

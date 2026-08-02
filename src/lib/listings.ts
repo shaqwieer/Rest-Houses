@@ -2,7 +2,8 @@ import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { parseIdList } from "./json-list";
-import { getAmenities, type SortId } from "./constants";
+import { cityLabel, DEFAULT_PHOTO_URL, getAmenities, type SortId } from "./constants";
+import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import type { ISODate } from "./dates";
 import { nightsInRange, todayISO } from "./dates";
@@ -96,9 +97,64 @@ function toView(row: ListingRow) {
     categoryIds,
     amenityList: getAmenities(amenityIds),
     images: row.images,
-    coverUrl: row.images[0]?.url ?? null,
+    /**
+     * Never null: a listing with no uploaded photo falls back to the shared
+     * stand-in so every card and thumbnail on the site has an image. Resolved
+     * here rather than in each of the six components that render a cover, which
+     * is how the owner dashboard and the booking summary ended up with a grey
+     * icon box while the public grid had one too. Callers that need to know
+     * whether a *real* photo exists read `images.length` — the gallery's photo
+     * count still does.
+     */
+    coverUrl: row.images[0]?.url ?? DEFAULT_PHOTO_URL,
     /** 0 reviews drives the design's "استراحة جديدة" state. */
     isNew: row.reviewsCount === 0,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Language                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/** The three stored free-text fields a listing carries in both languages. */
+export type LocalizedListing = {
+  name: string;
+  description: string;
+  /** Already falls back to the emirate label when no area is set. */
+  area: string;
+};
+
+/**
+ * Resolve a listing's own prose for one locale.
+ *
+ * Everything else on a listing is bilingual without any storage: the city, the
+ * amenities and the categories are ids resolved through `label()`, and prices
+ * are numbers. These three fields are the only prose the owner types, so they
+ * are the only ones that need an English column — see the note on `nameEn` in
+ * prisma/schema.prisma.
+ *
+ * `area` deliberately carries the same "or the emirate" fallback that every
+ * call site was already writing by hand (`listing.area || cityLabel(...)`).
+ * Folding it in here is what stops an English page from showing an Arabic
+ * emirate name in the one branch someone forgot to update.
+ */
+export function localizeListing(
+  listing: {
+    name: string;
+    nameEn: string | null;
+    description: string;
+    descriptionEn: string | null;
+    area: string;
+    areaEn: string | null;
+    city: string;
+  },
+  locale: Locale = DEFAULT_LOCALE,
+): LocalizedListing {
+  return {
+    name: localized(listing.name, listing.nameEn, locale),
+    description: localized(listing.description, listing.descriptionEn, locale),
+    area:
+      localized(listing.area, listing.areaEn, locale) || cityLabel(listing.city, locale),
   };
 }
 
@@ -174,7 +230,17 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
   }
   if (q && q.trim()) {
     const term = q.trim();
-    sqlFilters.OR = [{ name: { contains: term } }, { area: { contains: term } }];
+    // Both languages, always — not just the visitor's current one. Someone
+    // reading the English site may well type an Arabic place name they were
+    // sent, and the reverse is just as common here. Searching all four columns
+    // costs nothing at this catalogue size and removes a whole class of
+    // "I searched for it and it wasn't there".
+    sqlFilters.OR = [
+      { name: { contains: term, mode: "insensitive" } },
+      { nameEn: { contains: term, mode: "insensitive" } },
+      { area: { contains: term, mode: "insensitive" } },
+      { areaEn: { contains: term, mode: "insensitive" } },
+    ];
   }
 
   const rows = await prisma.listing.findMany({

@@ -6,7 +6,8 @@ import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { useFavorites } from "@/components/site/favorites-provider";
 import { arNum, arRating } from "@/lib/format";
-import { cityLabel, getAmenity, label as pickLabel } from "@/lib/constants";
+import { cityLabel, DEFAULT_PHOTO_URL, getAmenity, label as pickLabel } from "@/lib/constants";
+import { localized } from "@/lib/i18n/config";
 import type { ListingCardData } from "./card-data";
 import { useLocale } from "@/lib/i18n/provider";
 
@@ -38,25 +39,28 @@ export function ListingCard({
   // Four amenity chips, matching the design's `amens.slice(0,4)`.
   const chips = listing.amenityIds.slice(0, 4).map(getAmenity);
 
+  // The owner's own words, in the reader's language — falling back to Arabic
+  // per field, so a listing with an English name but no English area line still
+  // shows the English name.
+  const name = localized(listing.name, listing.nameEn, locale);
+  const where = localized(listing.area, listing.areaEn, locale) || cityLabel(listing.city, locale);
+
   return (
     <article className="group flex flex-col overflow-hidden rounded-[20px] border border-line bg-surface shadow-e1 transition duration-200 hover:-translate-y-1 hover:border-sand-300 hover:shadow-e2">
       <div className="relative h-46 shrink-0 bg-sand-200">
-        {listing.coverUrl ? (
-          <Image
-            src={listing.coverUrl}
-            alt={listing.name}
-            fill
-            // Two columns on tablet, up to four on desktop — tells the browser
-            // to fetch a ~300px-wide file for a card, not the full 1600px.
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 320px"
-            className="object-cover transition duration-500 group-hover:scale-[1.03]"
-            priority={priority}
-          />
-        ) : (
-          <div className="grid size-full place-items-center text-sand-400">
-            <Icon name="image" size={40} />
-          </div>
-        )}
+        <Image
+          // `toView` already resolves this to the stand-in when a listing has
+          // no photo; the `??` covers the handful of callers that build card
+          // data by hand.
+          src={listing.coverUrl ?? DEFAULT_PHOTO_URL}
+          alt={name}
+          fill
+          // Two columns on tablet, up to four on desktop — tells the browser
+          // to fetch a ~300px-wide file for a card, not the full 1600px.
+          sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 320px"
+          className="object-cover transition duration-500 group-hover:scale-[1.03]"
+          priority={priority}
+        />
 
         {/* favourite toggle — a button, not a link, so it never navigates */}
         <button
@@ -97,7 +101,7 @@ export function ListingCard({
               href={`/listings/${encodeURIComponent(listing.slug)}`}
               className="text-ink no-underline hover:text-bronze hover:no-underline"
             >
-              {listing.name}
+              {name}
             </Link>
           </h3>
 
@@ -117,7 +121,7 @@ export function ListingCard({
         <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
           <span className="flex items-center gap-1">
             <Icon name="location_on" size={15} />
-            {listing.area || cityLabel(listing.city, locale)}
+            {where}
           </span>
           <span className="opacity-40">·</span>
           <span className="flex items-center gap-1">

@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { BookingForm } from "@/components/booking/booking-form";
 import { Icon } from "@/components/ui/icon";
-import { getListingBySlug, isRangeAvailable } from "@/lib/listings";
+import { getListingBySlug, isRangeAvailable, localizeListing } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
@@ -76,7 +76,8 @@ export default async function BookPage({
     depositPercent,
   });
 
-  const where = listing.area || cityLabel(listing.city, locale);
+  const l = localizeListing(listing, locale);
+  const where = l.area;
   const chevron = locale === "ar" ? "chevron_left" : "chevron_right";
 
   return (
@@ -90,7 +91,7 @@ export default async function BookPage({
             href={`/listings/${encodeURIComponent(listing.slug)}`}
             className="text-muted no-underline hover:text-bronze hover:no-underline"
           >
-            {listing.name}
+            {l.name}
           </Link>
           <Icon name={chevron} size={15} />
           <span className="font-semibold text-ink">{t.booking.title}</span>
@@ -117,13 +118,11 @@ export default async function BookPage({
           <aside className="rounded-[28px] border border-line bg-surface p-5 shadow-e1 lg:sticky lg:top-[150px] lg:border-sand-300 lg:shadow-e2">
             <div className="mb-4 flex gap-3">
               <div className="relative size-17.5 shrink-0 overflow-hidden rounded-[13px] bg-sand-200">
-                {listing.coverUrl && (
-                  <Image src={listing.coverUrl} alt="" fill sizes="88px" className="object-cover" />
-                )}
+                <Image src={listing.coverUrl} alt="" fill sizes="88px" className="object-cover" />
               </div>
               <div className="min-w-0">
                 <h2 className="m-0 mb-1 font-display text-[15px] font-bold leading-snug text-ink">
-                  {listing.name}
+                  {l.name}
                 </h2>
                 <div className="flex items-center gap-1 text-[12.5px] text-muted">
                   <Icon name="location_on" size={15} />

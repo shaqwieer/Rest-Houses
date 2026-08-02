@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { useFavorites } from "@/components/site/favorites-provider";
+import { DEFAULT_PHOTO_URL } from "@/lib/constants";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
 
@@ -32,27 +33,25 @@ export function Gallery({
   const { t, locale } = useLocale();
   const favorited = isFavorite(listingId);
 
+  // A listing with no photos yet still gets a banner. `images` stays the real
+  // array, so the photo-count badge below is absent rather than claiming "1
+  // photo" for a picture the owner never uploaded.
   const hero = images[active];
+  const heroUrl = hero?.url ?? DEFAULT_PHOTO_URL;
 
   return (
     <div className="mb-3.5 flex flex-col gap-2.5">
       <div className="relative h-62.5 overflow-hidden rounded-[20px] bg-sand-200 md:h-[clamp(300px,42vw,480px)]">
-        {hero ? (
-          <Image
-            src={hero.url}
-            alt={hero.alt || name}
-            fill
-            // Full-bleed on phones, capped by the 1280px container on desktop.
-            sizes="(max-width: 1280px) 100vw, 1280px"
-            className="object-cover"
-            // The gallery hero is this page's LCP element.
-            priority
-          />
-        ) : (
-          <div className="grid size-full place-items-center text-sand-400">
-            <Icon name="image" size={56} />
-          </div>
-        )}
+        <Image
+          src={heroUrl}
+          alt={hero?.alt || name}
+          fill
+          // Full-bleed on phones, capped by the 1280px container on desktop.
+          sizes="(max-width: 1280px) 100vw, 1280px"
+          className="object-cover"
+          // The gallery hero is this page's LCP element.
+          priority
+        />
 
         <div className="pointer-events-none absolute bottom-3 end-3 flex gap-2">
           {verified && (

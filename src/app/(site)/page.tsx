@@ -8,7 +8,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { getFeaturedListings, getPublicListingStats } from "@/lib/listings";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
-import { CATEGORIES, label } from "@/lib/constants";
+import { CATEGORIES, DEFAULT_PHOTO_URL, label } from "@/lib/constants";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { htmlLang } from "@/lib/i18n/config";
@@ -67,7 +67,15 @@ export default async function HomePage() {
 
   const s = localizeSettings(settings, locale);
 
-  const heroImage = settings.heroImageUrl || featured[0]?.coverUrl || null;
+  // The banner an operator picked in /admin/settings, or the stand-in.
+  //
+  // This used to fall back to `featured[0]?.coverUrl` in between — whichever
+  // rest house happened to sort first became the front page's banner. That is
+  // an arbitrary choice the operator never made, it changes without warning
+  // when the featured row is re-ordered, and a square-ish listing photo has to
+  // be cropped hard to fill a full-bleed hero. A deliberate wide banner beats a
+  // borrowed one; setting a hero image in the dashboard still overrides it.
+  const heroImage = settings.heroImageUrl || DEFAULT_PHOTO_URL;
   const waHref = whatsappLink(
     settings.whatsappNumber,
     generalEnquiryMessage(s.siteName, locale),
@@ -150,18 +158,17 @@ export default async function HomePage() {
 
       {/* ================= HERO ================= */}
       <section className="relative overflow-hidden bg-night-900">
-        {heroImage && (
-          <Image
-            src={heroImage}
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            // The hero is the LCP element: `priority` preloads it and skips
-            // lazy-loading, which is the single biggest win on this page.
-            className="object-cover"
-          />
-        )}
+        <Image
+          src={heroImage}
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          // The hero is the LCP element: `priority` preloads it and skips
+          // lazy-loading, which is the single biggest win on this page.
+          className="object-cover"
+        />
+
         <div
           className="pointer-events-none absolute inset-0 bg-linear-[to_top,rgb(12_21_34/0.94)_6%,rgb(12_21_34/0.55)_46%,rgb(12_21_34/0.72)_100%]"
           aria-hidden
