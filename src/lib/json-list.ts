@@ -1,9 +1,10 @@
 /**
  * Read/write the JSON-text columns (`Listing.amenities`, `Listing.categories`).
  *
- * Why text and not a Postgres `String[]`: the schema has to run unchanged on
- * both SQLite (local dev) and PostgreSQL (production), and scalar lists are
- * Postgres-only. The trade-off is documented at the top of prisma/schema.prisma
+ * Why text and not a Postgres `String[]`: this predates the move to
+ * PostgreSQL-only, when the schema also had to run on SQLite, which has no
+ * scalar lists. Changing it now would mean migrating live rows for no
+ * functional gain. The cost is documented at the top of prisma/schema.prisma
  * and in `filterByAmenities` in src/lib/listings.ts.
  */
 

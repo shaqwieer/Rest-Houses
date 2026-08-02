@@ -57,9 +57,9 @@ export async function setRequestStatus(
     // Status + calendar + counter move together: a half-applied confirmation
     // would leave dates open on a booked listing.
     //
-    // `skipDuplicates` isn't available on SQLite (see the same note in
-    // actions/availability.ts), and the clash check above already proved none of
-    // these nights exist — inside the transaction that stays true.
+    // No `skipDuplicates` here (see the same note in actions/availability.ts):
+    // the clash check above already proved none of these nights exist — inside
+    // the transaction that stays true.
     await prisma.$transaction([
       prisma.bookingRequest.update({
         where: { id: requestId },

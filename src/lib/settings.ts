@@ -132,7 +132,7 @@ export const getSettings = cache(async (): Promise<Settings> => {
     const row = await prisma.siteSettings.findUnique({ where: { id: SETTINGS_ID } });
     return row ?? FALLBACK;
   } catch {
-    // Database unreachable (first boot before `db:push`) — keep the site up.
+    // Database unreachable (first boot before migrations) — keep the site up.
     return FALLBACK;
   }
 });

@@ -449,7 +449,7 @@ variable and nothing that *calls* it.
 
 | `STORAGE_DRIVER` | Where the bytes live | Status |
 |---|---|---|
-| `db` | `StoredImage` table in Postgres/SQLite | ✅ **default in Docker** |
+| `db` | `StoredImage` table in PostgreSQL | ✅ **default in Docker** |
 | `local` | `public/uploads/` on disk | ✅ default outside Docker |
 | `cloudinary` | Cloudinary | adapter written — see below |
 | `s3` | S3 / R2 / Spaces / MinIO | adapter written — see below |
@@ -673,7 +673,7 @@ pm2 save && pm2 startup
 Production `.env` essentials:
 
 ```
-DATABASE_URL="postgresql://…"          # or file:./prod.db for SQLite
+DATABASE_URL="postgresql://…"          # PostgreSQL only — see "Database and migrations"
 AUTH_SECRET="<openssl rand -base64 32>"
 NEXTAUTH_URL="https://yourdomain.ae"
 NEXT_PUBLIC_SITE_URL="https://yourdomain.ae"

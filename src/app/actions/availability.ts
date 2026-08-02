@@ -92,10 +92,11 @@ export async function setRangeBlocked(
     // Insert only the days that aren't already recorded.
     //
     // `createMany({ skipDuplicates: true })` would be the obvious way to lean on
-    // the @@unique([listingId, date]) constraint, but SQLite doesn't support that
-    // option in Prisma — and the point of this schema is that it runs unchanged
-    // on SQLite and PostgreSQL. Reading the existing dates first is portable and,
-    // at ≤400 rows, costs one extra indexed SELECT.
+    // the @@unique([listingId, date]) constraint. It was unavailable when the
+    // schema still had to run on SQLite; now that PostgreSQL is the only
+    // provider it would work, but reading the existing dates first costs one
+    // extra indexed SELECT at ≤400 rows, so there is nothing to gain by
+    // rewriting it.
     const existing = await prisma.availability.findMany({
       where: { listingId, date: { in: dates } },
       select: { date: true },

@@ -145,9 +145,10 @@ export function cityLabel(id: string, locale: Locale = DEFAULT_LOCALE): string {
 }
 
 /* --------------------------------------------------------------------------
- * Status values. Kept as string unions rather than Prisma enums because the
- * default datasource is SQLite (no native enum). Validate with the guards
- * below whenever a value arrives from a form or query string.
+ * Status values. Kept as string unions rather than Prisma enums — originally
+ * because the datasource was SQLite, retained because adding a value stays a
+ * code change instead of an `ALTER TYPE` that locks the table. Validate with
+ * the guards below whenever a value arrives from a form or query string.
  * -------------------------------------------------------------------------- */
 
 export const BOOKING_STATUSES = ["NEW", "CONFIRMED", "REJECTED", "CANCELLED"] as const;
