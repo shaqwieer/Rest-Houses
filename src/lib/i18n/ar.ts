@@ -706,6 +706,8 @@ export const ar = {
     bookedDaysCount: (n: string) => `${n} يومًا محجوزًا`,
     noListingsForCalendar: "لا توجد استراحات لإدارة تقويمها",
     addListingFirstShort: "أضف استراحة أولًا.",
+    moreSections: "المزيد",
+    allSections: "كل أقسام اللوحة",
     englishCopyCard: "النسخة الإنجليزية",
     englishCopyHint:
       "اتركه فارغًا ليظهر النص العربي كما هو في الواجهة الإنجليزية. املأ ما تريد ترجمته فقط.",

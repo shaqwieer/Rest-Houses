@@ -633,6 +633,8 @@ export const en: Dictionary = {
     bookedDaysCount: (n) => `${n} days booked`,
     noListingsForCalendar: "No rest houses to manage a calendar for",
     addListingFirstShort: "Add a rest house first.",
+    moreSections: "More",
+    allSections: "All dashboard sections",
     englishCopyCard: "English copy",
     englishCopyHint:
       "Leave a field blank and the Arabic text shows in the English interface. Fill in only what you want translated.",
