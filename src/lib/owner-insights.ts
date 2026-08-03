@@ -1,5 +1,13 @@
 import { prisma } from "./prisma";
-import { addDays, isWeekend, nightsBetween, nightsInRange, toISODate, todayISO } from "./dates";
+import {
+  addDays,
+  isWeekend,
+  nightsBetween,
+  nightsInRange,
+  toGulfISODate,
+  toISODate,
+  todayISO,
+} from "./dates";
 import { normalizeWhatsapp } from "./whatsapp";
 
 /**
@@ -314,8 +322,16 @@ export async function getOwnerInsights(ownerId: string): Promise<OwnerInsights> 
   // reduced to a calendar day first — `nightsBetween` on two date-only strings
   // has no timezone left to get wrong. Negative values (a request logged after
   // the stay began) are clamped rather than dropped, so the mean stays honest.
+  //
+  // It has to be reduced in GULF time, not UTC. `checkIn` is a calendar day
+  // chosen on a Gulf calendar, and `toISODate` flips at UTC midnight — four
+  // hours after the day it is being compared against has already turned over.
+  // Between 20:00 and 24:00 UTC the two disagreed and every lead time came out
+  // a day too long.
   const avgLeadTimeDays = mean(
-    confirmedInWindowRows.map((r) => Math.max(0, nightsBetween(toISODate(r.createdAt), r.checkIn))),
+    confirmedInWindowRows.map((r) =>
+      Math.max(0, nightsBetween(toGulfISODate(r.createdAt), r.checkIn)),
+    ),
   );
 
   let weekendNights = 0;
