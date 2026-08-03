@@ -229,8 +229,20 @@ export function OwnerActions({
           {tab === "details" ? (
             /* An uncontrolled form: the inputs start from the row already on
                screen and the action reads a FormData, so nothing here has to
-               mirror the owner's record in React state. */
+               mirror the owner's record in React state.
+
+               ─── The `key` is load-bearing ─────────────────────────────────
+               Both tabs render a <form> at this same position, so without
+               distinct keys React reconciles one into the other instead of
+               remounting: field 1 and field 2 of this form become the two
+               password inputs and back again. That flips them between
+               uncontrolled (`defaultValue`) and controlled (`value`) — the
+               console warning — and, worse, `defaultValue` only applies on
+               mount, so returning to this tab left the name and business name
+               showing the empty password state. Saving then wrote those blanks
+               over the owner's real details. */
             <form
+              key="details"
               onSubmit={(e) => {
                 e.preventDefault();
                 const formData = new FormData(e.currentTarget);
@@ -348,6 +360,7 @@ export function OwnerActions({
             </form>
           ) : (
             <form
+              key="password"
               onSubmit={(e) => {
                 e.preventDefault();
                 run(() => setOwnerPassword(ownerId, password, confirmPassword));
@@ -514,8 +527,19 @@ function Modal({
     >
       <div
         className={`animate-pop-in w-full ${
-          wide ? "max-w-140" : "max-w-100"
-        } my-auto rounded-[24px] border border-line bg-surface p-5 text-start shadow-e2`}
+          // The tabbed dialog is anchored to the top instead of centred. Its
+          // two tabs are very different heights — seven fields against two —
+          // and centring re-positioned the whole dialog on every switch,
+          // moving the tab bar ~150px out from under the pointer. The second
+          // click then landed on the backdrop and closed the dialog,
+          // discarding whatever had been typed.
+          //
+          // `self-start` is what does the work: the parent is
+          // `place-items-center`, so a margin alone cannot top-anchor a grid
+          // item — align-self has to be overridden for the offset to mean
+          // anything. The short confirm dialogs keep the centred treatment.
+          wide ? "max-w-140 self-start my-8" : "max-w-100 my-auto"
+        } rounded-[24px] border border-line bg-surface p-5 text-start shadow-e2`}
         // Stops a click inside the dialog from reaching the backdrop's handler
         // and closing it — a half-typed rejection reason should survive a
         // stray click on the textarea.
