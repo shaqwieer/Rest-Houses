@@ -11,7 +11,7 @@ import { ar } from "@/lib/i18n/ar";
 import { en } from "@/lib/i18n/en";
 import { getDictionary } from "@/lib/i18n";
 import { arNum, arPercent } from "@/lib/format";
-import { arDayMonth, arFullDate, formatDateTime } from "@/lib/dates";
+import { arDayMonth, arFullDate, formatDateTime, formatInstant } from "@/lib/dates";
 import { CITIES, cityLabel, amenityLabel, normalizeCityId } from "@/lib/constants";
 
 describe("locale defaults", () => {
@@ -178,15 +178,36 @@ describe("pluralisation", () => {
 
 describe("formatDateTime", () => {
   it("keeps the clock in one digit system and zero-padded", () => {
-    const at0905 = new Date(Date.UTC(2026, 6, 28, 9, 5));
-    expect(formatDateTime(at0905, "en")).toContain("09:05");
+    // 05:05 UTC is 09:05 in the UAE — chosen so the padding is exercised on
+    // the hour that is actually rendered.
+    const at0905Gulf = new Date(Date.UTC(2026, 6, 28, 5, 5));
+    expect(formatDateTime(at0905Gulf, "en")).toContain("09:05");
     // Previously rendered "٩:05" — Arabic hour, Latin minutes, padding lost.
-    expect(formatDateTime(at0905, "ar")).toContain("٠٩:٠٥");
-    expect(formatDateTime(at0905, "ar")).not.toContain("05");
+    expect(formatDateTime(at0905Gulf, "ar")).toContain("٠٩:٠٥");
+    expect(formatDateTime(at0905Gulf, "ar")).not.toContain("05");
+  });
+
+  it("tells the time in the UAE, not in UTC", () => {
+    // The operator reading the audit log is in the Gulf. An action taken at
+    // 09:05 UTC happened at 13:05 as far as they are concerned, and a log that
+    // says otherwise is a log they have to do mental arithmetic on.
+    const at0905Utc = new Date(Date.UTC(2026, 6, 28, 9, 5));
+    expect(formatDateTime(at0905Utc, "en")).toContain("13:05");
+  });
+
+  it("dates a late-evening instant by the Gulf day, not the UTC one", () => {
+    // 22:30 UTC on the 28th is 02:30 on the 29th in Dubai. Dating this by its
+    // UTC components would file the action under the previous day for the
+    // person who performed it.
+    const lateNight = new Date(Date.UTC(2026, 6, 28, 22, 30));
+    expect(formatDateTime(lateNight, "en")).toContain("29 July 2026");
+    expect(formatDateTime(lateNight, "en")).toContain("02:30");
+    expect(formatInstant(lateNight, "en")).toBe("29 July 2026");
   });
 
   it("renders an em-dash for a missing date rather than throwing", () => {
     expect(formatDateTime(null)).toBe("—");
+    expect(formatInstant(null)).toBe("—");
   });
 });
 

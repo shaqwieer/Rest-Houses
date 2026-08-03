@@ -38,11 +38,49 @@ export function toISODate(date: Date): ISODate {
   return date.toISOString().slice(0, 10);
 }
 
-/** Today, as seen in the UAE (UTC+4, no DST). The site's audience is local, so
- *  "today" should flip at Gulf midnight rather than the server's midnight. */
+/* --------------------------------------------------------------------------
+ * Gulf time — the one clock this application tells the time by.
+ *
+ * The audience, the rest houses, the owners and the operator are all in the
+ * UAE. The server may be anywhere. So every *instant* this application shows a
+ * human — a step completed at 01:00, an audit entry, a booking's timestamp —
+ * is rendered in Asia/Dubai, and "today" flips at Gulf midnight rather than at
+ * the server's midnight or at UTC's.
+ *
+ * A fixed +4 offset rather than an Intl timezone lookup: the UAE has observed
+ * UTC+4 with no daylight saving since 1972, so there is no transition to get
+ * right, and arithmetic on a constant cannot fail on a Node build shipped
+ * without full ICU data — which the Hijri helper below has to guard against.
+ *
+ * `TZ=Asia/Dubai` is also set on the container (see the Dockerfile) so that
+ * anything outside this module — a log line, a database `now()` — agrees. That
+ * is belt and braces, deliberately: this module does not depend on it.
+ *
+ * NOTE the boundary this does NOT cross. Calendar days — `Availability.date`,
+ * `checkIn`, `checkOut` — stay plain `YYYY-MM-DD` strings and are never
+ * shifted by any of this. A booked night is a calendar fact with no timezone;
+ * see the note at the top of this file.
+ * -------------------------------------------------------------------------- */
+
+/** The IANA name, for the places that want a real timezone (logs, container). */
+export const SITE_TIME_ZONE = "Asia/Dubai";
+
+/** UTC+4, no DST. */
+const GULF_OFFSET_MS = 4 * 60 * 60 * 1000;
+
+/** An instant, shifted so its UTC components read as Gulf wall-clock time. */
+function toGulf(date: Date): Date {
+  return new Date(date.getTime() + GULF_OFFSET_MS);
+}
+
+/** The calendar day an instant falls on **in the UAE**. */
+export function toGulfISODate(date: Date): ISODate {
+  return toGulf(date).toISOString().slice(0, 10);
+}
+
+/** Today, as seen in the UAE. */
 export function todayISO(now: Date = new Date()): ISODate {
-  const gulf = new Date(now.getTime() + 4 * 60 * 60 * 1000);
-  return gulf.toISOString().slice(0, 10);
+  return toGulfISODate(now);
 }
 
 export function addDays(iso: ISODate, days: number): ISODate {
@@ -131,14 +169,38 @@ export function formatDate(
   return arFullDate(toISODate(date), locale);
 }
 
-/** A timestamp with the time of day, for the audit log. */
+/**
+ * An instant, as the calendar day it happened on **in the UAE**.
+ *
+ * Distinct from `formatDate` above, and the distinction is load-bearing.
+ * `formatDate` renders a stored `DateTime` that stands for a *day* — a
+ * membership expiry — from its UTC components, so "expires on the 30th" reads
+ * as the 30th everywhere. This one renders a *moment* — a step completed, an
+ * invite issued — and a moment at 01:00 Dubai time is 21:00 UTC on the day
+ * before, so reading it as UTC would date it a day early to the very people
+ * who performed it.
+ */
+export function formatInstant(
+  date: Date | null | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (!date) return "—";
+  return arFullDate(toGulfISODate(date), locale);
+}
+
+/** A timestamp with the time of day, for the audit log. Gulf time throughout. */
 export function formatDateTime(
   date: Date | null | undefined,
   locale: Locale = DEFAULT_LOCALE,
 ): string {
   if (!date) return "—";
-  const hh = String(date.getUTCHours()).padStart(2, "0");
-  const mm = String(date.getUTCMinutes()).padStart(2, "0");
+
+  // Both halves come from the same shifted instant. Reading the hour in Gulf
+  // time while dating the row in UTC would put a 01:00 action on the previous
+  // day — the audit log's whole job is to say when something happened.
+  const gulf = toGulf(date);
+  const hh = String(gulf.getUTCHours()).padStart(2, "0");
+  const mm = String(gulf.getUTCMinutes()).padStart(2, "0");
 
   // Both halves go through the same digit conversion. Running the hour through
   // `arNum` while leaving the minutes alone produced a mixed-script, unpadded
@@ -147,7 +209,7 @@ export function formatDateTime(
   const clock = `${hh}:${mm}`;
   const time = locale === "ar" ? toArabicDigits(clock) : clock;
 
-  return `${arFullDate(toISODate(date), locale)} · ${time}`;
+  return `${arFullDate(toGulfISODate(date), locale)} · ${time}`;
 }
 
 /**

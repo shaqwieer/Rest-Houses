@@ -649,7 +649,10 @@ async function main() {
     const checkIn = addDays(base, r.from);
     const checkOut = addDays(base, r.from + r.nights);
     const subtotal = listing.pricePerNight * r.nights;
-    const serviceFee = Math.round(subtotal * 0.05);
+    // No service fee — matching `SiteSettings.serviceFeePercent`, which now
+    // defaults to 0. Demo bookings that carried a 5% fee the live site no
+    // longer charges would make the sample data disagree with the product.
+    const serviceFee = 0;
     const total = subtotal + serviceFee;
 
     await prisma.bookingRequest.upsert({
@@ -671,6 +674,22 @@ async function main() {
         depositDue: Math.round(total * 0.3),
         // Snapshotted alongside the amount, exactly as the booking action does.
         depositPercent: 30,
+        // The platform's cut, snapshotted the same way. Without it every demo
+        // booking would show "0 د.إ" at step 6 of the handover workflow, which
+        // reads as a bug rather than as sample data.
+        commissionPercent: 5,
+        commissionDue: Math.round((total * 5) / 100),
+        // A confirmed demo booking has, by definition, had its deposit taken —
+        // that is what confirming means now. Leaving it at the 'DEPOSIT'
+        // default would ask the operator to collect a deposit on a booking the
+        // sample data already calls confirmed.
+        ...(r.status === "CONFIRMED"
+          ? {
+              stage: "BALANCE" as const,
+              depositConfirmedAt: new Date(),
+              depositCollected: Math.round(total * 0.3),
+            }
+          : {}),
         status: r.status,
       },
     });

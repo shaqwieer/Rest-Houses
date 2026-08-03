@@ -194,6 +194,91 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   CANCELLED: "ملغى",
 };
 
+/* --------------------------------------------------------------------------
+ * The booking handover workflow.
+ *
+ * `BookingRequest.stage` — where the owner has got to in settling one booking.
+ * ORDER IS THE DATA HERE: "which step is this?" is `BOOKING_STAGES.indexOf`,
+ * "is this step done?" is an index comparison, and the stepper renders by
+ * mapping over this array. Reordering it renumbers the workflow; appending to
+ * it is how a step gets added.
+ *
+ * Orthogonal to `BOOKING_STATUSES`, not an extension of it — `status` says
+ * whether the booking holds the calendar, `stage` says how far the handover has
+ * got. See the note on `stage` in prisma/schema.prisma for why they are two
+ * columns.
+ *
+ *   DEPOSIT    1 — عربون + تأمين received; confirming closes the calendar
+ *   BALANCE    2 — the rest of the booking value, due by check-in day
+ *   CHECKOUT   3 — the guest has left
+ *   INSPECTION 4 — the rest house has been checked over
+ *   SECURITY   5 — the تأمين goes back, less any damages
+ *   COMMISSION 6 — the owner remits the platform's cut; an operator confirms it
+ *   REVIEW     7 — the guest gets a time-limited link to review the stay
+ *   DONE         — nothing left to do
+ * -------------------------------------------------------------------------- */
+export const BOOKING_STAGES = [
+  "DEPOSIT",
+  "BALANCE",
+  "CHECKOUT",
+  "INSPECTION",
+  "SECURITY",
+  "COMMISSION",
+  "REVIEW",
+  "DONE",
+] as const;
+export type BookingStage = (typeof BOOKING_STAGES)[number];
+
+export function isBookingStage(v: unknown): v is BookingStage {
+  return typeof v === "string" && (BOOKING_STAGES as readonly string[]).includes(v);
+}
+
+/** The seven steps the owner actually works through — "DONE" is the terminus. */
+export const WORKFLOW_STAGES = BOOKING_STAGES.filter((s) => s !== "DONE") as readonly Exclude<
+  BookingStage,
+  "DONE"
+>[];
+
+/**
+ * 1-based step number, for display. Returns 0 for an unknown value rather than
+ * -1+1 nonsense, so a row carrying a stage this build doesn't know about
+ * degrades to "no step" instead of rendering a negative one.
+ */
+export function stageNumber(stage: string): number {
+  const index = (BOOKING_STAGES as readonly string[]).indexOf(stage);
+  return index < 0 ? 0 : index + 1;
+}
+
+/** Has `stage` already passed `step`? Used to tick completed steps. */
+export function isStageComplete(stage: string, step: BookingStage): boolean {
+  const at = (BOOKING_STAGES as readonly string[]).indexOf(stage);
+  const of = (BOOKING_STAGES as readonly string[]).indexOf(step);
+  return at >= 0 && of >= 0 && at > of;
+}
+
+/** The step after `stage`. "DONE" is its own successor — the sequence ends. */
+export function nextStage(stage: BookingStage): BookingStage {
+  const index = BOOKING_STAGES.indexOf(stage);
+  return BOOKING_STAGES[Math.min(index + 1, BOOKING_STAGES.length - 1)];
+}
+
+/* --------------------------------------------------------------------------
+ * Review moderation — `Review.status`.
+ *
+ * "APPROVED" is the default because every review that existed before guests
+ * could submit their own was already published. See the note in the schema.
+ * -------------------------------------------------------------------------- */
+export const REVIEW_STATUSES = ["PENDING", "APPROVED", "REJECTED"] as const;
+export type ReviewStatus = (typeof REVIEW_STATUSES)[number];
+
+export function isReviewStatus(v: unknown): v is ReviewStatus {
+  return typeof v === "string" && (REVIEW_STATUSES as readonly string[]).includes(v);
+}
+
+/** Rating bounds — a review must fall inside these, enforced server-side. */
+export const REVIEW_RATING_MIN = 1;
+export const REVIEW_RATING_MAX = 5;
+
 export const AVAILABILITY_STATUSES = ["BLOCKED", "BOOKED"] as const;
 export type AvailabilityStatus = (typeof AVAILABILITY_STATUSES)[number];
 
@@ -252,11 +337,30 @@ export const AUDIT_ACTIONS = [
   "OWNER_REJECTED",
   "OWNER_SUSPENDED",
   "OWNER_ACTIVATED",
+  // An admin editing an owner's own details, and an admin setting their
+  // password. Two actions rather than one because they answer different
+  // questions in the log: "who changed this owner's WhatsApp number" and "who
+  // has been able to sign in as this owner since". The password action records
+  // that it happened and never what was set.
+  "OWNER_UPDATED",
+  "OWNER_PASSWORD_RESET",
   "MEMBERSHIP_UPDATED",
   "LISTING_CREATED",
   "LISTING_UPDATED",
   "LISTING_DELETED",
   "LISTING_VISIBILITY_CHANGED",
+  // The booking handover. One action for every step an owner completes, with
+  // the amount they entered in `metadata` — this is where money is declared
+  // received and returned, so who said what and when has to be recoverable
+  // after the fact. `BOOKING_STAGE_ADVANCED` carries the step in its metadata
+  // rather than getting seven action names, so adding a step to
+  // BOOKING_STAGES stays a one-line change.
+  "BOOKING_STAGE_ADVANCED",
+  "BOOKING_STAGE_REVERTED",
+  "BOOKING_COMMISSION_CONFIRMED",
+  "REVIEW_INVITED",
+  "REVIEW_APPROVED",
+  "REVIEW_REJECTED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

@@ -295,6 +295,18 @@ export const ar = {
     depositLine: (pct: string, amount: string) =>
       `العربون ${pct}٪ (${amount} د.إ) عند تأكيد المالك`,
     noDepositLine: "لا يُطلب عربون لهذه الاستراحة",
+    // ---- day use + refundable security deposit (hidden when unset)
+    extraPricingTitle: "خيارات وأسعار إضافية",
+    dayUseNote:
+      "حجز بدون مبيت — تحضر وتغادر في نفس اليوم. اتفق على التفاصيل مع المالك عبر الواتساب.",
+    dayUseWeekday: "بدون مبيت — أيام الأسبوع",
+    dayUseWeekend: "بدون مبيت — نهاية الأسبوع",
+    dayUseCheckOut: "وقت الخروج",
+    securityDepositLabel: "التأمين (مسترد)",
+    securityDepositNote:
+      "يُدفع للمالك قبل الإقامة ويُعاد بالكامل بعد انتهاء الحجز وفحص الاستراحة. غير محتسب ضمن الإجمالي.",
+    securityDepositLine: (amount: string) =>
+      `تأمين مسترد ${amount} د.إ — يُعاد بعد فحص الاستراحة، وغير محتسب في الإجمالي`,
     pickDatesHint: "اختر تاريخين من التقويم أعلاه لعرض السعر الإجمالي.",
     requestViaWhatsapp: "اطلب الحجز عبر الواتساب",
     requestBooking: "اطلب الحجز",
@@ -384,11 +396,29 @@ export const ar = {
       "أرسل التفاصيل للمالك عبر الواتساب الآن ليصلك التأكيد في أسرع وقت.",
     reference: "رقم الطلب",
     openWhatsapp: "إرسال التفاصيل عبر الواتساب",
+    // ---- the five-second automatic hand-off to WhatsApp
+    autoSendButton: (seconds: string) => `إرسال التفاصيل عبر الواتساب (${seconds})`,
+    // Counts down through 2 and 1, where Arabic needs the dual and the
+    // singular — "بعد ١ ثوانٍ" would be wrong on the last two ticks of a
+    // screen every booking passes through.
+    autoSendCountdown: (seconds: string, count: number) =>
+      `سيفتح الواتساب تلقائيًا بعد ${seconds} ${plural("ar", count, {
+        one: "ثانية",
+        two: "ثانيتين",
+        few: "ثوانٍ",
+        many: "ثانية",
+        other: "ثانية",
+      })}…`,
+    autoSendCancel: "إيقاف",
+    autoSendCancelled: "أُوقف الإرسال التلقائي — اضغط الزر أعلاه عندما تكون جاهزًا.",
+    autoSendManual: "اضغط الزر لفتح الواتساب برسالة جاهزة — لن تُرسل حتى تضغط إرسال.",
     introBody:
       "املأ البيانات التالية وسيصل طلبك مباشرة إلى مالك الاستراحة على الواتساب. لا يُخصم أي مبلغ في هذه المرحلة.",
     keepReference: "احتفظ برقم الطلب للمراجعة:",
     depositPayOnline: (amount: string) =>
       `يمكنك دفع العربون (${amount} د.إ) إلكترونيًا بعد تأكيد المالك.`,
+    securityDepositNote: (amount: string) =>
+      `مبلغ التأمين ${amount} د.إ يُسلَّم للمالك قبل الإقامة ويُعاد بالكامل بعد انتهاء الحجز وفحص الاستراحة — وهو غير محتسب ضمن الإجمالي أعلاه.`,
     depositCollectedByOwner: (amount: string) =>
       `العربون المتوقع ${amount} د.إ ويُحصَّل مباشرة من المالك بعد تأكيد التوفّر — لا يوجد دفع إلكتروني على الموقع حاليًا.`,
     bookingNotFound: "الطلب غير موجود",
@@ -504,6 +534,77 @@ export const ar = {
       "النسبة المطلوبة من إجمالي الحجز. اتركها فارغة لاستخدام النسبة الافتراضية للمنصة.",
     depositPercentSuffix: "٪ من الإجمالي",
     usingPlatformDefault: (pct: string) => `الافتراضي للمنصة: ${pct}٪`,
+    securityDeposit: "التأمين (مسترد)",
+    securityDepositHint:
+      "مبلغ يُعاد للضيف بعد انتهاء الحجز وفحص الاستراحة. اتركه صفرًا إن لم تطلبه — عندها لا يظهر للضيف.",
+
+    // ---- insights ----
+    // Everything below is derived from the platform's own booking, calendar and
+    // review rows. There is no analytics in the schema, so there is deliberately
+    // nothing here about views, visits or impressions.
+    earningsAhead: "دخل الشهر القادم",
+    earningsAheadSub: "من الحجوزات المؤكدة",
+    earningsNote: "القيمة قبل التأمين المسترد",
+    unansweredStat: "بانتظار ردك",
+    unansweredStatSub: "منذ أكثر من ٢٤ ساعة",
+
+    adviceTitle: "ملاحظات على أدائك",
+    insightUnanswered: (n: string) =>
+      `${n} من الطلبات تنتظر ردك منذ أكثر من ٢٤ ساعة — سرعة الرد ترفع نسبة التأكيد`,
+    insightLowConfirmation: (pct: string) =>
+      `تؤكد ${pct}٪ فقط من الطلبات التي ترد عليها — راجع تقويمك وأسعارك حتى لا تفقد ضيوفًا`,
+    insightWeekendDemand: (pct: string) =>
+      `${pct}٪ من لياليك المحجوزة في نهاية الأسبوع، وسعر الجمعة والسبت لديك مثل باقي الأيام — حدّد سعرًا خاصًا لنهاية الأسبوع`,
+    insightQuietListing: (name: string) =>
+      `«${name}» لم يصلها أي طلب في هذه الفترة — راجع السعر والصور والوصف`,
+    insightFewPhotos: (name: string) =>
+      `«${name}» فيها أقل من ٤ صور — الاستراحات ذات الصور الأكثر تستقبل طلبات أكثر`,
+    insightHighOccupancy: (pct: string) =>
+      `إشغالك ${pct}٪ خلال الشهر القادم — يمكنك رفع السعر أو فتح أيام إضافية`,
+    insightNoListings: "أضف أول استراحة لتبدأ باستقبال الطلبات وتظهر إحصاءاتك هنا",
+
+    trendTitle: "الدخل الشهري",
+    trendSub: (n: string) => `آخر ${n} أشهر — محسوبة على شهر الوصول`,
+    trendEmpty: "لا توجد حجوزات مؤكدة في هذه الفترة بعد",
+    trendMonthLabel: (month: string, amount: string, count: string) =>
+      `${month}: ${amount} درهم من ${count} حجز مؤكد`,
+
+    occupancyTitle: "إشغال التقويم",
+    occupancySub: (days: string) => `الـ ${days} يومًا القادمة`,
+    occupancyDetail: (booked: string, capacity: string) =>
+      `${booked} ليلة محجوزة من أصل ${capacity}`,
+    occupancyNoListings: "انشر استراحة واحدة على الأقل ليظهر الإشغال",
+
+    patternsTitle: "سلوك الحجز",
+    patternsSub: (days: string) => `آخر ${days} يومًا`,
+    avgValue: "متوسط قيمة الحجز",
+    avgNightsLabel: "متوسط الليالي",
+    avgLeadTime: "متوسط الحجز المسبق",
+    avgLeadTimeValue: (n: string) => `${n} يومًا`,
+    avgGuestsLabel: "متوسط الضيوف",
+    weekendShare: "نصيب نهاية الأسبوع",
+    weekendShareSub: "من الليالي المحجوزة",
+    repeatGuests: "ضيوف عادوا إليك",
+    confirmationRate: "معدل التأكيد",
+    confirmationRateSub: "من الطلبات التي رددت عليها",
+    requestsInWindow: "إجمالي الطلبات",
+    notEnoughData: "لا توجد بيانات كافية بعد",
+
+    listingsTableTitle: "أداء كل استراحة",
+    colListing: "الاستراحة",
+    colRequests: "الطلبات",
+    colConfirmed: "مؤكدة",
+    colEarnings: "الدخل",
+    colOccupancy: "الإشغال",
+    colRating: "التقييم",
+    hiddenListing: "مخفية",
+    noReviewsYet: "جديدة",
+    neverRequested: "لم يصلها طلب بعد",
+
+    upcomingTitle: "وصول قريب",
+    upcomingSub: "الحجوزات المؤكدة خلال ١٤ يومًا",
+    upcomingEmpty: "لا توجد حجوزات مؤكدة قادمة",
+    upcomingLine: (guests: string, nights: string) => `${guests} ضيفًا · ${nights} ليلة`,
 
     // gating
     blockedPendingTitle: "لا يمكنك نشر الاستراحات بعد",
@@ -538,6 +639,10 @@ export const ar = {
     statOccupancySub: "٣٠ يومًا القادمة",
     statRevenue: "الإيراد المتوقّع",
     statRevenueSub: "درهم — حجوزات مؤكدة",
+    statCommissionToConfirm: "عمولات بانتظار التأكيد",
+    statCommissionToConfirmSub: "حوّلها المالك ولم تُؤكَّد",
+    statReviewsToModerate: "تقييمات بانتظار المراجعة",
+    statReviewsToModerateSub: "لن تظهر قبل موافقتك",
     statOwners: "المُلّاك",
     statOwnersSub: "نشط",
     statPendingOwners: "طلبات تسجيل",
@@ -579,6 +684,21 @@ export const ar = {
     ownerActivated: "تم تفعيل حساب المالك",
     membershipUpdated: "تم تحديث تاريخ انتهاء العضوية",
     expiryHint: "اترك الحقل فارغًا لعضوية بلا تاريخ انتهاء.",
+    // ---- managing an owner's account from the owners table
+    manageOwner: "إدارة الحساب",
+    manageOwnerTitle: "إدارة حساب المالك",
+    ownerDetailsTab: "البيانات",
+    ownerPasswordTab: "كلمة المرور",
+    ownerUpdated: "تم حفظ بيانات المالك",
+    ownerPasswordChanged: "تم تغيير كلمة المرور",
+    newPassword: "كلمة المرور الجديدة",
+    confirmNewPassword: "تأكيد كلمة المرور",
+    newPasswordHint:
+      "٨ أحرف على الأقل. أبلغ المالك بها بنفسك — لا تُرسل من الموقع، ولا تظهر في السجل.",
+    changePassword: "تغيير كلمة المرور",
+    ownerNoCity: "غير محدّدة",
+    ownerAboutLabel: "نبذة",
+    ownerIdNumberLabel: "رقم الهوية / الرخصة التجارية",
     hiddenListingsNote: (n: string) =>
       `${n} استراحة مخفية عن الموقع بسبب حالة المالك أو انتهاء العضوية`,
 
@@ -592,12 +712,42 @@ export const ar = {
 
     // bookings / payments
     bookingsTitle: "كل الحجوزات",
-    paymentsTitle: "المدفوعات والعرابين",
-    paymentsSubtitle: "الدفع الإلكتروني غير مفعّل — العربون يُحصّل من المالك مباشرة.",
-    noPayments: "لا توجد مدفوعات مسجّلة.",
+    paymentsTitle: "الإيرادات والعمولات",
+    paymentsSubtitle: "القيمة الإجمالية للحجوزات، وعمولة المنصة المستحقة عليها.",
+    noPayments: "لا توجد حجوزات مسجّلة.",
     depositDue: "العربون المستحق",
     depositPercentCol: "نسبة العربون",
     paymentStatus: "حالة الدفع",
+
+    // payments — totals and commission
+    commissionCol: "عمولة المنصة",
+    commissionStateCol: "حالة العمولة",
+    commissionNotDue: "غير مستحقة بعد",
+    commissionWaiting: "بانتظار التحويل",
+    commissionSent: "حُوِّلت — بانتظار التأكيد",
+    commissionReceived: "مستلمة",
+    stageCol: "مرحلة الحجز",
+    confirmedValueTile: "قيمة الحجوزات المؤكدة",
+    commissionConfirmedTile: "عمولة الحجوزات المؤكدة",
+    commissionCollectedTile: "عمولة مستلمة فعلياً",
+    commissionOutstandingTile: "عمولة لم تصل بعد",
+    allValueTile: "قيمة كل الحجوزات",
+    commissionRateNote: (percent: string) =>
+      `العمولة ${percent} من قيمة الحجز، يحوّلها المالك بنكياً في الخطوة السادسة.`,
+
+    // reviews moderation
+    reviews: "التقييمات",
+    reviewsTitle: "تقييمات الضيوف",
+    reviewsSubtitle: "التقييمات الواردة من روابط الضيوف — لا تظهر على الموقع قبل الموافقة.",
+    noReviews: "لا توجد تقييمات.",
+    reviewPendingCount: (n: string) => `${n} تقييم بانتظار المراجعة`,
+    reviewApprove: "موافقة ونشر",
+    reviewReject: "رفض",
+    reviewAuthor: "الضيف",
+    reviewRating: "التقييم",
+    reviewBody: "النص",
+    reviewListing: "الاستراحة",
+    reviewWhen: "التاريخ",
 
     // audit
     auditTitle: "سجل النشاط",
@@ -641,6 +791,17 @@ export const ar = {
     pricePerNightLabel: "سعر الليلة (د.إ)",
     weekendPriceLabel: "سعر نهاية الأسبوع",
     weekendPriceHint: "اتركه صفرًا ليساوي السعر العادي",
+    // ---- day-use card in the listing editor
+    dayUseCardTitle: "الحجز بدون مبيت (اختياري)",
+    dayUseCardHint:
+      "أسعار الحضور والمغادرة في نفس اليوم. اتركها صفرًا إن كنت لا تقدّم هذا الخيار — عندها لا يظهر منها شيء في صفحة الاستراحة.",
+    dayUsePriceLabel: "سعر أيام الأسبوع (د.إ)",
+    dayUseWeekendPriceLabel: "سعر نهاية الأسبوع (د.إ)",
+    dayUseCheckOutLabel: "وقت الخروج",
+    dayUseCheckOutHint: "الوقت الذي يغادر فيه الضيف",
+    dayUseCheckOutPlaceholder: "مثال: ١٠ مساءً",
+    dayUseCheckOutEnLabel: "وقت الخروج بالإنجليزية",
+    dayUseCheckOutEnPlaceholder: "e.g. 10 PM",
     capacityLabel: "السعة (ضيف)",
     descriptionLabel: "الوصف",
     descriptionPlaceholder: "اكتب وصفًا موجزًا يبرز ما يميّز استراحتك.",
@@ -773,8 +934,13 @@ export const ar = {
     locationPreview: "معاينة الموقع",
     previewAfterSave: "المعاينة تتحدّث بعد الحفظ.",
     fieldServiceFee: "رسوم الخدمة (٪)",
+    fieldServiceFeeHint: "اتركها ٠ ليكون الإجمالي هو السعر المعروض فقط، بلا أي رسوم تظهر للضيف",
     fieldDepositDefault: "العربون الافتراضي (٪)",
     fieldDepositDefaultHint: "يُستخدم للاستراحات التي لم يحدّد مالكها نسبة خاصة",
+    fieldCommission: "عمولة المنصة (٪)",
+    fieldCommissionHint: "تُخصم من إيراد المالك ويحوّلها بنكياً — لا تُضاف على فاتورة الضيف",
+    fieldReviewInviteDays: "صلاحية رابط التقييم (يوم)",
+    fieldReviewInviteDaysHint: "المدة التي يبقى فيها رابط التقييم صالحاً بعد إنشائه",
     fieldFreeCancel: "الإلغاء المجاني (ساعة)",
     fieldCheckIn: "وقت الدخول",
     fieldCheckOut: "وقت الخروج",
@@ -799,6 +965,28 @@ export const ar = {
     required: "هذا الحقل مطلوب",
     checkFields: "الرجاء التحقّق من الحقول المطلوبة",
     checkInput: "الرجاء التحقّق من البيانات المدخلة",
+
+    /* --- the booking workflow ------------------------------------------- */
+    // Shown when the step somebody pressed is no longer the current one —
+    // almost always a second tab left open on an older version of the card.
+    stageNotCurrent: "هذه الخطوة لم تعد الخطوة الحالية — حدّث الصفحة",
+    bookingNotConfirmed: "لا يمكن متابعة الخطوات قبل تأكيد الحجز",
+    amountInvalid: "المبلغ المدخل غير صالح",
+    pastBookingLocked: "لا يمكن تأكيد حجز مضت تواريخه — تواصل مع الإدارة",
+    deductionTooLarge: "قيمة الأضرار أكبر من مبلغ التأمين المستلم",
+    commissionNotSent: "لم يسجّل المالك تحويل العمولة بعد",
+    cannotRevertStage: "لا يمكن التراجع عن هذه الخطوة — ألغِ الحجز بدلاً من ذلك",
+
+    /* --- guest reviews ---------------------------------------------------- */
+    reviewLinkInvalid: "رابط التقييم غير صالح",
+    reviewLinkExpired: "انتهت صلاحية رابط التقييم",
+    reviewLinkUsed: "سبق استخدام رابط التقييم",
+    reviewNotFound: "التقييم غير موجود",
+    reviewTooShort: "اكتب رأيك في ١٠ أحرف على الأقل",
+    ratingRequired: "اختر تقييماً من ١ إلى ٥",
+    reviewSubmitted: "تم إرسال تقييمك — شكراً لك",
+    reviewApproved: "تم نشر التقييم",
+    reviewRejected: "تم رفض التقييم",
     nameTooShort: "الاسم قصير جدًا",
     fullNameRequired: "الرجاء إدخال الاسم الكامل",
     invalidEmail: "بريد إلكتروني غير صالح",
@@ -858,6 +1046,25 @@ export const ar = {
     uploadEmpty: "الملف فارغ",
     uploadTooLarge: "حجم الصورة أكبر من ٢٠٠ ميغابايت",
     uploadBadFormat: "صيغة غير مدعومة — استخدم JPG أو PNG أو WebP",
+    duplicateRequest:
+      "لديك طلب قيد المراجعة لنفس الاستراحة وبنفس التواريخ — راجع رسالة الواتساب أو انتظر رد المالك",
+  },
+
+  /* -------------------------------------------------------------- security */
+  security: {
+    // The widget above the submit button.
+    verifying: "جارٍ التحقق من أنك لست روبوتًا…",
+    verified: "تم التحقق — يمكنك الإرسال",
+    protectedNote: "هذا النموذج محمي من الإرسال الآلي",
+    retry: "إعادة المحاولة",
+    checkFailedShort: "تعذّر التحقق",
+
+    // Messages returned by the server when a submission is refused.
+    checkFailed: "تعذّر التحقق من الطلب — حدّث الصفحة وحاول مرة أخرى",
+    checkUnavailable: "خدمة التحقق غير متاحة حاليًا — حاول بعد قليل",
+    challengeExpired: "انتهت صلاحية التحقق — اضغط الإرسال مرة أخرى",
+    tooManyAttempts: "عدد كبير من المحاولات خلال وقت قصير — انتظر قليلًا ثم حاول مرة أخرى",
+    waitForCheck: "انتظر اكتمال التحقق الأمني قبل الإرسال",
   },
 
   /* --------------------------------------------------------------- statuses */
@@ -880,12 +1087,119 @@ export const ar = {
     REFUNDED: "مُسترجع",
   },
 
+  /* -------------------------------------------------------------- workflow */
+  /**
+   * The seven steps of settling one booking, as the owner reads them.
+   *
+   * Written as instructions rather than labels — "أدخل المبلغ المستلم ثم أكّد"
+   * rather than "العربون" — because this panel is the platform teaching an
+   * owner how to run a booking properly, which is the whole reason it replaced
+   * a single confirm button.
+   */
+  workflow: {
+    title: "مسار الحجز",
+    stepOf: (n: string, total: string) => `الخطوة ${n} من ${total}`,
+    stepSaved: "تم حفظ الخطوة",
+    stepReverted: "تم التراجع عن الخطوة",
+    completed: "اكتملت جميع خطوات هذا الحجز",
+    undo: "تراجع خطوة",
+    received: "المستلم",
+    expected: "حسب الإعدادات",
+
+    depositTitle: "استلام العربون والتأمين",
+    depositBody:
+      "أدخل المبلغ المستلم فعلياً ثم أكّد الحجز — عندها تُحجز الأيام في التقويم ولا يستطيع ضيف آخر أخذها.",
+    depositHint:
+      "المبالغ معبّأة حسب الإعدادات — عدّلها إن اتفقت مع الضيف على مبلغ آخر عبر الواتساب.",
+    depositAmount: "العربون المستلم",
+    securityAmount: "التأمين المستلم",
+    depositAction: "تأكيد الحجز وحجز الأيام",
+
+    balanceTitle: "استلام باقي مبلغ الحجز",
+    balanceBody: (date: string) =>
+      `بانتظار يوم الدخول (${date}) وتحويل باقي قيمة الحجز كاملة.`,
+    balanceAmount: "المبلغ المستلم",
+    balanceAction: "تأكيد استلام المبلغ",
+    outstanding: "المتبقي على الضيف",
+
+    checkoutTitle: "خروج الضيف",
+    checkoutBody: "بانتظار انتهاء الإقامة وخروج الضيف من الاستراحة.",
+    checkoutAction: "تأكيد خروج الضيف",
+
+    inspectionTitle: "تفتيش الاستراحة",
+    inspectionBody:
+      "تأكد من سلامة الأغراض والمعدات وعدم وجود تكسير أو مخالفة لسياسة الاستراحة قبل إرجاع التأمين.",
+    inspectionNotes: "ملاحظات التفتيش (اختياري)",
+    inspectionAction: "تم التفتيش والاستراحة سليمة",
+
+    securityTitle: "إرجاع التأمين للضيف",
+    securityBody: (amount: string) =>
+      `التأمين المستلم ${amount}. أدخل قيمة الأضرار إن وُجدت، ويُحسب المبلغ المُعاد تلقائياً.`,
+    damageAmount: "قيمة الأضرار المخصومة",
+    toReturn: "المبلغ المُعاد للضيف",
+    securityAction: "تم إرجاع التأمين",
+
+    commissionTitle: "تحويل عمولة المنصة",
+    commissionBody: (percent: string, amount: string) =>
+      `عمولة المنصة ${percent} من قيمة الحجز = ${amount}. حوّلها بنكياً ثم أكّد التحويل.`,
+    commissionRef: "رقم الحوالة (اختياري)",
+    commissionAction: "تم تحويل العمولة",
+    commissionAwaitingAdmin: "بانتظار تأكيد الإدارة لاستلام الحوالة",
+    commissionConfirmAction: "تأكيد استلام العمولة",
+    commissionConfirmed: "تم تأكيد استلام العمولة",
+    commissionSentOn: (date: string) => `أرسلها المالك في ${date}`,
+
+    reviewTitle: "دعوة الضيف للتقييم",
+    reviewBody: (days: string) =>
+      `أنشئ رابطاً مؤقتاً صالحاً ${days} يوماً ليضيف الضيف تقييمه — ويصل التقييم للإدارة للموافقة عليه قبل نشره.`,
+    reviewAction: "إنشاء رابط التقييم",
+    reviewLinkReady: "رابط التقييم جاهز — أرسله للضيف",
+    copyLink: "نسخ الرابط",
+    linkCopied: "تم نسخ الرابط",
+    sendOnWhatsapp: "إرسال عبر الواتساب",
+    reviewPending: "التقييم بانتظار موافقة الإدارة",
+    reviewPublished: "تم نشر تقييم الضيف",
+    reviewRefused: "رُفض تقييم الضيف",
+    reviewNotSubmitted: "لم يضف الضيف تقييمه بعد",
+    inviteExpires: (date: string) => `ينتهي الرابط في ${date}`,
+  },
+
+  /* ------------------------------------------------------------ guest review */
+  review: {
+    title: "قيّم إقامتك",
+    subtitle: (listing: string) => `شاركنا رأيك في ${listing}`,
+    stayLabel: "فترة الإقامة",
+    nameLabel: "اسمك كما يظهر مع التقييم",
+    ratingLabel: "تقييمك",
+    bodyLabel: "رأيك في الاستراحة",
+    bodyPlaceholder: "كيف كانت النظافة والخدمة والموقع؟",
+    submit: "إرسال التقييم",
+    moderationNote: "يُراجع التقييم من الإدارة قبل نشره على صفحة الاستراحة.",
+    thanksTitle: "شكراً لك",
+    thanksBody: "وصلنا تقييمك وسيظهر على صفحة الاستراحة بعد مراجعته.",
+    invalidTitle: "رابط غير صالح",
+    invalidBody: "هذا الرابط غير صحيح أو لم يعد موجوداً.",
+    expiredTitle: "انتهت صلاحية الرابط",
+    expiredBody: "مدة إضافة التقييم انتهت. تواصل مع المالك إن أردت إضافة رأيك.",
+    usedTitle: "تم استخدام الرابط",
+    usedBody: "سبق أن أُضيف تقييم من خلال هذا الرابط.",
+    backHome: "العودة للرئيسية",
+  },
+
   /* ----------------------------------------------------------------- audit */
   audit: {
+    BOOKING_STAGE_ADVANCED: "إكمال خطوة في حجز",
+    BOOKING_STAGE_REVERTED: "تراجع عن خطوة في حجز",
+    BOOKING_COMMISSION_CONFIRMED: "تأكيد استلام عمولة",
+    REVIEW_INVITED: "إنشاء رابط تقييم",
+    REVIEW_APPROVED: "الموافقة على تقييم",
+    REVIEW_REJECTED: "رفض تقييم",
     OWNER_APPROVED: "الموافقة على مالك",
     OWNER_REJECTED: "رفض طلب مالك",
     OWNER_SUSPENDED: "إيقاف مالك",
     OWNER_ACTIVATED: "تفعيل مالك",
+    OWNER_UPDATED: "تعديل بيانات مالك",
+    OWNER_PASSWORD_RESET: "تغيير كلمة مرور مالك",
     OWNER_REGISTERED: "تسجيل مالك جديد",
     MEMBERSHIP_UPDATED: "تعديل انتهاء العضوية",
     LISTING_VISIBILITY_CHANGED: "تغيير ظهور استراحة",
@@ -918,6 +1232,7 @@ export const ar = {
     guests: (n: string) => `👥 عدد الضيوف: ${n}`,
     total: (amount: string) => `💰 الإجمالي التقديري: ${amount} د.إ`,
     deposit: (pct: string, amount: string) => `💵 العربون (${pct}٪): ${amount} د.إ`,
+    securityDeposit: (amount: string) => `🛡️ التأمين (مسترد): ${amount} د.إ`,
     name: (name: string) => `👤 الاسم: ${name}`,
     phone: (phone: string) => `📱 الجوال: ${phone}`,
     notes: (notes: string) => `📝 ملاحظات: ${notes}`,
@@ -948,6 +1263,12 @@ export const ar = {
     aboutEarnTitle: "كيف نكسب",
     aboutEarnBody: (pct: string) =>
       `لا نطلب أي دفع عبر الموقع. ترسل طلبك، فيصل المالك مباشرة على الواتساب بكل التفاصيل جاهزة، ويتم الاتفاق والدفع بينكما. نحصل على رسوم خدمة بنسبة ${pct}٪ مضمّنة في السعر المعروض — لا رسوم مخفية تُضاف لاحقًا.`,
+    // Used when the platform charges no service fee, which is the default.
+    // Written as its own sentence rather than the same one with "٠٪" in it:
+    // "رسوم خدمة بنسبة ٠٪" reads as a bug, and the honest version of this
+    // paragraph is a different claim, not the same claim with a zero in it.
+    aboutEarnBodyNoFee:
+      "لا نطلب أي دفع عبر الموقع. ترسل طلبك، فيصل المالك مباشرة على الواتساب بكل التفاصيل جاهزة، ويتم الاتفاق والدفع بينكما. ولا نضيف أي رسوم خدمة على السعر — ما تراه في صفحة الاستراحة هو ما تتفق عليه مع المالك.",
     aboutContactWhatsapp: "راسلنا على الواتساب",
 
     // ---- faq
@@ -968,6 +1289,8 @@ export const ar = {
     faqQ4: "الأسعار المعروضة نهائية؟",
     faqA4: (pct: string) =>
       `الإجمالي المعروض في صفحة الاستراحة يشمل سعر الليالي ورسوم الخدمة (${pct}٪). لا رسوم إضافية تُضاف بعد ذلك. سعر الجمعة والسبت قد يختلف ويظهر في التقويم.`,
+    faqA4NoFee:
+      "نعم. الإجمالي المعروض في صفحة الاستراحة هو سعر الليالي كما حدّده المالك — بلا رسوم خدمة ولا إضافات بعد ذلك. سعر الجمعة والسبت قد يختلف ويظهر في التقويم. وإذا طلب المالك مبلغ تأمين مسترد فسيظهر في صفحة الاستراحة قبل الإرسال.",
     faqQ5: "هل التقويم دقيق؟",
     faqA5:
       "نعم — الأيام المحجوزة أو المحظورة من المالك تظهر مشطوبة ولا يمكن اختيارها، ونتحقّق من التوفّر مرة أخرى في اللحظة التي ترسل فيها الطلب.",
@@ -992,7 +1315,7 @@ export const ar = {
       "حدّد الوجهة والتواريخ وعدد الضيوف، ثم ضيّق النتائج بالسعر والسعة والمرافق حتى تجد ما يناسبك.",
     howStep2Title: "اختر التواريخ من التقويم",
     howStep2Body:
-      "الأيام المحجوزة تظهر مشطوبة ولا يمكن اختيارها. اختر الوصول ثم المغادرة، وسيُحسب الإجمالي فورًا شاملًا رسوم الخدمة.",
+      "الأيام المحجوزة تظهر مشطوبة ولا يمكن اختيارها. اختر الوصول ثم المغادرة، وسيُحسب الإجمالي فورًا.",
     howStep3Title: "أرسل الطلب",
     howStep3Body:
       "املأ اسمك ورقم جوالك وأي ملاحظات. يُسجَّل الطلب ويُعطى رقمًا، ثم يفتح لك الواتساب برسالة جاهزة تحتوي كل التفاصيل.",
@@ -1014,8 +1337,9 @@ export const ar = {
     polS2Strong: "ليس حجزًا مؤكدًا",
     polS2Tail:
       ". يصبح الحجز مؤكدًا فقط بعد أن يوافق المالك عليه ويُغلق التقويم على تواريخك. حتى تلك اللحظة قد تُحجز التواريخ لضيف آخر.",
-    polS3H: "٣. الأسعار ورسوم الخدمة",
+    polS3H: "٣. الأسعار",
     polS3L1: (pct: string) => `الأسعار بالدرهم الإماراتي وتشمل رسوم خدمة بنسبة ${pct}٪.`,
+    polS3L1NoFee: "الأسعار بالدرهم الإماراتي ولا تُضاف عليها أي رسوم خدمة.",
     polS3L2: "سعر الجمعة والسبت قد يكون أعلى، ويظهر بوضوح في التقويم قبل الإرسال.",
     polS3L3: "لا توجد رسوم إضافية تُضاف بعد عرض الإجمالي.",
     polS4H: "٤. العربون",

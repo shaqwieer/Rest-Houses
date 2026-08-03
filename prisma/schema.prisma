@@ -232,11 +232,37 @@ model SiteSettings {
   colorSand       String @default("#FBF7F0") // --sand-50
 
   // Booking commercials
-  serviceFeePercent Int     @default(5)
+  //
+  // serviceFeePercent defaults to 0: the platform charges no separate service
+  // fee, so the total a guest sees is exactly the nightly price they were
+  // quoted. The column stays because the arithmetic still has to live
+  // somewhere, and an operator who later wants a fee can switch it back on from
+  // /admin/settings — but at 0 every fee row disappears from the interface
+  // rather than rendering "0%". See `quote()` in src/lib/pricing.ts.
+  serviceFeePercent Int     @default(0)
   depositPercent    Int     @default(30)
   freeCancelHours   Int     @default(48)
   checkInTime       String  @default("٤ عصرًا")
   checkOutTime      String  @default("١٢ ظهرًا")
+
+  // ---------------------------------------------------------------------
+  // The platform's commission — a separate thing from `serviceFeePercent`,
+  // and the difference is who pays.
+  //
+  //   serviceFeePercent — added ON TOP of the nights, paid by the GUEST.
+  //                       Now 0: the total is the price that was advertised.
+  //   commissionPercent — taken OUT of what the owner collected, paid by the
+  //                       OWNER, by bank transfer, at step 6 of the booking
+  //                       workflow. Never added to `total`, never shown to the
+  //                       guest — they already paid it inside the nightly rate.
+  //
+  // Collapsing the two would mean either charging the guest twice or losing the
+  // platform's revenue the moment the service fee went to 0.
+  commissionPercent Int @default(5)
+
+  // How long a guest's review link stays usable, in days. The link is issued at
+  // step 7, once the stay is fully closed out — see `ReviewInvite`.
+  reviewInviteDays Int @default(15)
 
   // Future online deposit payments. Keep false until a gateway is wired —
   // see src/lib/payments/index.ts for the disabled stub.
@@ -303,6 +329,37 @@ model Listing {
   weekendPrice  Int @default(0) // 0 → falls back to pricePerNight
   capacity      Int @default(20)
 
+  // ---------------------------------------------------------------------
+  // Day-use (حجز بدون مبيت) — the guest arrives and leaves the same day.
+  //
+  // Informational, not bookable. The calendar, the quote and every stored
+  // amount are built on *nights*: `nightsBetween` refuses a zero-night range
+  // and `Availability` blocks whole days. Making a same-day stay bookable would
+  // mean a second set of semantics through all of that, which is a much larger
+  // change than "publish the price". So these are published on the listing page
+  // and the guest arranges a day booking with the owner on WhatsApp — which is
+  // how the overnight flow ends anyway.
+  //
+  // 0 means "not offered" and renders nothing at all: an owner who leaves these
+  // blank sees exactly the page they have today. `dayUseCheckOutTime` is the
+  // hour the guest must be out by, free text ("١٠ مساءً") because owners write
+  // it in their own words; the `En` sibling follows the same blank-means-fall-
+  // back-to-Arabic rule as `nameEn` above.
+  dayUsePrice          Int    @default(0) // weekdays, no overnight stay
+  dayUseWeekendPrice   Int    @default(0) // Friday/Saturday, no overnight stay
+  dayUseCheckOutTime   String @default("")
+  dayUseCheckOutTimeEn String?
+
+  // Refundable security deposit (مبلغ التأمين), collected by the owner and
+  // returned once the stay ends and the rest house has been checked.
+  //
+  // Deliberately NOT part of `total`: it is not a cost of the booking, it is
+  // money that comes back. Adding it would make the headline total disagree
+  // with the price the guest was quoted — the exact thing removing the service
+  // fee was meant to fix. It is shown on its own line, labelled refundable.
+  // 0 hides it everywhere.
+  securityDeposit Int @default(0)
+
   // JSON string arrays of ids — see the portability note at the top.
   // amenities: ["pool","wifi",…]  categories: ["family","wedding",…]
   amenities  String @default("[]")
@@ -355,6 +412,7 @@ model Listing {
   availability  Availability[]
   bookings      BookingRequest[]
   reviews       Review[]
+  reviewInvites ReviewInvite[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -471,18 +529,133 @@ model BookingRequest {
   // from SiteSettings.depositPercent by the migration.
   depositPercent Int @default(30)
 
+  // The refundable security deposit the listing asked for, snapshotted like
+  // every other amount here. Read from this column — never re-derived from the
+  // listing — so a later change to the owner's figure cannot rewrite what an
+  // existing request quoted. 0 on every row that predates the column, which is
+  // also what "no security deposit" means.
+  securityDeposit Int @default(0)
+
+  // The platform's commission on this booking, snapshotted at request time for
+  // the same reason every other amount here is: a later change to
+  // SiteSettings.commissionPercent must not rewrite what an owner already owes.
+  // This is money the owner remits to the platform at step 6 — it is NOT part
+  // of `total` and the guest never sees it.
+  commissionPercent Int @default(5)
+  commissionDue     Int @default(0)
+
   // "NEW" | "CONFIRMED" | "REJECTED" | "CANCELLED"
   status String @default("NEW")
+
+  // ---------------------------------------------------------------------
+  // Workflow stage — one of BOOKING_STAGES in src/lib/constants.ts.
+  //
+  // Deliberately ORTHOGONAL to `status`, not an extension of it. `status`
+  // answers "does this booking hold the calendar?" and is what
+  // `BOOKING_STATUSES`, the filter chips, `StatusBadge`, `listBookings` and the
+  // public /booking/[reference] page all key off. `stage` answers "how far
+  // through the handover is the owner?" — which only exists at all once the
+  // booking is CONFIRMED.
+  //
+  // Folding the seven steps into `status` was the obvious move and the wrong
+  // one: every one of those call sites would have had to learn six new values
+  // that mean "confirmed, still", and a stage list that grows later would break
+  // them again. Two columns, each with one job.
+  //
+  // "DEPOSIT" is the resting state for a request nobody has answered yet, so a
+  // NEW / REJECTED / CANCELLED row simply carries the stage it would start at.
+  stage String @default("DEPOSIT")
+
+  // ---------------------------------------------------------------------
+  // What each step actually recorded.
+  //
+  // The amounts are nullable on purpose: NULL means "this step has not been
+  // completed", which is genuinely different from 0 ("completed, and nothing
+  // was collected" — a booking with no deposit, or a security deposit returned
+  // in full with no deduction). A `@default(0)` would erase that distinction
+  // and the stepper could no longer tell a skipped step from a free one.
+  //
+  // Each is the figure the OWNER confirms, not the figure the system quoted:
+  // `depositDue` is what was asked for, `depositCollected` is what arrived —
+  // and those differ whenever the two of them settled on something else over
+  // WhatsApp, which is the normal case here, not the exception.
+  depositCollected  Int? // step 1 — عربون actually received
+  securityCollected Int? // step 1 — تأمين actually received
+  balanceCollected  Int? // step 2 — the rest of the booking value
+  damageDeduction   Int? // step 5 — withheld from the security deposit
+  securityReturned  Int? // step 5 — handed back to the guest
+  inspectionNotes   String? // step 4 — what the owner found
+
+  // The owner's bank-transfer reference for the commission, typed at step 6 so
+  // the operator confirming it at the same step has something to match against.
+  commissionReference String?
+
+  // One timestamp per completed step, rather than a separate event table.
+  //
+  // The stepper renders from a single booking row — it is drawn once per card
+  // in a list of dozens, and a join per card to reconstruct "which steps are
+  // done" would be a query per card for information that is seven booleans
+  // wide. The audit trail of *who* pressed each button lives in AuditLog, which
+  // is where consequential actions already go.
+  depositConfirmedAt    DateTime? // step 1 — booking confirmed, calendar closed
+  balancePaidAt         DateTime? // step 2
+  checkedOutAt          DateTime? // step 3
+  inspectedAt           DateTime? // step 4
+  securityReturnedAt    DateTime? // step 5
+  commissionSentAt      DateTime? // step 6 — owner says the transfer went out
+  commissionConfirmedAt DateTime? // step 6 — operator says it arrived
+  reviewInvitedAt       DateTime? // step 7 — the guest's link was issued
 
   // Future online deposit: "NONE" | "PENDING" | "PAID" | "REFUNDED".
   // Nothing writes anything but "NONE" until a gateway is enabled.
   paymentStatus    String  @default("NONE")
   paymentReference String?
 
+  reviewInvite ReviewInvite?
+  review       Review?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status, createdAt])
+  @@index([listingId])
+  // Drives the owner's "what needs me next" queue and the operator's
+  // commission-to-confirm list, both of which filter on stage within status.
+  @@index([status, stage])
+}
+
+// ---------------------------------------------------------------------------
+// ReviewInvite — the temporary link a guest uses to review a stay.
+//
+// Issued at step 7, once the booking has been paid, checked out, inspected and
+// settled, so only a guest who genuinely completed a stay can ever be asked.
+//
+// ─── The token is the entire authentication ─────────────────────────────────
+// This platform has no customer accounts — a guest books with a name and a
+// WhatsApp number and never signs up (see the note on `listCustomers` in
+// src/lib/admin-queries.ts). So there is nobody to log in, and the link itself
+// has to carry the authority. That makes three properties load-bearing:
+//   * the token is 32 random bytes from `crypto.randomBytes`, not a cuid and
+//     not derived from the booking — it must not be guessable from a reference
+//     number a guest can read off their own confirmation page
+//   * `expiresAt` is checked server-side on every visit, never in the UI
+//   * `usedAt` makes it single-use, so a forwarded link cannot be replayed
+// The page it opens shows nothing but the one rest house being reviewed.
+// ---------------------------------------------------------------------------
+model ReviewInvite {
+  id    String @id @default(cuid())
+  token String @unique
+
+  bookingId String         @unique
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
   @@index([listingId])
 }
 
@@ -499,5 +672,29 @@ model Review {
   published  Boolean @default(true)
   createdAt  DateTime @default(now())
 
+  // ---------------------------------------------------------------------
+  // Moderation state — one of REVIEW_STATUSES in src/lib/constants.ts:
+  //   "PENDING"  — submitted through a review link, waiting on an operator
+  //   "APPROVED" — live (paired with published = true)
+  //   "REJECTED" — refused; kept rather than deleted so the same invite can't
+  //                be spent again on a second attempt at the same complaint
+  //
+  // `published` is NOT replaced by this. It stays the single switch every
+  // public query already filters on (`where: { published: true }` in
+  // src/lib/listings.ts), so nothing on the visitor side had to change and the
+  // seeded catalogue keeps its reviews. The default is "APPROVED" for exactly
+  // that reason: every existing row is already published, and a default of
+  // "PENDING" would have contradicted the column beside it.
+  //
+  // A review arriving through an invite is written PENDING **and**
+  // published: false, explicitly — see `submitReview` in src/lib/reviews.ts.
+  status String @default("APPROVED")
+
+  // The stay being reviewed, when the review came from an invite. Null for the
+  // seeded catalogue and anything an operator adds by hand.
+  bookingId String?         @unique
+  booking   BookingRequest? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
   @@index([listingId, published])
+  @@index([status])
 }

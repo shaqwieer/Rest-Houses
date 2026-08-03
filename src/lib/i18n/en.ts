@@ -241,6 +241,17 @@ export const en: Dictionary = {
     depositLine: (pct, amount) =>
       `Deposit ${pct}% (${amount} AED) once the owner confirms`,
     noDepositLine: "No deposit required for this rest house",
+    extraPricingTitle: "Other rates and options",
+    dayUseNote:
+      "Day booking — you arrive and leave the same day. Arrange the details with the owner on WhatsApp.",
+    dayUseWeekday: "Day booking — weekdays",
+    dayUseWeekend: "Day booking — weekend",
+    dayUseCheckOut: "Leave by",
+    securityDepositLabel: "Security deposit (refundable)",
+    securityDepositNote:
+      "Paid to the owner before the stay and returned in full once the booking ends and the rest house has been checked. Not part of the total.",
+    securityDepositLine: (amount) =>
+      `${amount} AED refundable security deposit — returned after the rest house is checked, and not part of the total`,
     pickDatesHint: "Pick two dates on the calendar above to see the total price.",
     requestViaWhatsapp: "Request booking on WhatsApp",
     requestBooking: "Request booking",
@@ -326,11 +337,23 @@ export const en: Dictionary = {
       "Send the details to the owner on WhatsApp now so you get confirmed as quickly as possible.",
     reference: "Request reference",
     openWhatsapp: "Send details on WhatsApp",
+    autoSendButton: (seconds) => `Send details on WhatsApp (${seconds})`,
+    autoSendCountdown: (seconds, count) =>
+      `WhatsApp opens automatically in ${seconds} ${plural("en", count, {
+        one: "second",
+        other: "seconds",
+      })}…`,
+    autoSendCancel: "Stop",
+    autoSendCancelled: "Automatic opening stopped — use the button above when you're ready.",
+    autoSendManual:
+      "The button opens WhatsApp with the message ready — nothing is sent until you press send.",
     introBody:
       "Fill in the details below and your request goes straight to the rest house owner on WhatsApp. Nothing is charged at this stage.",
     keepReference: "Keep your reference for future enquiries:",
     depositPayOnline: (amount) =>
       `You can pay the ${amount} AED deposit online once the owner confirms.`,
+    securityDepositNote: (amount) =>
+      `The ${amount} AED security deposit is handed to the owner before the stay and returned in full once the booking ends and the rest house has been checked — it is not part of the total above.`,
     depositCollectedByOwner: (amount) =>
       `The expected deposit is ${amount} AED, collected directly by the owner once availability is confirmed — there is no online payment on the site at the moment.`,
     bookingNotFound: "Booking request not found",
@@ -437,6 +460,73 @@ export const en: Dictionary = {
       "The share of the booking total you require up front. Leave blank to use the platform default.",
     depositPercentSuffix: "% of the total",
     usingPlatformDefault: (pct) => `Platform default: ${pct}%`,
+    securityDeposit: "Security deposit (refundable)",
+    securityDepositHint:
+      "Returned to the guest once the booking ends and the rest house has been checked. Leave at zero if you don't ask for one — it then never appears to the guest.",
+
+    // ---- insights ----
+    earningsAhead: "Next 30 days",
+    earningsAheadSub: "From confirmed bookings",
+    earningsNote: "Booking value, before the refundable deposit",
+    unansweredStat: "Awaiting your reply",
+    unansweredStatSub: "Waiting over 24 hours",
+
+    adviceTitle: "Notes on your performance",
+    insightUnanswered: (n) =>
+      `${n} requests have been waiting more than 24 hours — replying quickly raises your confirmation rate`,
+    insightLowConfirmation: (pct) =>
+      `You confirm only ${pct}% of the requests you answer — check your calendar and pricing so you stop losing guests`,
+    insightWeekendDemand: (pct) =>
+      `${pct}% of your booked nights fall on the weekend, and your Friday/Saturday rate matches every other day — set a weekend price`,
+    insightQuietListing: (name) =>
+      `"${name}" has had no requests in this period — review its price, photos and description`,
+    insightFewPhotos: (name) =>
+      `"${name}" has fewer than 4 photos — rest houses with more photos receive more requests`,
+    insightHighOccupancy: (pct) =>
+      `You're ${pct}% occupied over the next month — you could raise your rate or open more days`,
+    insightNoListings: "Add your first rest house to start receiving requests and see your figures here",
+
+    trendTitle: "Monthly earnings",
+    trendSub: (n) => `Last ${n} months — counted by the month the stay starts`,
+    trendEmpty: "No confirmed bookings in this period yet",
+    trendMonthLabel: (month, amount, count) =>
+      `${month}: ${amount} AED from ${count} confirmed bookings`,
+
+    occupancyTitle: "Calendar occupancy",
+    occupancySub: (days) => `Next ${days} days`,
+    occupancyDetail: (booked, capacity) => `${booked} nights booked out of ${capacity}`,
+    occupancyNoListings: "Publish at least one rest house to see occupancy",
+
+    patternsTitle: "How guests book",
+    patternsSub: (days) => `Last ${days} days`,
+    avgValue: "Average booking",
+    avgNightsLabel: "Average nights",
+    avgLeadTime: "Booked in advance",
+    avgLeadTimeValue: (n) => `${n} days`,
+    avgGuestsLabel: "Average guests",
+    weekendShare: "Weekend share",
+    weekendShareSub: "Of your booked nights",
+    repeatGuests: "Guests who came back",
+    confirmationRate: "Confirmation rate",
+    confirmationRateSub: "Of the requests you answered",
+    requestsInWindow: "Total requests",
+    notEnoughData: "Not enough data yet",
+
+    listingsTableTitle: "Performance by rest house",
+    colListing: "Rest house",
+    colRequests: "Requests",
+    colConfirmed: "Confirmed",
+    colEarnings: "Earnings",
+    colOccupancy: "Occupancy",
+    colRating: "Rating",
+    hiddenListing: "Hidden",
+    noReviewsYet: "New",
+    neverRequested: "No requests yet",
+
+    upcomingTitle: "Arriving soon",
+    upcomingSub: "Confirmed bookings in the next 14 days",
+    upcomingEmpty: "No confirmed bookings coming up",
+    upcomingLine: (guests, nights) => `${guests} guests · ${nights} nights`,
 
     blockedPendingTitle: "You can't publish rest houses yet",
     blockedPendingBody: "This page unlocks as soon as an administrator approves your account.",
@@ -470,6 +560,10 @@ export const en: Dictionary = {
     statOccupancySub: "next 30 days",
     statRevenue: "Expected revenue",
     statRevenueSub: "AED — confirmed bookings",
+    statCommissionToConfirm: "Commissions to confirm",
+    statCommissionToConfirmSub: "Sent by the owner, not yet confirmed",
+    statReviewsToModerate: "Reviews to moderate",
+    statReviewsToModerateSub: "Nothing appears until you approve",
     statOwners: "Owners",
     statOwnersSub: "active",
     statPendingOwners: "Registrations",
@@ -510,6 +604,20 @@ export const en: Dictionary = {
     ownerActivated: "Owner account activated",
     membershipUpdated: "Membership expiry updated",
     expiryHint: "Leave blank for a membership with no expiry date.",
+    manageOwner: "Manage account",
+    manageOwnerTitle: "Manage owner account",
+    ownerDetailsTab: "Details",
+    ownerPasswordTab: "Password",
+    ownerUpdated: "Owner details saved",
+    ownerPasswordChanged: "Password changed",
+    newPassword: "New password",
+    confirmNewPassword: "Confirm password",
+    newPasswordHint:
+      "At least 8 characters. Pass it to the owner yourself — it is never emailed, and never appears in the log.",
+    changePassword: "Change password",
+    ownerNoCity: "Not set",
+    ownerAboutLabel: "About",
+    ownerIdNumberLabel: "ID / trade licence number",
     hiddenListingsNote: (n) =>
       `${n} rest houses hidden from the site because of owner status or membership expiry`,
 
@@ -521,13 +629,42 @@ export const en: Dictionary = {
     customerTotalSpend: "Total value",
 
     bookingsTitle: "All bookings",
-    paymentsTitle: "Payments & deposits",
+    paymentsTitle: "Revenue & commission",
     paymentsSubtitle:
-      "Online payment is not enabled — deposits are collected by the owner directly.",
-    noPayments: "No payments recorded.",
+      "The total value of every booking, and the platform commission owed on it.",
+    noPayments: "No bookings recorded.",
     depositDue: "Deposit due",
     depositPercentCol: "Deposit %",
     paymentStatus: "Payment status",
+
+    commissionCol: "Commission",
+    commissionStateCol: "Commission status",
+    commissionNotDue: "Not due yet",
+    commissionWaiting: "Awaiting transfer",
+    commissionSent: "Sent — awaiting confirmation",
+    commissionReceived: "Received",
+    stageCol: "Stage",
+    confirmedValueTile: "Confirmed booking value",
+    commissionConfirmedTile: "Commission on confirmed",
+    commissionCollectedTile: "Commission received",
+    commissionOutstandingTile: "Commission outstanding",
+    allValueTile: "All booking value",
+    commissionRateNote: (percent: string) =>
+      `Commission is ${percent} of the booking value, transferred by the owner at step 6.`,
+
+    reviews: "Reviews",
+    reviewsTitle: "Guest reviews",
+    reviewsSubtitle:
+      "Reviews submitted through guest links — nothing appears on the site until approved.",
+    noReviews: "No reviews.",
+    reviewPendingCount: (n: string) => `${n} awaiting moderation`,
+    reviewApprove: "Approve & publish",
+    reviewReject: "Reject",
+    reviewAuthor: "Guest",
+    reviewRating: "Rating",
+    reviewBody: "Review",
+    reviewListing: "Rest house",
+    reviewWhen: "Date",
 
     auditTitle: "Activity log",
     auditSubtitle: "Every consequential administrative action, newest first.",
@@ -571,6 +708,16 @@ export const en: Dictionary = {
     pricePerNightLabel: "Price per night (AED)",
     weekendPriceLabel: "Weekend price",
     weekendPriceHint: "Leave at zero to match the weekday rate",
+    dayUseCardTitle: "Day booking, no overnight stay (optional)",
+    dayUseCardHint:
+      "Rates for arriving and leaving on the same day. Leave at zero if you don't offer this — none of it then appears on the rest house's page.",
+    dayUsePriceLabel: "Weekday rate (AED)",
+    dayUseWeekendPriceLabel: "Weekend rate (AED)",
+    dayUseCheckOutLabel: "Leave by",
+    dayUseCheckOutHint: "The time the guest has to be out",
+    dayUseCheckOutPlaceholder: "e.g. ١٠ مساءً",
+    dayUseCheckOutEnLabel: "Leave-by time in English",
+    dayUseCheckOutEnPlaceholder: "e.g. 10 PM",
     capacityLabel: "Capacity (guests)",
     descriptionLabel: "Description",
     descriptionPlaceholder: "Write a short description highlighting what makes it special.",
@@ -701,8 +848,14 @@ export const en: Dictionary = {
     locationPreview: "Location preview",
     previewAfterSave: "The preview updates after saving.",
     fieldServiceFee: "Service fee (%)",
+    fieldServiceFeeHint: "Leave at 0 so the total is exactly the price shown, with no fee line at all",
     fieldDepositDefault: "Default deposit (%)",
     fieldDepositDefaultHint: "Used for rest houses whose owner has not set their own rate",
+    fieldCommission: "Platform commission (%)",
+    fieldCommissionHint:
+      "Deducted from the owner's revenue and transferred by bank — never added to the guest's bill",
+    fieldReviewInviteDays: "Review link validity (days)",
+    fieldReviewInviteDaysHint: "How long a guest's review link stays usable once issued",
     fieldFreeCancel: "Free cancellation (hours)",
     fieldCheckIn: "Check-in time",
     fieldCheckOut: "Check-out time",
@@ -728,6 +881,24 @@ export const en: Dictionary = {
   validation: {
     required: "This field is required",
     checkFields: "Please check the required fields",
+
+    stageNotCurrent: "That is no longer the current step — refresh the page",
+    bookingNotConfirmed: "The booking has to be confirmed before the later steps",
+    amountInvalid: "That amount isn't valid",
+    pastBookingLocked: "A booking whose dates have passed can't be confirmed — ask the operator",
+    deductionTooLarge: "The damages come to more than the security deposit you took",
+    commissionNotSent: "The owner hasn't recorded the transfer yet",
+    cannotRevertStage: "This step can't be undone — cancel the booking instead",
+
+    reviewLinkInvalid: "This review link isn't valid",
+    reviewLinkExpired: "This review link has expired",
+    reviewLinkUsed: "This review link has already been used",
+    reviewNotFound: "Review not found",
+    reviewTooShort: "Please write at least 10 characters",
+    ratingRequired: "Choose a rating from 1 to 5",
+    reviewSubmitted: "Thank you — your review has been sent",
+    reviewApproved: "Review published",
+    reviewRejected: "Review rejected",
     checkInput: "Please check the details you entered",
     nameTooShort: "That name is too short",
     fullNameRequired: "Please enter your full name",
@@ -789,6 +960,23 @@ export const en: Dictionary = {
     uploadEmpty: "The file is empty",
     uploadTooLarge: "The image is larger than 200 MB",
     uploadBadFormat: "Unsupported format — use JPG, PNG or WebP",
+    duplicateRequest:
+      "You already have a request under review for this rest house on these dates — check WhatsApp or wait for the owner to reply",
+  },
+
+  /* -------------------------------------------------------------- security */
+  security: {
+    verifying: "Checking that you're not a robot…",
+    verified: "Verified — you can send now",
+    protectedNote: "This form is protected against automated submissions",
+    retry: "Try again",
+    checkFailedShort: "Verification failed",
+
+    checkFailed: "We couldn't verify this request — refresh the page and try again",
+    checkUnavailable: "The verification service is unavailable right now — please try shortly",
+    challengeExpired: "The security check expired — press send again",
+    tooManyAttempts: "Too many attempts in a short time — please wait a moment and try again",
+    waitForCheck: "Wait for the security check to finish before sending",
   },
 
   /* --------------------------------------------------------------- statuses */
@@ -808,12 +996,113 @@ export const en: Dictionary = {
     REFUNDED: "Refunded",
   },
 
+  /* -------------------------------------------------------------- workflow */
+  workflow: {
+    title: "Booking steps",
+    stepOf: (n: string, total: string) => `Step ${n} of ${total}`,
+    stepSaved: "Step saved",
+    stepReverted: "Step undone",
+    completed: "Every step of this booking is done",
+    undo: "Undo step",
+    received: "Received",
+    expected: "From settings",
+
+    depositTitle: "Deposit & security deposit received",
+    depositBody:
+      "Enter what you actually received, then confirm — the nights are written into the calendar and nobody else can take them.",
+    depositHint:
+      "Pre-filled from the settings — change them if you agreed something else with the guest on WhatsApp.",
+    depositAmount: "Deposit received",
+    securityAmount: "Security deposit received",
+    depositAction: "Confirm booking & block the dates",
+
+    balanceTitle: "Balance received",
+    balanceBody: (date: string) =>
+      `Waiting for check-in day (${date}) and the rest of the booking value.`,
+    balanceAmount: "Amount received",
+    balanceAction: "Confirm the balance arrived",
+    outstanding: "Still owed",
+
+    checkoutTitle: "Guest checked out",
+    checkoutBody: "Waiting for the stay to end and the guest to leave.",
+    checkoutAction: "Confirm the guest has left",
+
+    inspectionTitle: "Inspect the rest house",
+    inspectionBody:
+      "Check the furnishings and equipment for damage or any breach of the house rules before returning the security deposit.",
+    inspectionNotes: "Inspection notes (optional)",
+    inspectionAction: "Inspected — everything is in order",
+
+    securityTitle: "Return the security deposit",
+    securityBody: (amount: string) =>
+      `You are holding ${amount}. Enter the cost of any damage and the amount to return is worked out for you.`,
+    damageAmount: "Damages withheld",
+    toReturn: "Returned to the guest",
+    securityAction: "Security deposit returned",
+
+    commissionTitle: "Transfer the platform commission",
+    commissionBody: (percent: string, amount: string) =>
+      `Commission is ${percent} of the booking value = ${amount}. Send it by bank transfer, then confirm.`,
+    commissionRef: "Transfer reference (optional)",
+    commissionAction: "Commission transferred",
+    commissionAwaitingAdmin: "Waiting for the operator to confirm the transfer arrived",
+    commissionConfirmAction: "Confirm the commission arrived",
+    commissionConfirmed: "Commission confirmed",
+    commissionSentOn: (date: string) => `Owner sent it on ${date}`,
+
+    reviewTitle: "Invite the guest to review",
+    reviewBody: (days: string) =>
+      `Create a link valid for ${days} days so the guest can review the stay — the review reaches the operator for approval before it appears.`,
+    reviewAction: "Create the review link",
+    reviewLinkReady: "The review link is ready — send it to the guest",
+    copyLink: "Copy link",
+    linkCopied: "Link copied",
+    sendOnWhatsapp: "Send on WhatsApp",
+    reviewPending: "Review waiting for approval",
+    reviewPublished: "The guest's review is published",
+    reviewRefused: "The guest's review was rejected",
+    reviewNotSubmitted: "The guest hasn't reviewed yet",
+    inviteExpires: (date: string) => `Link expires on ${date}`,
+  },
+
+  /* ------------------------------------------------------------ guest review */
+  review: {
+    title: "Review your stay",
+    subtitle: (listing: string) => `Tell us how ${listing} was`,
+    stayLabel: "Your stay",
+    nameLabel: "Your name, as it will appear",
+    ratingLabel: "Your rating",
+    bodyLabel: "How was it?",
+    bodyPlaceholder: "How were the cleanliness, the service and the location?",
+    submit: "Send review",
+    moderationNote:
+      "Reviews are checked by the operator before they appear on the rest house page.",
+    thanksTitle: "Thank you",
+    thanksBody: "We have your review — it will appear once it has been checked.",
+    invalidTitle: "Link not valid",
+    invalidBody: "This link is not correct, or no longer exists.",
+    expiredTitle: "Link expired",
+    expiredBody:
+      "The window for reviewing this stay has closed. Contact the owner if you'd still like to.",
+    usedTitle: "Link already used",
+    usedBody: "A review has already been submitted through this link.",
+    backHome: "Back to the home page",
+  },
+
   /* ----------------------------------------------------------------- audit */
   audit: {
+    BOOKING_STAGE_ADVANCED: "Booking step completed",
+    BOOKING_STAGE_REVERTED: "Booking step undone",
+    BOOKING_COMMISSION_CONFIRMED: "Commission confirmed",
+    REVIEW_INVITED: "Review link issued",
+    REVIEW_APPROVED: "Review approved",
+    REVIEW_REJECTED: "Review rejected",
     OWNER_APPROVED: "Owner approved",
     OWNER_REJECTED: "Owner request rejected",
     OWNER_SUSPENDED: "Owner suspended",
     OWNER_ACTIVATED: "Owner activated",
+    OWNER_UPDATED: "Owner details edited",
+    OWNER_PASSWORD_RESET: "Owner password changed",
     OWNER_REGISTERED: "New owner registered",
     MEMBERSHIP_UPDATED: "Membership expiry changed",
     LISTING_VISIBILITY_CHANGED: "Listing visibility changed",
@@ -846,6 +1135,7 @@ export const en: Dictionary = {
     guests: (n) => `👥 Guests: ${n}`,
     total: (amount) => `💰 Estimated total: ${amount} AED`,
     deposit: (pct, amount) => `💵 Deposit (${pct}%): ${amount} AED`,
+    securityDeposit: (amount) => `🛡️ Security deposit (refundable): ${amount} AED`,
     name: (name) => `👤 Name: ${name}`,
     phone: (phone) => `📱 Mobile: ${phone}`,
     notes: (notes) => `📝 Notes: ${notes}`,
@@ -874,6 +1164,8 @@ export const en: Dictionary = {
     aboutEarnTitle: "How we earn",
     aboutEarnBody: (pct) =>
       `We take no payment through the site. You send your request, it reaches the owner on WhatsApp with every detail ready, and you agree and pay between yourselves. We earn a ${pct}% service fee that is already included in the price you see — no hidden charges added later.`,
+    aboutEarnBodyNoFee:
+      "We take no payment through the site. You send your request, it reaches the owner on WhatsApp with every detail ready, and you agree and pay between yourselves. And we add no service fee to the price — what you see on a rest house's page is what you settle with its owner.",
     aboutContactWhatsapp: "Message us on WhatsApp",
 
     faqTitle: "Frequently asked questions",
@@ -893,6 +1185,8 @@ export const en: Dictionary = {
     faqQ4: "Are the prices shown final?",
     faqA4: (pct) =>
       `The total on a rest house's page covers the nightly rates plus the service fee (${pct}%). Nothing further is added afterwards. Friday and Saturday rates can differ, and the calendar shows them.`,
+    faqA4NoFee:
+      "Yes. The total on a rest house's page is the nightly rate its owner set — no service fee, and nothing added afterwards. Friday and Saturday rates can differ, and the calendar shows them. If the owner asks for a refundable security deposit, it is shown on the page before you send anything.",
     faqQ5: "Is the calendar accurate?",
     faqA5:
       "Yes — days booked or blocked by the owner appear struck through and can't be selected, and we re-check availability at the moment you send your request.",
@@ -916,7 +1210,7 @@ export const en: Dictionary = {
       "Set your destination, dates and guest count, then narrow the results by price, capacity and amenities until you find the right fit.",
     howStep2Title: "Pick your dates on the calendar",
     howStep2Body:
-      "Booked days appear struck through and can't be selected. Choose check-in then check-out, and the total is worked out instantly, service fee included.",
+      "Booked days appear struck through and can't be selected. Choose check-in then check-out, and the total is worked out instantly.",
     howStep3Title: "Send the request",
     howStep3Body:
       "Fill in your name, mobile number and any notes. The request is recorded and given a reference, then WhatsApp opens with a message containing every detail.",
@@ -936,8 +1230,9 @@ export const en: Dictionary = {
     polS2Strong: "not a confirmed booking",
     polS2Tail:
       ". It becomes confirmed only once the owner accepts it and the calendar closes on your dates. Until that moment, the dates may still be taken by another guest.",
-    polS3H: "3. Prices and service fee",
+    polS3H: "3. Prices",
     polS3L1: (pct) => `Prices are in UAE dirhams and include a ${pct}% service fee.`,
+    polS3L1NoFee: "Prices are in UAE dirhams, with no service fee added.",
     polS3L2:
       "Friday and Saturday rates may be higher, and are shown clearly on the calendar before you send anything.",
     polS3L3: "No further charges are added after the total is shown.",
