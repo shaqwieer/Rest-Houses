@@ -5,7 +5,6 @@ import {
   nightsBetween,
   nightsInRange,
   toGulfISODate,
-  toISODate,
   todayISO,
 } from "./dates";
 import { normalizeWhatsapp } from "./whatsapp";
@@ -408,7 +407,9 @@ export async function getOwnerInsights(ownerId: string): Promise<OwnerInsights> 
       // be occupied for as many nights as there are.
       occupancyPct: Math.round((booked / AHEAD_DAYS) * 100),
       bookedNights: booked,
-      lastRequestAt: lastRequest ? toISODate(lastRequest) : null,
+      // A moment, not a stored day — the Gulf calendar day the request came in
+      // on. `toISODate` would date a 01:00 Dubai request to the day before.
+      lastRequestAt: lastRequest ? toGulfISODate(lastRequest) : null,
     };
   });
 

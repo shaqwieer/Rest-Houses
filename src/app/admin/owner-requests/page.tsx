@@ -6,7 +6,7 @@ import { listOwners, ownerCounts, readPage } from "@/lib/admin-queries";
 import { cityLabel } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
-import { arFullDate, toISODate } from "@/lib/dates";
+import { formatInstant } from "@/lib/dates";
 import { formatWhatsappDisplay, whatsappLink } from "@/lib/whatsapp";
 
 /**
@@ -76,7 +76,7 @@ export default async function AdminOwnerRequestsPage({
                     <div className="text-[12px] text-muted">{o.fullName}</div>
                   )}
                   <div className="mt-0.5 text-[11.5px] text-muted">
-                    {t.admin.registeredAt}: {arFullDate(toISODate(o.createdAt), locale)}
+                    {t.admin.registeredAt}: {formatInstant(o.createdAt, locale)}
                     {o.city ? ` · ${cityLabel(o.city, locale)}` : ""}
                   </div>
                 </div>

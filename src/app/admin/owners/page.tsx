@@ -22,7 +22,7 @@ import { ownerAccessState } from "@/lib/owners";
 import { OWNER_STATUSES, cityLabel } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
-import { arFullDate, toISODate } from "@/lib/dates";
+import { formatDate, formatInstant, toISODate } from "@/lib/dates";
 import { formatWhatsappDisplay, whatsappLink } from "@/lib/whatsapp";
 
 /**
@@ -167,7 +167,7 @@ export default async function AdminOwnersPage({
                   </Td>
                   <Td className="text-[12px]">
                     {o.membershipExpiresAt
-                      ? arFullDate(toISODate(o.membershipExpiresAt), locale)
+                      ? formatDate(o.membershipExpiresAt, locale)
                       : t.common.never}
                   </Td>
                   <Td>
@@ -179,7 +179,7 @@ export default async function AdminOwnersPage({
                     </Link>
                   </Td>
                   <Td className="text-[12px] text-muted">
-                    {arFullDate(toISODate(o.createdAt), locale)}
+                    {formatInstant(o.createdAt, locale)}
                   </Td>
                   <Td>
                     <OwnerActions

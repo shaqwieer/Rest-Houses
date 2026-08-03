@@ -11,7 +11,7 @@ import { requireAdminPage } from "@/lib/auth";
 import { listCustomers, readPage } from "@/lib/admin-queries";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
-import { arFullDate, toISODate } from "@/lib/dates";
+import { formatInstant } from "@/lib/dates";
 import { formatWhatsappDisplay, whatsappLink } from "@/lib/whatsapp";
 
 /**
@@ -99,7 +99,7 @@ export default async function AdminCustomersPage({
                     {arNum(c.totalValue, locale)} {t.common.aed}
                   </Td>
                   <Td className="text-[12px] text-muted">
-                    {arFullDate(toISODate(c.lastBookingAt), locale)}
+                    {formatInstant(c.lastBookingAt, locale)}
                   </Td>
                 </tr>
               );
