@@ -21,6 +21,10 @@ export default function robots(): MetadataRoute.Robots {
           "/api/",
           "/favorites",
           "/booking/",
+          // A review link carries a single-use credential in its path. The page
+          // also sends `noindex`, which is what actually keeps it out of an
+          // index; this keeps a well-behaved crawler from requesting it at all.
+          "/review/",
           // The per-listing booking form — a form with no indexable content.
           "/listings/*/book",
         ],

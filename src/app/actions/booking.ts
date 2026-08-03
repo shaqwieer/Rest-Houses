@@ -4,10 +4,11 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { isRangeAvailable, withPublicListingWhere } from "@/lib/listings";
-import { quote, resolveDepositPercent } from "@/lib/pricing";
+import { platformCommission, quote, resolveDepositPercent } from "@/lib/pricing";
 import { isISODate, nightsBetween, todayISO } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
+import { guardSubmission } from "@/lib/security";
 import type { Dictionary } from "@/lib/i18n";
 
 /**
@@ -15,10 +16,11 @@ import type { Dictionary } from "@/lib/i18n";
  *
  * Order of operations matters and is deliberate:
  *   1. validate the input
- *   2. re-read the listing and its availability **from the database**
- *   3. recompute the price server-side
- *   4. write the request, snapshotting both the amounts and the deposit rate
- *   5. hand back a reference the confirmation page turns into a WhatsApp link
+ *   2. clear the anti-abuse gate (honeypot, rate limit, human check)
+ *   3. re-read the listing and its availability **from the database**
+ *   4. recompute the price server-side
+ *   5. write the request, snapshotting both the amounts and the deposit rate
+ *   6. hand back a reference the confirmation page turns into a WhatsApp link
  *
  * Nothing the browser sent about price or availability is trusted. The visitor's
  * calendar may be minutes stale — another guest could have taken the dates — and
@@ -107,6 +109,24 @@ export async function createBookingRequest(
 
   const data = parsed.data;
 
+  // --- anti-abuse gate ----------------------------------------------------
+  //
+  // Placed after validation so a guest who mistypes their phone number gets the
+  // field error rather than a security message, and before every database read
+  // below so a spam run costs this server one HMAC rather than four queries.
+  // The phone number is passed as a second rate-limit subject: a whole
+  // neighbourhood can share one mobile IP, but nobody legitimately submits the
+  // same number five times in an hour. See src/lib/security.
+  const guard = await guardSubmission({
+    purpose: "booking",
+    formData,
+    identity: data.customerPhone,
+    t,
+  });
+  if (!guard.ok) {
+    return { ok: false, error: guard.error };
+  }
+
   // --- date sanity -------------------------------------------------------
   const nights = nightsBetween(data.checkIn, data.checkOut);
   if (nights < 1) {
@@ -136,6 +156,7 @@ export async function createBookingRequest(
       pricePerNight: true,
       weekendPrice: true,
       depositPercent: true,
+      securityDeposit: true,
     },
   });
 
@@ -155,6 +176,31 @@ export async function createBookingRequest(
   const available = await isRangeAvailable(listing.id, data.checkIn, data.checkOut);
   if (!available) {
     return { ok: false, error: t.validation.datesTaken };
+  }
+
+  // --- duplicate request ---------------------------------------------------
+  //
+  // A double-tapped submit button, a browser back-and-resend, or a script
+  // repeating one payload all land here as a second identical request. The owner
+  // reading their inbox should see one, not three.
+  //
+  // Matched on the phone number exactly as typed rather than on its digits:
+  // Prisma cannot strip punctuation inside a WHERE clause without dropping to
+  // raw SQL, and someone who re-types the same number differently is describing
+  // a different attempt, not a duplicate. Only NEW requests count — a guest whose
+  // request was rejected must be able to ask again.
+  const duplicate = await prisma.bookingRequest.findFirst({
+    where: {
+      listingId: listing.id,
+      customerPhone: data.customerPhone,
+      checkIn: data.checkIn,
+      checkOut: data.checkOut,
+      status: "NEW",
+    },
+    select: { id: true },
+  });
+  if (duplicate) {
+    return { ok: false, error: t.validation.duplicateRequest };
   }
 
   // --- price, recomputed server-side --------------------------------------
@@ -177,7 +223,19 @@ export async function createBookingRequest(
     depositPercent,
   });
 
+  const commission = platformCommission(q.total, settings.commissionPercent);
+
   // --- write --------------------------------------------------------------
+  //
+  // The challenge is spent here and not at the gate above: everything between
+  // the two can still legitimately fail (dates taken, over capacity), and a
+  // guest who has to correct one field must be able to press send again with the
+  // token they already hold. A false return means a second submission raced this
+  // one on the same token — the first is the real request.
+  if (!guard.spend()) {
+    return { ok: false, error: t.security.challengeExpired };
+  }
+
   const reference = await nextReference();
 
   await prisma.bookingRequest.create({
@@ -200,6 +258,18 @@ export async function createBookingRequest(
       // moving from 25% to 50% would retroactively relabel every past booking —
       // the stored amount saying one thing and the displayed rate another.
       depositPercent: q.depositPercent,
+      // Read from the listing here, once, and snapshotted — the confirmation
+      // page and the WhatsApp message then read this column rather than the
+      // listing, so an owner who changes the figure tomorrow cannot rewrite
+      // what an existing request was told. Refundable, so it is deliberately
+      // absent from `total`.
+      securityDeposit: listing.securityDeposit,
+      // The platform's cut, snapshotted for the same reason as everything above
+      // it. This is what the owner remits at step 6 of the handover workflow —
+      // taken OUT of what they collected, never added to `total`, and never
+      // shown to the guest, who has already paid it inside the nightly rate.
+      commissionPercent: commission.percent,
+      commissionDue: commission.due,
       status: "NEW",
       // Stays "NONE" until an online deposit gateway is enabled — see
       // src/lib/payments/index.ts.

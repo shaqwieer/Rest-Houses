@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { Field, TextArea, TextInput } from "@/components/ui/field";
+import { HumanCheck } from "@/components/security/human-check";
 import { createBookingRequest } from "@/app/actions/booking";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
@@ -49,6 +50,12 @@ export function BookingForm({
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // The human check reports when it has a verified, submittable challenge; the
+  // send button waits for it. In practice it settles long before anyone has
+  // finished typing their phone number — see the widget for why.
+  const [humanReady, setHumanReady] = useState(false);
+  const [checkKey, setCheckKey] = useState(0);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -62,6 +69,14 @@ export function BookingForm({
       } else {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
+
+        // A failure with no field attached can be a spent or expired challenge —
+        // a double-submit, or a tab left open. Mint a fresh one so the next press
+        // of the button works instead of failing the same way again. Field
+        // errors keep the current challenge: the guest is fixing a typo, not
+        // starting over.
+        if (!result.fieldErrors) setCheckKey((n) => n + 1);
+
         // Bring the message into view — the button is at the bottom of a long form.
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
@@ -223,9 +238,17 @@ export function BookingForm({
         </p>
       </div>
 
+      <HumanCheck
+        purpose="booking"
+        resetKey={checkKey}
+        onReadyChange={setHumanReady}
+        className="relative"
+      />
+
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !humanReady}
+        title={humanReady ? undefined : t.security.waitForCheck}
         className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-wa p-4.5 font-display text-[16px] font-extrabold text-wa-ink shadow-[0_12px_28px_rgb(37_211_102/0.26)] transition hover:brightness-105 active:translate-y-px disabled:cursor-wait disabled:opacity-70"
       >
         {pending ? (

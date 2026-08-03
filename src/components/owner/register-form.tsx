@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { HumanCheck } from "@/components/security/human-check";
 import { registerOwner } from "@/app/actions/owners";
 import { useLocale } from "@/lib/i18n/provider";
 import { CITIES, label } from "@/lib/constants";
@@ -27,6 +28,11 @@ export function OwnerRegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  // See the same pair in the booking form: the send button waits for the human
+  // check, and a failure with no field attached mints a fresh challenge.
+  const [humanReady, setHumanReady] = useState(false);
+  const [checkKey, setCheckKey] = useState(0);
+
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -41,6 +47,7 @@ export function OwnerRegisterForm() {
       } else {
         setError(result.error);
         setFieldErrors(result.fieldErrors ?? {});
+        if (!result.fieldErrors) setCheckKey((n) => n + 1);
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     });
@@ -228,9 +235,17 @@ export function OwnerRegisterForm() {
         </Field>
       </div>
 
+      <HumanCheck
+        purpose="owner-register"
+        resetKey={checkKey}
+        onReadyChange={setHumanReady}
+        className="relative"
+      />
+
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !humanReady}
+        title={humanReady ? undefined : t.security.waitForCheck}
         className="flex w-full items-center justify-center gap-2.5 rounded-2xl bg-linear-[140deg,var(--gold-500),var(--gold-600)] p-4.5 font-display text-[16px] font-extrabold text-night-900 shadow-gold transition hover:brightness-105 active:translate-y-px disabled:cursor-wait disabled:opacity-70"
       >
         {pending ? (

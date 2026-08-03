@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "./prisma";
 import { isOwnerActive } from "./owners";
+import { LOGIN_RATE_RULES } from "./security";
+import { clientIp, consumeAll } from "./security/rate-limit";
 import { redirect } from "next/navigation";
 
 /**
@@ -54,6 +56,30 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!parsed.success) return null;
 
         const email = parsed.data.email.trim().toLowerCase();
+
+        // ─── Throttle before doing any work ─────────────────────────────
+        //
+        // Without this, the login form is an unlimited password oracle: the
+        // constant-time comparison below stops an attacker learning *which*
+        // emails exist, but nothing stopped them trying a dictionary against
+        // one. Budgeted per IP and per email address, so guessing at one
+        // account does not lock out everyone behind the same office router,
+        // and one attacker cycling addresses still runs out of IP budget.
+        //
+        // Returning null here is indistinguishable from a wrong password — the
+        // form says "check your details". That is a deliberate trade: a
+        // "too many attempts" message tells an attacker their rate exactly, and
+        // an operator locked out for ten minutes has the container logs.
+        const ip = await clientIp();
+        if (!consumeAll(LOGIN_RATE_RULES, ip).allowed) {
+          console.warn(`login throttled for ip ${ip}`);
+          return null;
+        }
+        if (!consumeAll(LOGIN_RATE_RULES, `email:${email}`).allowed) {
+          console.warn(`login throttled for ${email}`);
+          return null;
+        }
+
         const user = await prisma.user.findUnique({ where: { email } });
 
         // Compare even when the user is missing, against a dummy hash, so a

@@ -9,6 +9,7 @@ import { auditData } from "@/lib/audit";
 import { isValidWhatsapp, normalizeWhatsapp } from "@/lib/whatsapp";
 import { CITIES, isOwnerStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
+import { guardSubmission } from "@/lib/security";
 import { toISODate } from "@/lib/dates";
 import type { Dictionary } from "@/lib/i18n";
 import type { ActionResult } from "./listings";
@@ -96,6 +97,20 @@ export async function registerOwner(formData: FormData): Promise<RegisterOwnerRe
 
   const data = parsed.data;
 
+  // --- anti-abuse gate ----------------------------------------------------
+  //
+  // Registration creates a User row and runs bcrypt, so an ungated form is both
+  // a spam surface and a CPU one. The budget here is much tighter than the
+  // booking form's: a rest-house owner signs up once, and three attempts an hour
+  // from one address already covers every honest retry.
+  //
+  // Note the ordering — this runs *before* the "is this email taken" lookup, so
+  // the endpoint cannot be used to enumerate which addresses have accounts.
+  const guard = await guardSubmission({ purpose: "owner-register", formData, t });
+  if (!guard.ok) {
+    return { ok: false, error: guard.error };
+  }
+
   const existing = await prisma.user.findUnique({
     where: { email: data.email },
     select: { id: true },
@@ -106,6 +121,13 @@ export async function registerOwner(formData: FormData): Promise<RegisterOwnerRe
       error: t.validation.emailTaken,
       fieldErrors: { email: t.validation.emailTaken },
     };
+  }
+
+  // Spent immediately before the write, for the same reason as on the booking
+  // form: a registration that bounced off "this email is taken" must be
+  // resubmittable with a different address and the token already in hand.
+  if (!guard.spend()) {
+    return { ok: false, error: t.security.challengeExpired };
   }
 
   const passwordHash = await bcrypt.hash(data.password, 10);
@@ -432,6 +454,251 @@ export async function setOwnerMembershipExpiry(
 
   revalidateOwnerSurfaces();
   return { ok: true, message: t.admin.membershipUpdated };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Admin account management                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The fields an admin may rewrite on an owner's account.
+ *
+ * Deliberately the same shape and the same rules as `registrationSchema`, minus
+ * the passwords: a value an admin can save must be a value the owner could have
+ * registered with, or the two forms disagree about what a valid WhatsApp number
+ * or city id is and the admin form quietly becomes the way to store one the
+ * rest of the app can't use.
+ *
+ * `status`, `membershipExpiresAt` and `rejectionReason` are absent on purpose.
+ * Those already have their own audited actions above, each writing a specific
+ * log entry; folding them into a general "save details" would blur the record
+ * of who suspended whom into "someone edited this owner".
+ */
+function ownerAccountSchema(t: Dictionary) {
+  return z.object({
+    fullName: z.string().trim().min(3, t.validation.nameTooShort).max(120),
+    email: z.string().trim().toLowerCase().email(t.validation.invalidEmail).max(160),
+    phone: z
+      .string()
+      .trim()
+      .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.phoneIncomplete)
+      .refine((v) => v.replace(/[^0-9]/g, "").length <= 15, t.validation.phoneInvalid),
+    whatsapp: z.string().trim().refine(isValidWhatsapp, t.validation.whatsappInvalid),
+    businessName: z.string().trim().max(160).default(""),
+    idNumber: z.string().trim().max(60).default(""),
+    city: z
+      .string()
+      .trim()
+      .default("")
+      .refine((v) => v === "" || VALID_CITY_IDS.includes(v), t.validation.invalidCity),
+    about: z.string().trim().max(2000).default(""),
+  });
+}
+
+/**
+ * Edit an owner's account and business details from /admin/owners.
+ *
+ * Three things here are easy to get wrong and are each worth naming:
+ *
+ *   • **The email is unique on User.** A collision has to come back as a field
+ *     error, the way registration handles it — letting Prisma raise P2002 would
+ *     surface as "save failed" and leave the admin guessing which field.
+ *
+ *   • **WhatsApp is stored normalised**, through the same helper registration
+ *     uses. Storing whatever was typed would produce an owner whose every
+ *     `wa.me` link is broken, on all of their listings at once.
+ *
+ *   • **`fullName` lives in two places** — `OwnerProfile.fullName` and
+ *     `User.name` — because registration writes both. They are updated in the
+ *     same transaction so they cannot drift apart.
+ */
+export async function updateOwnerAccount(
+  ownerId: string,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { t } = await getI18n();
+
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (error) {
+    return unauthorizedResult(error, t);
+  }
+
+  const { owner, error } = await loadOwner(ownerId, t);
+  if (!owner) return { ok: false, error: error! };
+
+  const parsed = ownerAccountSchema(t).safeParse({
+    fullName: formData.get("fullName"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    whatsapp: formData.get("whatsapp"),
+    businessName: formData.get("businessName") ?? "",
+    idNumber: formData.get("idNumber") ?? "",
+    city: formData.get("city") ?? "",
+    about: formData.get("about") ?? "",
+  });
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = String(issue.path[0] ?? "form");
+      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+    }
+    return { ok: false, error: t.validation.checkFields, fieldErrors };
+  }
+
+  const data = parsed.data;
+
+  // Checked before writing rather than caught after: `id: { not: … }` so an
+  // admin saving the form without touching the email is not told their own
+  // owner's address is taken.
+  if (data.email !== owner.user.email) {
+    const clash = await prisma.user.findFirst({
+      where: { email: data.email, id: { not: owner.user.id } },
+      select: { id: true },
+    });
+    if (clash) {
+      return {
+        ok: false,
+        error: t.validation.emailTaken,
+        fieldErrors: { email: t.validation.emailTaken },
+      };
+    }
+  }
+
+  const whatsapp = normalizeWhatsapp(data.whatsapp);
+
+  try {
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: owner.user.id },
+        data: { email: data.email, name: data.fullName },
+      }),
+      prisma.ownerProfile.update({
+        where: { id: ownerId },
+        data: {
+          fullName: data.fullName,
+          phone: data.phone,
+          whatsapp,
+          businessName: data.businessName,
+          idNumber: data.idNumber || null,
+          city: data.city,
+          about: data.about,
+        },
+      }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor: { id: admin.id, email: admin.email, role: admin.role },
+          action: "OWNER_UPDATED",
+          entityType: "OwnerProfile",
+          entityId: ownerId,
+          summary: data.businessName || data.fullName,
+          // What changed, not the whole record — an operator reading the log
+          // wants to see that the email moved, not re-read the profile.
+          metadata: {
+            emailFrom: owner.user.email,
+            emailTo: data.email,
+            listingsAffected: owner._count.listings,
+          },
+        }),
+      }),
+    ]);
+  } catch (err) {
+    console.error("updateOwnerAccount failed:", err);
+    return { ok: false, error: t.validation.saveFailed };
+  }
+
+  // The WhatsApp number on every one of this owner's listings resolves through
+  // the relation, so editing it here changes the public pages too.
+  revalidateOwnerSurfaces();
+  return { ok: true, message: t.admin.ownerUpdated };
+}
+
+/**
+ * Set an owner's password from /admin/owners.
+ *
+ * The rule that matters: this is the *only* way an admin touches a credential,
+ * and the plaintext never leaves this function — not into the audit metadata,
+ * not into a log line, not into the result message. The log records that a
+ * reset happened, by whom, and to which account.
+ *
+ * Length limits match `registrationSchema` exactly, so an admin cannot set a
+ * password the owner's own sign-in form would reject.
+ *
+ * ─── What this does and does not invalidate ──────────────────────────────────
+ * Sessions are 30-day JWTs with no server-side session table, so an owner who
+ * is already signed in stays signed in until their token expires — a reset
+ * stops the *old password* working, not an existing session. That is acceptable
+ * here because it is not what gates access: whether an owner may act is re-read
+ * from the database on every request by `requireApprovedOwner()`, so an admin
+ * who needs to cut someone off immediately suspends them, which takes effect on
+ * their very next request.
+ */
+export async function setOwnerPassword(
+  ownerId: string,
+  password: string,
+  confirmPassword: string,
+): Promise<ActionResult> {
+  const { t } = await getI18n();
+
+  let admin;
+  try {
+    admin = await requireAdmin();
+  } catch (error) {
+    return unauthorizedResult(error, t);
+  }
+
+  const { owner, error } = await loadOwner(ownerId, t);
+  if (!owner) return { ok: false, error: error! };
+
+  const parsed = z
+    .object({
+      password: z.string().min(8, t.validation.passwordTooShort).max(200),
+      confirmPassword: z.string(),
+    })
+    .refine((d) => d.password === d.confirmPassword, {
+      message: t.validation.passwordMismatch,
+      path: ["confirmPassword"],
+    })
+    .safeParse({ password, confirmPassword });
+
+  if (!parsed.success) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of parsed.error.issues) {
+      const key = String(issue.path[0] ?? "form");
+      if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+    }
+    return { ok: false, error: t.validation.checkFields, fieldErrors };
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.password, 10);
+
+  try {
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: owner.user.id },
+        data: { passwordHash },
+      }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor: { id: admin.id, email: admin.email, role: admin.role },
+          action: "OWNER_PASSWORD_RESET",
+          entityType: "OwnerProfile",
+          entityId: ownerId,
+          summary: owner.businessName || owner.fullName,
+          // The account it happened to, and nothing about the password itself.
+          metadata: { email: owner.user.email },
+        }),
+      }),
+    ]);
+  } catch (err) {
+    console.error("setOwnerPassword failed:", err);
+    return { ok: false, error: t.validation.saveFailed };
+  }
+
+  revalidatePath("/admin/owners");
+  return { ok: true, message: t.admin.ownerPasswordChanged };
 }
 
 /** Set an owner's status directly — used by the status dropdown in the table. */
