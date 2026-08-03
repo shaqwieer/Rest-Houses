@@ -8,6 +8,8 @@ import {
   resetDatabase,
   seedSettings,
 } from "./db";
+import { humanCheckFields } from "./human-check";
+import { resetRateLimits, resetSpentChallenges } from "@/lib/security";
 import { addDays, todayISO } from "@/lib/dates";
 
 /**
@@ -39,6 +41,12 @@ afterAll(async () => {
 beforeEach(async () => {
   await resetDatabase();
   await seedSettings({ serviceFeePercent: 5, depositPercent: 30 });
+  // The anti-abuse counters live in module memory, not in the database, so
+  // `resetDatabase()` does not clear them. Without this, the phone-number budget
+  // (five booking requests an hour) would be exhausted by the fixtures partway
+  // down the file and later cases would fail for the wrong reason.
+  resetRateLimits();
+  resetSpentChallenges();
 });
 
 /** A stay starting a week out, so it is always in the future. */
@@ -57,6 +65,9 @@ function bookingForm(listingId: string, opts: { checkIn: string; checkOut: strin
   fd.set("customerPhone", opts.customerPhone ?? "+971502148890");
   fd.set("customerEmail", opts.customerEmail ?? "");
   fd.set("notes", opts.notes ?? "");
+  // Every request carries a freshly minted, freshly solved challenge — exactly
+  // what the widget on the booking form attaches. See tests/human-check.ts.
+  for (const [k, v] of Object.entries(humanCheckFields("booking"))) fd.set(k, v);
   return fd;
 }
 

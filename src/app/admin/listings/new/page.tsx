@@ -27,6 +27,14 @@ export default async function NewListingPage() {
         area: "",
         pricePerNight: 1200,
         weekendPrice: 0,
+        // 0 / "" = not offered. A new listing does not advertise day bookings
+        // or ask for a security deposit until someone deliberately fills these
+        // in, which is the "اختياري" the requirement asks for.
+        dayUsePrice: 0,
+        dayUseWeekendPrice: 0,
+        dayUseCheckOutTime: "",
+        dayUseCheckOutTimeEn: "",
+        securityDeposit: 0,
         capacity: 40,
         lat: settings.mapLat,
         lng: settings.mapLng,

@@ -58,6 +58,7 @@ export function BookingCard({
   ownerName,
   serviceFeePercent,
   depositPercent,
+  securityDeposit,
   freeCancelHours,
   ownerWhatsappHref,
 }: {
@@ -68,6 +69,8 @@ export function BookingCard({
   ownerName: string;
   serviceFeePercent: number;
   depositPercent: number;
+  /** Refundable, collected by the owner. 0 hides the line. */
+  securityDeposit: number;
   freeCancelHours: number;
   /** "" when this listing has no usable WhatsApp number — hides the button. */
   ownerWhatsappHref: string;
@@ -140,10 +143,17 @@ export function BookingCard({
             </span>
             <span className="font-bold">{arNum(currentQuote.subtotal, locale)}</span>
           </div>
-          <div className="mb-2.5 flex justify-between text-[13.5px] text-muted">
-            <span>{t.listing.serviceFee(arNum(serviceFeePercent, locale))}</span>
-            <span className="font-bold">{arNum(currentQuote.serviceFee, locale)}</span>
-          </div>
+          {/* The platform charges no service fee, so this row is normally
+              absent and the total is simply the nights. It is still rendered
+              when an operator has set a fee from /admin/settings — a charge
+              that exists must be itemised, and one that doesn't must not be
+              shown as "0". */}
+          {serviceFeePercent > 0 && (
+            <div className="mb-2.5 flex justify-between text-[13.5px] text-muted">
+              <span>{t.listing.serviceFee(arNum(serviceFeePercent, locale))}</span>
+              <span className="font-bold">{arNum(currentQuote.serviceFee, locale)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-dashed border-line pt-2.5 font-display text-[16px] font-extrabold text-ink">
             <span>{t.listing.total}</span>
             <span>
@@ -161,6 +171,15 @@ export function BookingCard({
                 )
               : t.listing.noDepositLine}
           </p>
+          {/* Below the total, never inside it: this money comes back after the
+              stay, so folding it into the headline figure would overstate what
+              the booking costs. */}
+          {securityDeposit > 0 && (
+            <p className="m-0 mt-1.5 flex items-start gap-1.5 text-[11.5px] leading-relaxed text-bronze">
+              <Icon name="shield" size={15} className="mt-0.5 shrink-0" />
+              {t.listing.securityDepositLine(arNum(securityDeposit, locale))}
+            </p>
+          )}
         </div>
       ) : (
         <p className="m-0 mb-3 rounded-xl bg-gold-100 px-3 py-2.5 text-[12.5px] leading-relaxed text-bronze">

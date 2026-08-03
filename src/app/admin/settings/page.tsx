@@ -36,6 +36,8 @@ export default async function AdminSettingsPage() {
         colorSand: settings.colorSand,
         serviceFeePercent: settings.serviceFeePercent,
         depositPercent: settings.depositPercent,
+        commissionPercent: settings.commissionPercent,
+        reviewInviteDays: settings.reviewInviteDays,
         freeCancelHours: settings.freeCancelHours,
         checkInTime: settings.checkInTime,
         checkOutTime: settings.checkOutTime,

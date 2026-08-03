@@ -129,6 +129,37 @@ export function quote(input: QuoteInput): Quote {
   };
 }
 
+/**
+ * The platform's commission on a booking.
+ *
+ * ─── Not the same thing as the service fee, and the difference is who pays ───
+ * `serviceFee` is added ON TOP of the nights and charged to the GUEST. It is
+ * now 0 — the total is the advertised price. `commissionDue` is taken OUT of
+ * what the owner collected and paid BY THE OWNER, by bank transfer, at step 6
+ * of the handover workflow. It is never added to `total` and the guest never
+ * sees it, because they already paid it inside the nightly rate.
+ *
+ * Collapsing the two into one column was the tempting move when the service
+ * fee went to zero. It would have meant either billing the guest twice or
+ * losing the platform's revenue entirely the moment the fee was switched off.
+ *
+ * Computed on the total rather than the subtotal so that an operator who later
+ * switches a guest-facing service fee back on does not accidentally exempt it
+ * from commission.
+ */
+export function platformCommission(
+  total: number,
+  commissionPercent: number,
+): { percent: number; due: number } {
+  const percent = clampPercent(commissionPercent);
+  return {
+    percent,
+    // Same rounding as the service fee above, so two figures derived from the
+    // same total never land a dirham apart on the same receipt.
+    due: Math.round((Math.max(0, total) * percent) / 100),
+  };
+}
+
 /** The "from" price shown on cards — the weekday rate. */
 export function displayPrice(listing: { pricePerNight: number }): number {
   return listing.pricePerNight;

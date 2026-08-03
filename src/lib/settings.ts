@@ -42,9 +42,16 @@ const FALLBACK = {
   colorAccentDeep: "#A8873A",
   colorNight: "#0C1522",
   colorSand: "#FBF7F0",
-  serviceFeePercent: 5,
+  // 0, matching the column default: a fresh install that has not been seeded
+  // must not quietly re-earn the 5% fee the platform stopped charging.
+  serviceFeePercent: 0,
   depositPercent: 30,
   freeCancelHours: 48,
+  // The platform's own cut, paid by the owner at step 6 of the handover
+  // workflow — not the guest-facing service fee above it, which is 0. See
+  // `platformCommission()` in src/lib/pricing.ts.
+  commissionPercent: 5,
+  reviewInviteDays: 15,
   checkInTime: "٤ عصرًا",
   checkOutTime: "١٢ ظهرًا",
   depositPaymentsEnabled: false,

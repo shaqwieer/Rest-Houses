@@ -4,7 +4,7 @@ import type { Metadata } from "next";
 import { Gallery } from "@/components/listing/gallery";
 import { BookingProvider } from "@/components/listing/booking-context";
 import { BookingCard, CalendarSection, MobileBookingBar } from "@/components/listing/booking-card";
-import { Icon } from "@/components/ui/icon";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
 import { getListingBySlug, getUnavailableDates, localizeListing } from "@/lib/listings";
@@ -123,6 +123,11 @@ export default async function ListingDetailPage({
     listing.depositPercent,
     settings.depositPercent,
   );
+
+  // Day-use is offered when either rate carries a figure. A leave-by time on
+  // its own is not enough — a time with no price is an incomplete entry, and
+  // showing it would raise a question the page can't answer.
+  const hasDayUse = listing.dayUsePrice > 0 || listing.dayUseWeekendPrice > 0;
 
   // Contact resolves through the owner relation for an owned listing, so this
   // button opens *that owner's* WhatsApp — never the platform's.
@@ -300,6 +305,70 @@ export default async function ListingDetailPage({
               </div>
             </section>
 
+            {/* ---- day use + refundable security deposit ----
+                The whole section is absent unless the owner has entered at
+                least one of these, which is the requirement: a listing that
+                offers no day booking and asks for no security deposit must
+                look exactly as it does today. Nothing here is bookable through
+                the calendar — a day booking is arranged with the owner on
+                WhatsApp, and the prices are published so that conversation
+                starts from a number rather than a question. */}
+            {(hasDayUse || listing.securityDeposit > 0) && (
+              <section className="border-b border-line py-6">
+                <h2 className="m-0 mb-2.5 font-display text-[19px] font-extrabold text-ink">
+                  {t.listing.extraPricingTitle}
+                </h2>
+
+                {hasDayUse && (
+                  <>
+                    <p className="m-0 mb-3.5 text-[13.5px] leading-relaxed text-muted">
+                      {t.listing.dayUseNote}
+                    </p>
+                    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                      {listing.dayUsePrice > 0 && (
+                        <Fact
+                          icon="calendar_today"
+                          label={t.listing.dayUseWeekday}
+                          value={`${arNum(listing.dayUsePrice, locale)} ${t.common.aed}`}
+                        />
+                      )}
+                      {listing.dayUseWeekendPrice > 0 && (
+                        <Fact
+                          icon="event"
+                          label={t.listing.dayUseWeekend}
+                          value={`${arNum(listing.dayUseWeekendPrice, locale)} ${t.common.aed}`}
+                        />
+                      )}
+                      {l.dayUseCheckOutTime && (
+                        <Fact
+                          icon="schedule"
+                          label={t.listing.dayUseCheckOut}
+                          value={l.dayUseCheckOutTime}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {listing.securityDeposit > 0 && (
+                  <div
+                    className={`flex items-start gap-3 rounded-2xl border border-line bg-sand-100 p-4 ${
+                      hasDayUse ? "mt-3.5" : ""
+                    }`}
+                  >
+                    <Icon name="shield" size={20} className="shrink-0 text-bronze" />
+                    <p className="m-0 text-[13px] leading-[1.85] text-muted">
+                      <span className="font-bold text-ink">
+                        {t.listing.securityDepositLabel}:{" "}
+                        {arNum(listing.securityDeposit, locale)} {t.common.aed}
+                      </span>{" "}
+                      {t.listing.securityDepositNote}
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* amenities */}
             {listing.amenityList.length > 0 && (
               <section className="border-b border-line py-6">
@@ -416,6 +485,8 @@ export default async function ListingDetailPage({
             ownerName={contact.name}
             serviceFeePercent={settings.serviceFeePercent}
             depositPercent={depositPercent}
+            // Shown beside the total as a refundable extra, never added to it.
+            securityDeposit={listing.securityDeposit}
             freeCancelHours={settings.freeCancelHours}
             // "" when the listing has no usable number, which hides the button
             // rather than pointing it at a bare wa.me/.
@@ -434,7 +505,9 @@ function Fact({
   label,
   value,
 }: {
-  icon: "group" | "schedule" | "savings" | "event_repeat";
+  // Any glyph in the set, rather than the four the key-facts row happened to
+  // use — the day-use block reuses this card with its own icons.
+  icon: IconName;
   label: string;
   value: string;
 }) {

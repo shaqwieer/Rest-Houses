@@ -63,6 +63,11 @@ function settingsSchema(t: Dictionary) {
   // commercials
   serviceFeePercent: z.coerce.number().int().min(0).max(50),
   depositPercent: z.coerce.number().int().min(0).max(100),
+  // The platform's cut, paid by the owner — see `platformCommission()` in
+  // src/lib/pricing.ts for why this is not the same field as the service fee.
+  commissionPercent: z.coerce.number().int().min(0).max(100),
+  // At least one day, or a review link would expire before it was sent.
+  reviewInviteDays: z.coerce.number().int().min(1).max(365),
   freeCancelHours: z.coerce.number().int().min(0).max(720),
   checkInTime: z.string().trim().max(40).default("٤ عصرًا"),
   checkOutTime: z.string().trim().max(40).default("١٢ ظهرًا"),
@@ -141,8 +146,12 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     colorAccentDeep: formData.get("colorAccentDeep"),
     colorNight: formData.get("colorNight"),
     colorSand: formData.get("colorSand"),
-    serviceFeePercent: formData.get("serviceFeePercent") ?? 5,
+    // 0, not 5: this fallback is what a missing field resolves to, so leaving
+    // it at the old default would write the fee back on the next settings save.
+    serviceFeePercent: formData.get("serviceFeePercent") ?? 0,
     depositPercent: formData.get("depositPercent") ?? 30,
+    commissionPercent: formData.get("commissionPercent") ?? 5,
+    reviewInviteDays: formData.get("reviewInviteDays") ?? 15,
     freeCancelHours: formData.get("freeCancelHours") ?? 48,
     checkInTime: formData.get("checkInTime") || "٤ عصرًا",
     checkOutTime: formData.get("checkOutTime") || "١٢ ظهرًا",

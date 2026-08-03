@@ -116,12 +116,14 @@ function toView(row: ListingRow) {
 /* Language                                                                   */
 /* -------------------------------------------------------------------------- */
 
-/** The three stored free-text fields a listing carries in both languages. */
+/** The stored free-text fields a listing carries in both languages. */
 export type LocalizedListing = {
   name: string;
   description: string;
   /** Already falls back to the emirate label when no area is set. */
   area: string;
+  /** The day-use leave-by time. "" when day bookings aren't offered. */
+  dayUseCheckOutTime: string;
 };
 
 /**
@@ -147,6 +149,14 @@ export function localizeListing(
     area: string;
     areaEn: string | null;
     city: string;
+    /**
+     * Optional because several callers select only the columns they render —
+     * the booking confirmation, for one, needs a listing's name and area and
+     * nothing about day bookings. A caller that doesn't ask for these gets ""
+     * back, which is the same thing "not offered" means everywhere else.
+     */
+    dayUseCheckOutTime?: string;
+    dayUseCheckOutTimeEn?: string | null;
   },
   locale: Locale = DEFAULT_LOCALE,
 ): LocalizedListing {
@@ -155,6 +165,11 @@ export function localizeListing(
     description: localized(listing.description, listing.descriptionEn, locale),
     area:
       localized(listing.area, listing.areaEn, locale) || cityLabel(listing.city, locale),
+    dayUseCheckOutTime: localized(
+      listing.dayUseCheckOutTime ?? "",
+      listing.dayUseCheckOutTimeEn ?? null,
+      locale,
+    ),
   };
 }
 

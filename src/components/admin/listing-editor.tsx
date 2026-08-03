@@ -56,6 +56,17 @@ export type ListingDraft = {
   areaEn: string;
   pricePerNight: number;
   weekendPrice: number;
+  /**
+   * Day-use (بدون مبيت) rates, the hour the guest leaves by, and the refundable
+   * security deposit. 0 / "" everywhere means "not offered", and a listing left
+   * that way shows nothing extra to a visitor — which is why they are plain
+   * numbers rather than nullable: there is no third "inherit" state to model.
+   */
+  dayUsePrice: number;
+  dayUseWeekendPrice: number;
+  dayUseCheckOutTime: string;
+  dayUseCheckOutTimeEn: string;
+  securityDeposit: number;
   capacity: number;
   lat: number;
   lng: number;
@@ -370,40 +381,141 @@ export function ListingEditor({
           </Field>
         </div>
 
+        {/* ---- day use (بدون مبيت) ----
+            Entirely optional, and the whole block is inert until a price is
+            entered: at 0 nothing about it reaches the listing page, so an owner
+            who does not offer day bookings sees the same page they have today.
+            Grouped in its own dashed card for the same reason as the English
+            block below — the common case is scrolling straight past it. */}
+        <div className="rounded-[20px] border border-dashed border-sand-300 bg-sand-50 p-3.5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Icon name="schedule" size={18} className="text-bronze" />
+            <span className="text-[12.5px] font-bold text-bronze">
+              {t.admin.dayUseCardTitle}
+            </span>
+          </div>
+          <p className="m-0 mb-3 text-[11.5px] leading-relaxed text-muted">
+            {t.admin.dayUseCardHint}
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label={t.admin.dayUsePriceLabel} error={errors.dayUsePrice}>
+              <TextInput
+                name="dayUsePrice"
+                type="number"
+                min={0}
+                defaultValue={draft.dayUsePrice}
+                invalid={Boolean(errors.dayUsePrice)}
+                className="font-bold"
+              />
+            </Field>
+
+            <Field
+              label={t.admin.dayUseWeekendPriceLabel}
+              error={errors.dayUseWeekendPrice}
+            >
+              <TextInput
+                name="dayUseWeekendPrice"
+                type="number"
+                min={0}
+                defaultValue={draft.dayUseWeekendPrice}
+                invalid={Boolean(errors.dayUseWeekendPrice)}
+                className="font-bold"
+              />
+            </Field>
+
+            <Field
+              label={t.admin.dayUseCheckOutLabel}
+              hint={t.admin.dayUseCheckOutHint}
+              error={errors.dayUseCheckOutTime}
+            >
+              <TextInput
+                name="dayUseCheckOutTime"
+                defaultValue={draft.dayUseCheckOutTime}
+                placeholder={t.admin.dayUseCheckOutPlaceholder}
+              />
+            </Field>
+          </div>
+
+          {/* The leave-by time is the one free-text value in this block, so it
+              gets the same English sibling every other stored string on a
+              listing has. Blank falls back to the Arabic. */}
+          <Field
+            label={t.admin.dayUseCheckOutEnLabel}
+            error={errors.dayUseCheckOutTimeEn}
+            className="mt-3"
+          >
+            <TextInput
+              name="dayUseCheckOutTimeEn"
+              dir="ltr"
+              defaultValue={draft.dayUseCheckOutTimeEn}
+              placeholder={t.admin.dayUseCheckOutEnPlaceholder}
+            />
+          </Field>
+        </div>
+
         {/* ---- deposit ----
             Left blank the listing inherits the platform default; an explicit 0
             means no deposit at all. The hint names the default so an owner can
             see what "blank" resolves to without leaving the page. The amount is
             always recomputed on the server at booking time — nothing here is
             trusted for money. */}
-        <Field
-          label={t.owner.depositPercent}
-          hint={
-            errors.depositPercent
-              ? undefined
-              : `${t.owner.depositPercentHint} ${t.owner.usingPlatformDefault(
-                  arNum(platformDepositPercent, locale),
-                )}`
-          }
-          error={errors.depositPercent}
-        >
-          <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 focus-within:border-gold-500 focus-within:bg-surface">
-            <Icon name="savings" size={20} className="text-bronze" />
-            <input
-              name="depositPercent"
-              type="number"
-              min={0}
-              max={100}
-              step={1}
-              defaultValue={draft.depositPercent ?? ""}
-              placeholder={String(platformDepositPercent)}
-              className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] font-bold text-ink outline-none"
-            />
-            <span className="shrink-0 text-[12.5px] font-semibold text-muted">
-              {t.owner.depositPercentSuffix}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label={t.owner.depositPercent}
+            hint={
+              errors.depositPercent
+                ? undefined
+                : `${t.owner.depositPercentHint} ${t.owner.usingPlatformDefault(
+                    arNum(platformDepositPercent, locale),
+                  )}`
+            }
+            error={errors.depositPercent}
+          >
+            <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 focus-within:border-gold-500 focus-within:bg-surface">
+              <Icon name="savings" size={20} className="text-bronze" />
+              <input
+                name="depositPercent"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                defaultValue={draft.depositPercent ?? ""}
+                placeholder={String(platformDepositPercent)}
+                className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] font-bold text-ink outline-none"
+              />
+              <span className="shrink-0 text-[12.5px] font-semibold text-muted">
+                {t.owner.depositPercentSuffix}
+              </span>
             </span>
-          </span>
-        </Field>
+          </Field>
+
+          {/* ---- refundable security deposit ----
+              A separate idea from the العربون above and deliberately next to
+              it: the deposit is a share of the booking that the guest pays
+              towards it, this is an amount that comes back. It is never added
+              to the total, and 0 hides it from the listing page entirely. */}
+          <Field
+            label={t.owner.securityDeposit}
+            hint={errors.securityDeposit ? undefined : t.owner.securityDepositHint}
+            error={errors.securityDeposit}
+          >
+            <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 focus-within:border-gold-500 focus-within:bg-surface">
+              <Icon name="shield" size={20} className="text-bronze" />
+              <input
+                name="securityDeposit"
+                type="number"
+                min={0}
+                step={1}
+                defaultValue={draft.securityDeposit}
+                className="min-w-0 flex-1 border-0 bg-transparent py-3 text-[14.5px] font-bold text-ink outline-none"
+              />
+              <span className="shrink-0 text-[12.5px] font-semibold text-muted">
+                {t.common.aed}
+              </span>
+            </span>
+          </Field>
+        </div>
 
         <Field label={t.admin.descriptionLabel} error={errors.description}>
           <TextArea

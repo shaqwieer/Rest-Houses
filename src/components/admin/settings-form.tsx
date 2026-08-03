@@ -59,6 +59,8 @@ export type SettingsFormValues = {
   colorSand: string;
   serviceFeePercent: number;
   depositPercent: number;
+  commissionPercent: number;
+  reviewInviteDays: number;
   freeCancelHours: number;
   checkInTime: string;
   checkOutTime: string;
@@ -439,7 +441,16 @@ export function SettingsForm({
         {/* =============== booking commercials =============== */}
         <Card icon="receipt_long" title={t.admin.cardBooking}>
           <div className="grid grid-cols-2 gap-3">
-            <Field label={t.admin.fieldServiceFee} error={errors.serviceFeePercent}>
+            {/* 0 is the shipped default and means "no service fee at all" —
+                every fee line disappears from the listing card, the booking
+                summary and the public copy rather than rendering "0%". The hint
+                says so, because a field that silently removes UI when zeroed is
+                otherwise indistinguishable from one that's broken. */}
+            <Field
+              label={t.admin.fieldServiceFee}
+              hint={t.admin.fieldServiceFeeHint}
+              error={errors.serviceFeePercent}
+            >
               <TextInput
                 name="serviceFeePercent"
                 type="number"
@@ -460,6 +471,39 @@ export function SettingsForm({
                 min={0}
                 max={100}
                 defaultValue={values.depositPercent}
+                className="font-bold"
+              />
+            </Field>
+            {/* The platform's own cut — the opposite direction of travel from
+                the service fee two fields up. That one is added to the guest's
+                bill; this one is deducted from what the owner keeps and
+                transferred to the platform at step 6 of the booking workflow.
+                Kept side by side so the difference is visible where it is set. */}
+            <Field
+              label={t.admin.fieldCommission}
+              hint={t.admin.fieldCommissionHint}
+              error={errors.commissionPercent}
+            >
+              <TextInput
+                name="commissionPercent"
+                type="number"
+                min={0}
+                max={100}
+                defaultValue={values.commissionPercent}
+                className="font-bold"
+              />
+            </Field>
+            <Field
+              label={t.admin.fieldReviewInviteDays}
+              hint={t.admin.fieldReviewInviteDaysHint}
+              error={errors.reviewInviteDays}
+            >
+              <TextInput
+                name="reviewInviteDays"
+                type="number"
+                min={1}
+                max={365}
+                defaultValue={values.reviewInviteDays}
                 className="font-bold"
               />
             </Field>

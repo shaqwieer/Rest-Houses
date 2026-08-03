@@ -95,6 +95,21 @@ function listingSchema(t: Dictionary) {
       .min(1, t.validation.priceRequired)
       .max(1_000_000),
     weekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    /**
+     * Day-use (no overnight stay) rates and the hour the guest must leave by.
+     *
+     * `min(0)` and defaulting to 0 rather than being nullable: unlike
+     * `depositPercent` there is no "inherit a platform figure" case here, so 0
+     * carries the single meaning "not offered" and hides the block. A blank
+     * field coerces to 0 through `z.coerce`, which is the wanted behaviour and
+     * the reason this needs none of the `preprocess` gymnastics below.
+     */
+    dayUsePrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    dayUseWeekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    dayUseCheckOutTime: z.string().trim().max(40).default(""),
+    dayUseCheckOutTimeEn: blankToNull(40),
+    /** Refundable security deposit in whole dirhams. 0 = none asked for. */
+    securityDeposit: z.coerce.number().int().min(0).max(1_000_000).default(0),
     capacity: z.coerce.number().int().min(1, t.validation.capacityRequired).max(5000),
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
@@ -148,6 +163,11 @@ function readListingForm(formData: FormData, t: Dictionary) {
     areaEn: formData.get("areaEn") ?? "",
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
+    dayUsePrice: formData.get("dayUsePrice") ?? 0,
+    dayUseWeekendPrice: formData.get("dayUseWeekendPrice") ?? 0,
+    dayUseCheckOutTime: formData.get("dayUseCheckOutTime") ?? "",
+    dayUseCheckOutTimeEn: formData.get("dayUseCheckOutTimeEn") ?? "",
+    securityDeposit: formData.get("securityDeposit") ?? 0,
     capacity: formData.get("capacity"),
     lat: formData.get("lat") || 24.7614,
     lng: formData.get("lng") || 55.334,
@@ -175,6 +195,41 @@ function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
     if (!out[key]) out[key] = issue.message;
   }
   return out;
+}
+
+/**
+ * Weekend rates that are *below* the weekday rate they uplift.
+ *
+ * Almost always a typo — someone swapped the two boxes — and it would publish a
+ * Friday price cheaper than a Tuesday one. 0 stays legal in both pairs and keeps
+ * its own meaning: "same as the weekday rate" for `weekendPrice`, "day-use not
+ * offered" for `dayUseWeekendPrice`.
+ *
+ * Shared by the admin and owner paths so the two cannot drift into enforcing
+ * different rules on the same columns.
+ */
+function weekendRateProblem(data: ListingInput, t: Dictionary): ActionResult | null {
+  if (data.weekendPrice > 0 && data.weekendPrice < data.pricePerNight) {
+    return {
+      ok: false,
+      error: t.validation.weekendBelowWeekday,
+      fieldErrors: { weekendPrice: t.validation.weekendBelowWeekdayShort },
+    };
+  }
+
+  if (
+    data.dayUseWeekendPrice > 0 &&
+    data.dayUsePrice > 0 &&
+    data.dayUseWeekendPrice < data.dayUsePrice
+  ) {
+    return {
+      ok: false,
+      error: t.validation.weekendBelowWeekday,
+      fieldErrors: { dayUseWeekendPrice: t.validation.weekendBelowWeekdayShort },
+    };
+  }
+
+  return null;
 }
 
 /** Revalidate everything a listing change can appear on. */
@@ -226,6 +281,15 @@ function listingColumns(
     areaEn: data.areaEn,
     pricePerNight: data.pricePerNight,
     weekendPrice: data.weekendPrice,
+    // Day-use rates, the leave-by time and the refundable security deposit are
+    // commercial terms of the rest house, exactly like the nightly price — so
+    // they sit in `common` and an owner sets their own. Nothing editorial about
+    // them, and they are display-only, so there is no money path to protect.
+    dayUsePrice: data.dayUsePrice,
+    dayUseWeekendPrice: data.dayUseWeekendPrice,
+    dayUseCheckOutTime: data.dayUseCheckOutTime,
+    dayUseCheckOutTimeEn: data.dayUseCheckOutTimeEn,
+    securityDeposit: data.securityDeposit,
     capacity: data.capacity,
     lat: data.lat,
     lng: data.lng,
@@ -281,15 +345,8 @@ export async function saveListing(formData: FormData): Promise<ActionResult> {
   const amenities = readIdList(formData, "amenities", VALID_AMENITY_IDS);
   const categories = readIdList(formData, "categories", VALID_CATEGORY_IDS);
 
-  // Weekend rate below the weekday rate is almost always a typo; treat 0/blank
-  // as "same as weekday" and reject an actual lower number.
-  if (data.weekendPrice > 0 && data.weekendPrice < data.pricePerNight) {
-    return {
-      ok: false,
-      error: t.validation.weekendBelowWeekday,
-      fieldErrors: { weekendPrice: t.validation.weekendBelowWeekdayShort },
-    };
-  }
+  const ratesProblem = weekendRateProblem(data, t);
+  if (ratesProblem) return ratesProblem;
 
   const common = listingColumns(data, amenities, categories, {
     allowEditorialFlags: true,
@@ -421,13 +478,8 @@ export async function saveOwnerListing(formData: FormData): Promise<ActionResult
   const amenities = readIdList(formData, "amenities", VALID_AMENITY_IDS);
   const categories = readIdList(formData, "categories", VALID_CATEGORY_IDS);
 
-  if (data.weekendPrice > 0 && data.weekendPrice < data.pricePerNight) {
-    return {
-      ok: false,
-      error: t.validation.weekendBelowWeekday,
-      fieldErrors: { weekendPrice: t.validation.weekendBelowWeekdayShort },
-    };
-  }
+  const ratesProblem = weekendRateProblem(data, t);
+  if (ratesProblem) return ratesProblem;
 
   const common = listingColumns(data, amenities, categories, {
     allowEditorialFlags: false,
