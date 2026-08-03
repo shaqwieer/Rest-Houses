@@ -47,7 +47,11 @@ export default async function PoliciesPage() {
 
           <h2>{t.pages.polS3H}</h2>
           <ul>
-            <li>{t.pages.polS3L1(arNum(settings.serviceFeePercent, locale))}</li>
+            <li>
+              {settings.serviceFeePercent > 0
+                ? t.pages.polS3L1(arNum(settings.serviceFeePercent, locale))
+                : t.pages.polS3L1NoFee}
+            </li>
             <li>{t.pages.polS3L2}</li>
             <li>{t.pages.polS3L3}</li>
           </ul>

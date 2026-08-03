@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
+import { WhatsappAutoSend } from "@/components/booking/whatsapp-auto-send";
 import { prisma } from "@/lib/prisma";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
@@ -100,6 +101,9 @@ export default async function BookingConfirmationPage({
     // the message a guest sends must match what they were quoted.
     depositDue: booking.depositDue,
     depositPercent: booking.depositPercent,
+    // The booking's own snapshot, not the listing's current figure — see the
+    // note on the column in prisma/schema.prisma.
+    securityDeposit: booking.securityDeposit,
     notes: booking.notes,
     locale,
   });
@@ -157,8 +161,18 @@ export default async function BookingConfirmationPage({
                 : t.booking.noDepositRequired
             }
             emphasis
-            last
+            last={booking.securityDeposit === 0}
           />
+          {/* Listed after the total rather than inside it — refundable money is
+              not part of what the stay costs. */}
+          {booking.securityDeposit > 0 && (
+            <Row
+              label={t.listing.securityDepositLabel}
+              value={`${arNum(booking.securityDeposit, locale)} ${t.common.aed}`}
+              emphasis
+              last
+            />
+          )}
         </div>
 
         {/* ---- deposit: disabled stub ----
@@ -176,13 +190,22 @@ export default async function BookingConfirmationPage({
           </p>
         </div>
 
-        <div className="flex flex-wrap justify-center gap-2.5">
-          {waHref && (
-            <ButtonLink href={waHref} variant="whatsapp" size="lg">
-              <Icon name="chat" size={20} />
-              {t.booking.openWhatsapp}
-            </ButtonLink>
-          )}
+        {booking.securityDeposit > 0 && (
+          <div className="mb-5.5 flex items-start gap-3 rounded-2xl border border-line bg-sand-100 p-4 text-start">
+            <Icon name="shield" size={20} className="shrink-0 text-bronze" />
+            <p className="m-0 text-[12.5px] leading-[1.8] text-muted">
+              {t.booking.securityDepositNote(arNum(booking.securityDeposit, locale))}
+            </p>
+          </div>
+        )}
+
+        {/* The WhatsApp hand-off starts on its own after five seconds — see
+            the component for why it navigates this tab rather than opening a
+            new one, and how a back-button return is stopped from re-firing it.
+            `waHref` is "" when the listing has no usable number, and the
+            component renders nothing in that case. */}
+        <div className="flex flex-col items-center gap-3">
+          <WhatsappAutoSend href={waHref} reference={booking.reference} />
           <ButtonLink href="/listings" variant="secondary" size="lg">
             {t.common.browse}
           </ButtonLink>

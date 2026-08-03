@@ -79,7 +79,14 @@ export default async function AboutPage() {
           <p>{t.pages.aboutVerifyBody}</p>
 
           <h2>{t.pages.aboutEarnTitle}</h2>
-          <p>{t.pages.aboutEarnBody(arNum(settings.serviceFeePercent, locale))}</p>
+          {/* Two paragraphs, not one with a number substituted: at 0% the
+              honest sentence is "we add no service fee", not "we charge a 0%
+              service fee". */}
+          <p>
+            {settings.serviceFeePercent > 0
+              ? t.pages.aboutEarnBody(arNum(settings.serviceFeePercent, locale))
+              : t.pages.aboutEarnBodyNoFee}
+          </p>
         </Prose>
 
         <div className="mt-8 flex flex-wrap gap-2.5">

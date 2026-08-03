@@ -112,7 +112,25 @@ export default async function AdminOwnerRequestsPage({
                   )}
                 </div>
 
-                <OwnerActions ownerId={o.id} state="PENDING" membershipExpiresAt={null} />
+                {/* The same controls as the owners table, so a reviewer can
+                    correct a mistyped email or number without leaving the
+                    approval queue — often exactly why an application is
+                    sitting here unanswered. */}
+                <OwnerActions
+                  ownerId={o.id}
+                  state="PENDING"
+                  membershipExpiresAt={null}
+                  account={{
+                    fullName: o.fullName,
+                    businessName: o.businessName,
+                    email: o.user.email,
+                    phone: o.phone,
+                    whatsapp: o.whatsapp,
+                    city: o.city,
+                    idNumber: o.idNumber ?? "",
+                    about: o.about,
+                  }}
+                />
               </div>
             );
           })}

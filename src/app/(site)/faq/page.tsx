@@ -31,7 +31,16 @@ export default async function FaqPage() {
     { q: t.pages.faqQ1, a: t.pages.faqA1 },
     { q: t.pages.faqQ2, a: t.pages.faqA2(arNum(settings.depositPercent, locale)) },
     { q: t.pages.faqQ3, a: t.pages.faqA3(arNum(settings.freeCancelHours, locale)) },
-    { q: t.pages.faqQ4, a: t.pages.faqA4(arNum(settings.serviceFeePercent, locale)) },
+    // "Are the prices final?" stays in the list either way — it is the question
+    // removing the fee makes *more* worth answering, not less. Only the answer
+    // changes.
+    {
+      q: t.pages.faqQ4,
+      a:
+        settings.serviceFeePercent > 0
+          ? t.pages.faqA4(arNum(settings.serviceFeePercent, locale))
+          : t.pages.faqA4NoFee,
+    },
     { q: t.pages.faqQ5, a: t.pages.faqA5 },
     { q: t.pages.faqQ6, a: t.pages.faqA6 },
     { q: t.pages.faqQ7, a: t.pages.faqA7 },

@@ -8,10 +8,25 @@ import {
   approveOwner,
   rejectOwner,
   setOwnerMembershipExpiry,
+  setOwnerPassword,
   setOwnerSuspended,
+  updateOwnerAccount,
 } from "@/app/actions/owners";
 import { useLocale } from "@/lib/i18n/provider";
-import type { OwnerAccessState } from "@/lib/constants";
+import { CITIES, label as pickLabel, type OwnerAccessState } from "@/lib/constants";
+
+/** The owner's editable details, as they stand right now. */
+export type OwnerAccount = {
+  fullName: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  whatsapp: string;
+  /** A CITIES id, or "". */
+  city: string;
+  idNumber: string;
+  about: string;
+};
 
 /**
  * Approve / reject / suspend / activate / set-expiry controls for one owner.
@@ -25,15 +40,18 @@ export function OwnerActions({
   ownerId,
   state,
   membershipExpiresAt,
+  account,
 }: {
   ownerId: string;
   state: OwnerAccessState;
   /** ISO "YYYY-MM-DD", or null. */
   membershipExpiresAt: string | null;
+  /** Current details, used to pre-fill the manage dialog. */
+  account: OwnerAccount;
 }) {
   const router = useRouter();
   const { toast } = useToast();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
 
   const [rejecting, setRejecting] = useState(false);
@@ -41,16 +59,36 @@ export function OwnerActions({
   const [editingExpiry, setEditingExpiry] = useState(false);
   const [expiry, setExpiry] = useState(membershipExpiresAt ?? "");
 
-  function run(fn: () => Promise<{ ok: boolean; message?: string; error?: string }>) {
+  const [managing, setManaging] = useState(false);
+  const [tab, setTab] = useState<"details" | "password">("details");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  type Result = {
+    ok: boolean;
+    message?: string;
+    error?: string;
+    fieldErrors?: Record<string, string>;
+  };
+
+  function run(fn: () => Promise<Result>) {
     startTransition(async () => {
       const result = await fn();
       toast(
         result.ok ? (result.message ?? t.common.saved) : (result.error ?? t.common.error),
         result.ok ? "ok" : "error",
       );
+      // Kept on failure so a rejected save shows *which* field was wrong
+      // instead of only a toast that disappears.
+      setErrors(result.ok ? {} : (result.fieldErrors ?? {}));
       if (result.ok) {
         setRejecting(false);
         setEditingExpiry(false);
+        setManaging(false);
+        // Never left sitting in component state after a successful change.
+        setPassword("");
+        setConfirmPassword("");
         router.refresh();
       }
     });
@@ -113,6 +151,25 @@ export function OwnerActions({
         <Icon name="event_repeat" size={16} />
       </button>
 
+      {/* Account management — details and password. Offered for every state,
+          including a rejected or suspended owner: fixing a mistyped email or
+          issuing a new password is exactly what an operator needs to do for an
+          account that is currently switched off. */}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          setErrors({});
+          setTab("details");
+          setManaging(true);
+        }}
+        title={t.admin.manageOwner}
+        aria-label={t.admin.manageOwner}
+        className="grid size-8 place-items-center rounded-lg border border-line bg-surface text-ink transition hover:border-gold-500 disabled:opacity-60"
+      >
+        <Icon name="badge" size={16} />
+      </button>
+
       {/* ---- reject, with an optional reason ---- */}
       {rejecting && (
         <Modal onClose={() => setRejecting(false)}>
@@ -146,6 +203,210 @@ export function OwnerActions({
               {t.common.cancel}
             </button>
           </div>
+        </Modal>
+      )}
+
+      {/* ---- manage account: details + password ---- */}
+      {managing && (
+        <Modal onClose={() => setManaging(false)} wide>
+          <h2 className="m-0 mb-3 font-display text-[16px] font-extrabold text-ink">
+            {t.admin.manageOwnerTitle}
+          </h2>
+
+          <div className="mb-4 flex gap-1.5 rounded-xl bg-sand-100 p-1">
+            <TabButton
+              active={tab === "details"}
+              onClick={() => setTab("details")}
+              label={t.admin.ownerDetailsTab}
+            />
+            <TabButton
+              active={tab === "password"}
+              onClick={() => setTab("password")}
+              label={t.admin.ownerPasswordTab}
+            />
+          </div>
+
+          {tab === "details" ? (
+            /* An uncontrolled form: the inputs start from the row already on
+               screen and the action reads a FormData, so nothing here has to
+               mirror the owner's record in React state. */
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const formData = new FormData(e.currentTarget);
+                run(() => updateOwnerAccount(ownerId, formData));
+              }}
+              className="flex flex-col gap-3"
+            >
+              <ModalField label={t.owner.fullName} error={errors.fullName}>
+                <input
+                  name="fullName"
+                  defaultValue={account.fullName}
+                  required
+                  className={inputClass}
+                />
+              </ModalField>
+
+              <ModalField label={t.owner.businessName} error={errors.businessName}>
+                <input
+                  name="businessName"
+                  defaultValue={account.businessName}
+                  className={inputClass}
+                />
+              </ModalField>
+
+              <ModalField label={t.owner.email} error={errors.email}>
+                <input
+                  name="email"
+                  type="email"
+                  dir="ltr"
+                  defaultValue={account.email}
+                  required
+                  className={inputClass}
+                />
+              </ModalField>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ModalField label={t.owner.phone} error={errors.phone}>
+                  <input
+                    name="phone"
+                    type="tel"
+                    dir="ltr"
+                    inputMode="tel"
+                    defaultValue={account.phone}
+                    required
+                    className={inputClass}
+                  />
+                </ModalField>
+
+                <ModalField label={t.owner.whatsapp} error={errors.whatsapp}>
+                  <input
+                    name="whatsapp"
+                    dir="ltr"
+                    inputMode="tel"
+                    defaultValue={account.whatsapp}
+                    required
+                    className={inputClass}
+                  />
+                </ModalField>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ModalField label={t.listings.city} error={errors.city}>
+                  <select
+                    name="city"
+                    defaultValue={account.city}
+                    className={inputClass}
+                  >
+                    <option value="">{t.admin.ownerNoCity}</option>
+                    {CITIES.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {pickLabel(c, locale)}
+                      </option>
+                    ))}
+                  </select>
+                </ModalField>
+
+                <ModalField
+                  label={t.admin.ownerIdNumberLabel}
+                  error={errors.idNumber}
+                >
+                  <input
+                    name="idNumber"
+                    dir="ltr"
+                    defaultValue={account.idNumber}
+                    className={inputClass}
+                  />
+                </ModalField>
+              </div>
+
+              <ModalField label={t.admin.ownerAboutLabel} error={errors.about}>
+                <textarea
+                  name="about"
+                  rows={3}
+                  defaultValue={account.about}
+                  className={`${inputClass} resize-y`}
+                />
+              </ModalField>
+
+              <div className="mt-1 flex gap-2.5">
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="flex-1 rounded-2xl bg-night-900 p-3 text-[14px] font-bold text-sand-50 disabled:opacity-60"
+                >
+                  {pending ? t.common.saving : t.common.save}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManaging(false)}
+                  className="rounded-2xl border border-line bg-surface px-5 py-3 text-[14px] font-bold text-ink"
+                >
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(() => setOwnerPassword(ownerId, password, confirmPassword));
+              }}
+              className="flex flex-col gap-3"
+            >
+              <ModalField label={t.admin.newPassword} error={errors.password}>
+                <input
+                  type="password"
+                  dir="ltr"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={8}
+                  required
+                  // The browser must not offer to fill or save this: it is
+                  // someone else's credential being set, not the admin's own.
+                  autoComplete="new-password"
+                  className={inputClass}
+                />
+              </ModalField>
+
+              <ModalField
+                label={t.admin.confirmNewPassword}
+                error={errors.confirmPassword}
+              >
+                <input
+                  type="password"
+                  dir="ltr"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  required
+                  autoComplete="new-password"
+                  className={inputClass}
+                />
+              </ModalField>
+
+              <p className="m-0 text-[11.5px] leading-relaxed text-muted">
+                {t.admin.newPasswordHint}
+              </p>
+
+              <div className="mt-1 flex gap-2.5">
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="flex-1 rounded-2xl bg-night-900 p-3 text-[14px] font-bold text-sand-50 disabled:opacity-60"
+                >
+                  {pending ? t.common.saving : t.admin.changePassword}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManaging(false)}
+                  className="rounded-2xl border border-line bg-surface px-5 py-3 text-[14px] font-bold text-ink"
+                >
+                  {t.common.cancel}
+                </button>
+              </div>
+            </form>
+          )}
         </Modal>
       )}
 
@@ -189,20 +450,72 @@ export function OwnerActions({
   );
 }
 
+/** Shared input styling — the same box as the rest of the admin forms. */
+const inputClass =
+  "w-full rounded-[13px] border border-line bg-sand-50 px-3.5 py-2.5 text-[14px] " +
+  "text-ink outline-none focus:border-gold-500 focus:bg-surface";
+
+/** One labelled row of the manage dialog, with room for a field error. */
+function ModalField({
+  label,
+  error,
+  children,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-[12.5px] font-bold text-bronze">{label}</span>
+      {children}
+      {error && <span className="mt-1 block text-[11.5px] text-busy">{error}</span>}
+    </label>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex-1 rounded-lg px-3 py-2 text-[13px] font-bold transition ${
+        active ? "bg-surface text-ink shadow-e1" : "text-muted hover:text-ink"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function Modal({
   children,
   onClose,
+  wide,
 }: {
   children: React.ReactNode;
   onClose: () => void;
+  /** The manage dialog is a full form and needs more than the 400px default. */
+  wide?: boolean;
 }) {
   return (
     <div
-      className="fixed inset-0 z-300 grid place-items-center bg-night-900/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-300 grid place-items-center overflow-y-auto bg-night-900/60 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="animate-pop-in w-full max-w-100 rounded-[24px] border border-line bg-surface p-5 text-start shadow-e2"
+        className={`animate-pop-in w-full ${
+          wide ? "max-w-140" : "max-w-100"
+        } my-auto rounded-[24px] border border-line bg-surface p-5 text-start shadow-e2`}
         // Stops a click inside the dialog from reaching the backdrop's handler
         // and closing it — a half-typed rejection reason should survive a
         // stray click on the textarea.

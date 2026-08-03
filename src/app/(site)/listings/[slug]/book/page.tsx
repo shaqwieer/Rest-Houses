@@ -151,11 +151,15 @@ export default async function BookPage({
               )}
               value={arNum(q.subtotal, locale)}
             />
-            <SummaryRow
-              label={t.listing.serviceFee(arNum(settings.serviceFeePercent, locale))}
-              value={arNum(q.serviceFee, locale)}
-              muted
-            />
+            {/* Only when a fee actually applies — see the note in
+                booking-card.tsx. At the shipped 0% the total is the nights. */}
+            {settings.serviceFeePercent > 0 && (
+              <SummaryRow
+                label={t.listing.serviceFee(arNum(settings.serviceFeePercent, locale))}
+                value={arNum(q.serviceFee, locale)}
+                muted
+              />
+            )}
             <SummaryRow label={t.listing.guests} value={arNum(guests, locale)} muted />
 
             {/* Total AND deposit, both stated before the guest submits. */}
@@ -178,6 +182,18 @@ export default async function BookPage({
               <p className="m-0 mt-1 text-[11.5px] text-muted">
                 {t.booking.depositExplain(arNum(depositPercent, locale))}
               </p>
+            )}
+
+            {/* Stated before the guest submits, and kept out of the total —
+                it is refundable. The figure written to the request is read
+                from the listing again inside the server action. */}
+            {listing.securityDeposit > 0 && (
+              <div className="mt-2 flex justify-between text-[13px] font-bold text-bronze">
+                <span>{t.listing.securityDepositLabel}</span>
+                <span>
+                  {arNum(listing.securityDeposit, locale)} {t.common.aed}
+                </span>
+              </div>
             )}
 
             {/* Payment stub: the flow is shaped for an online deposit, but no

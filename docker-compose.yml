@@ -108,6 +108,12 @@ services:
       # Photos in Postgres → nothing to mount, nothing to lose on redeploy.
       STORAGE_DRIVER: db
 
+      # Gulf time, so logs and any ad-hoc `new Date()` agree with what the site
+      # renders. The pages themselves apply UTC+4 explicitly in
+      # src/lib/dates.ts and do not rely on this — see the note in the
+      # Dockerfile. Overridable for a deployment somewhere else.
+      TZ: ${TZ:-Asia/Dubai}
+
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required — openssl rand -base64 32}
       NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
       NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}

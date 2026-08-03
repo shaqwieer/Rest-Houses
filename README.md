@@ -18,14 +18,15 @@ typography, spacing and components match it.
 5. [Project structure](#project-structure)
 6. [Changing the site name, colours and branding](#changing-the-site-name-colours-and-branding)
 7. [How the booking flow works](#how-the-booking-flow-works)
-8. [Running with Docker](#running-with-docker)
-9. [Image storage (including images in the database)](#image-storage-including-images-in-the-database)
-10. [Database and migrations](#database-and-migrations)
-11. [Enabling online deposit payments](#enabling-online-deposit-payments)
-12. [Deploying](#deploying)
-13. [Everyday tasks](#everyday-tasks)
-14. [Design decisions worth knowing](#design-decisions-worth-knowing)
-15. [Troubleshooting](#troubleshooting)
+8. [Form protection](#form-protection)
+9. [Running with Docker](#running-with-docker)
+10. [Image storage (including images in the database)](#image-storage-including-images-in-the-database)
+11. [Database and migrations](#database-and-migrations)
+12. [Enabling online deposit payments](#enabling-online-deposit-payments)
+13. [Deploying](#deploying)
+14. [Everyday tasks](#everyday-tasks)
+15. [Design decisions worth knowing](#design-decisions-worth-knowing)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -374,6 +375,50 @@ keeps this compliant and spam-free.
    calendar; otherwise anyone could take a listing offline by spamming the form.
    Dates are written as `BOOKED` only when the owner taps **تأكيد** in
    `/admin/requests`, and released again if they later cancel.
+
+---
+
+## Form protection
+
+The two forms anyone on the internet can submit — the booking request and owner
+registration — are protected out of the box, with **no keys and no third-party
+account required**. Four layers, in `src/lib/security`:
+
+| Layer | What it stops |
+|---|---|
+| **Honeypot** | A field positioned off-screen and out of the tab order. No person can fill it, so anything in it is a bot. |
+| **Rate limit** | Per IP *and* per phone number. A booking gets 6 attempts per 15 minutes and 20 a day; registration gets 3 an hour. The login form is throttled too — always per email address, and additionally per IP wherever the reverse proxy supplies `x-forwarded-for`. |
+| **Human check** | A signed, single-use, time-limited challenge carrying a proof of work. A script that POSTs straight at the server action never had one; a spam run pays the CPU on every attempt. |
+| **Duplicate guard** | The same phone, listing and dates while a request is still `NEW` is one request, not three in the owner's inbox. |
+
+What the guest sees is the familiar checkbox — except it ticks itself while they
+type, because the proof is arithmetic the server verifies rather than a claim the
+browser makes. The send button stays disabled until it passes.
+
+**Honest limits.** This is not Google's risk scoring. It defeats scripted and
+opportunistic abuse; it does not stop someone willing to drive a headless browser
+and pay the CPU. If that day comes, two environment variables switch the same
+widget slot to a real captcha with no code change:
+
+```bash
+CAPTCHA_PROVIDER="turnstile"   # or "recaptcha"
+CAPTCHA_SITE_KEY="..."
+CAPTCHA_SECRET_KEY="..."
+```
+
+Turnstile keys come from the Cloudflare dashboard, reCAPTCHA v2 keys from
+`google.com/recaptcha/admin`. With a provider configured, a submission is
+rejected if the provider cannot be reached — an operator who turns a captcha on
+expects it to be load-bearing. With no provider configured nothing is called and
+the built-in check applies. Set `HUMAN_CHECK_DIFFICULTY` (default 12, clamped
+8–20) to make the built-in proof of work cost more; every +1 doubles both the
+spammer's cost and the guest's wait.
+
+The rate-limit counters live in process memory, not in a table — one Next.js
+process behind nginx sees every request, so a Map is exactly as accurate and
+costs no migration. A restart forgets them, which for spam control is a
+non-event. If the app is ever scaled to a second container, swap the Map for
+Redis behind `consume()` and nothing else changes.
 
 ---
 

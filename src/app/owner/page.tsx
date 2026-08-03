@@ -1,19 +1,42 @@
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/badge";
+import {
+  AdvicePanel,
+  EarningsTrend,
+  ListingTable,
+  OccupancyPanel,
+  PatternsPanel,
+  StatTile,
+  UpcomingPanel,
+} from "@/components/owner/insight-panels";
 import { prisma } from "@/lib/prisma";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum, arPercent } from "@/lib/format";
-import { addDays, arDayMonth, arFullDate, todayISO } from "@/lib/dates";
+import { arDayMonth, arFullDate, todayISO } from "@/lib/dates";
+import {
+  OWNER_INSIGHT_AHEAD_DAYS,
+  OWNER_INSIGHT_WINDOW_DAYS,
+  getOwnerInsights,
+} from "@/lib/owner-insights";
 
 /**
- * Owner overview.
+ * Owner overview — the dashboard, and the platform's answer to "how is my rest
+ * house doing?".
  *
- * Every query below is scoped by `ownerId` — either directly or through
- * `listing: { ownerId }`. An owner must never see another owner's requests,
- * revenue or occupancy, and scoping in the WHERE clause is what guarantees that
- * rather than filtering after the fact.
+ * ─── Scoping ────────────────────────────────────────────────────────────────
+ * Every figure on this page comes from `getOwnerInsights(owner.id)`, which
+ * scopes each query by `ownerId` in the WHERE clause. An owner must never see
+ * another owner's requests, earnings or occupancy, and scoping in SQL is what
+ * guarantees that rather than filtering after the fact.
+ *
+ * ─── Why the analytics live on the overview and not behind a tab ────────────
+ * The bottom tab bar is already four items wide on a phone, and a fifth would
+ * squeeze every label. More to the point, an owner opening the dashboard is
+ * asking exactly the question this page now answers, so hiding it one tap deeper
+ * would mean most owners never saw it. The page is ordered by urgency instead:
+ * what needs a reply today, then the advice, then the trend, then the detail.
  */
 export default async function OwnerOverviewPage() {
   // null while the owner is pending/rejected/suspended/expired — the layout
@@ -24,60 +47,57 @@ export default async function OwnerOverviewPage() {
   const { t, locale } = await getI18n();
 
   const today = todayISO();
-  const monthAhead = addDays(today, 30);
-  const ownedListings = { listing: { ownerId: owner.id } };
 
-  const [newCount, confirmedCount, listingCount, publishedCount, recent, bookedNights, revenue] =
-    await Promise.all([
-      prisma.bookingRequest.count({ where: { status: "NEW", ...ownedListings } }),
-      prisma.bookingRequest.count({ where: { status: "CONFIRMED", ...ownedListings } }),
-      prisma.listing.count({ where: { ownerId: owner.id } }),
-      prisma.listing.count({ where: { ownerId: owner.id, published: true } }),
-      prisma.bookingRequest.findMany({
-        where: ownedListings,
-        orderBy: { createdAt: "desc" },
-        take: 5,
-        include: { listing: { select: { name: true } } },
-      }),
-      prisma.availability.count({
-        where: {
-          status: "BOOKED",
-          date: { gte: today, lt: monthAhead },
-          listing: { ownerId: owner.id },
-        },
-      }),
-      prisma.bookingRequest.aggregate({
-        where: { status: "CONFIRMED", checkIn: { gte: today, lt: monthAhead }, ...ownedListings },
-        _sum: { total: true },
-      }),
-    ]);
+  const [insights, recent] = await Promise.all([
+    getOwnerInsights(owner.id),
+    prisma.bookingRequest.findMany({
+      where: { listing: { ownerId: owner.id } },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: { listing: { select: { name: true } } },
+    }),
+  ]);
 
-  const capacityNights = publishedCount * 30;
-  const occupancyPct = capacityNights > 0 ? Math.round((bookedNights / capacityNights) * 100) : 0;
-
-  const stats: { label: string; value: string; sub: string; icon: IconName }[] = [
+  const stats: {
+    label: string;
+    value: string;
+    sub: string;
+    icon: IconName;
+    tone?: "neutral" | "urgent" | "good";
+  }[] = [
     {
       label: t.admin.statNewRequests,
-      value: arNum(newCount, locale),
+      value: arNum(insights.newRequests, locale),
       sub: t.admin.statNewRequestsSub,
       icon: "mark_email_unread",
     },
-    {
-      label: t.admin.statConfirmed,
-      value: arNum(confirmedCount, locale),
-      sub: t.admin.statConfirmedSub,
-      icon: "task_alt",
-    },
+    // Swapped in only when something is actually overdue: a tile permanently
+    // reading "0 waiting" is a tile an owner stops seeing, and the whole point of
+    // this one is that it catches the eye on the day it matters.
+    insights.unanswered > 0
+      ? {
+          label: t.owner.unansweredStat,
+          value: arNum(insights.unanswered, locale),
+          sub: t.owner.unansweredStatSub,
+          icon: "warning",
+          tone: "urgent" as const,
+        }
+      : {
+          label: t.admin.statConfirmed,
+          value: arNum(insights.confirmedAhead, locale),
+          sub: t.admin.statConfirmedSub,
+          icon: "task_alt",
+        },
     {
       label: t.admin.statOccupancy,
-      value: arPercent(occupancyPct, locale),
-      sub: t.admin.statOccupancySub,
+      value: arPercent(insights.occupancyPct, locale),
+      sub: t.owner.occupancySub(arNum(OWNER_INSIGHT_AHEAD_DAYS, locale)),
       icon: "donut_large",
     },
     {
-      label: t.admin.statRevenue,
-      value: arNum(revenue._sum.total ?? 0, locale),
-      sub: t.admin.statRevenueSub,
+      label: t.owner.earningsAhead,
+      value: arNum(insights.earningsAhead, locale),
+      sub: t.owner.earningsAheadSub,
       icon: "payments",
     },
   ];
@@ -91,26 +111,23 @@ export default async function OwnerOverviewPage() {
         <p className="m-0 text-[13.5px] text-muted">
           {arFullDate(today, locale)}
           {" · "}
-          {newCount > 0
-            ? t.admin.pendingRequestsLine(arNum(newCount, locale))
+          {insights.newRequests > 0
+            ? t.admin.pendingRequestsLine(arNum(insights.newRequests, locale))
             : t.admin.noPendingRequests}
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-[20px] border border-line bg-surface p-4 shadow-e1">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold text-muted">{s.label}</span>
-              <Icon name={s.icon} size={20} className="text-gold-600" />
-            </div>
-            <div className="font-display text-[26px] font-extrabold leading-none text-ink">
-              {s.value}
-            </div>
-            <div className="mt-1 text-[11.5px] text-muted">{s.sub}</div>
-          </div>
+          <StatTile key={s.label} {...s} />
         ))}
       </div>
+
+      {/* Earnings are booking value, not takings — said once, here, rather than
+          repeated on every tile that shows money. */}
+      <p className="m-0 -mt-1 text-[11px] text-muted">{t.owner.earningsNote}</p>
+
+      <AdvicePanel insights={insights.insights} t={t} locale={locale} />
 
       {/* ---- recent requests ---- */}
       <div className="rounded-[20px] border border-line bg-surface p-4.5 shadow-e1">
@@ -153,6 +170,31 @@ export default async function OwnerOverviewPage() {
         )}
       </div>
 
+      {/* ---- performance ---- */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <EarningsTrend trend={insights.trend} months={insights.trend.length} t={t} locale={locale} />
+        <OccupancyPanel
+          occupancyPct={insights.occupancyPct}
+          bookedNights={insights.bookedNightsAhead}
+          capacityNights={insights.capacityNightsAhead}
+          aheadDays={OWNER_INSIGHT_AHEAD_DAYS}
+          publishedCount={insights.publishedCount}
+          t={t}
+          locale={locale}
+        />
+      </div>
+
+      <PatternsPanel
+        values={insights}
+        windowDays={OWNER_INSIGHT_WINDOW_DAYS}
+        t={t}
+        locale={locale}
+      />
+
+      <ListingTable rows={insights.listings} t={t} locale={locale} />
+
+      <UpcomingPanel stays={insights.upcoming} t={t} locale={locale} />
+
       <Link
         href="/owner/listings/new"
         className="flex items-center gap-3 rounded-[20px] bg-night-900 p-4 text-start text-sand-50 no-underline transition hover:bg-night-700 hover:no-underline"
@@ -161,7 +203,7 @@ export default async function OwnerOverviewPage() {
         <span className="text-[13.5px] font-bold">{t.owner.addListing}</span>
       </Link>
 
-      {listingCount === 0 && (
+      {insights.listingCount === 0 && (
         <div className="rounded-[20px] border border-dashed border-sand-300 bg-surface p-5 text-center">
           <Icon name="holiday_village" size={40} className="mx-auto text-sand-400" />
           <h2 className="mt-3 mb-1.5 font-display text-[16px] font-bold text-ink">

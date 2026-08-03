@@ -78,9 +78,18 @@ RUN for f in docker/*.sh; do \
 # runtime — only what is needed to serve
 # ---------------------------------------------------------------------------
 FROM base AS runtime
+# TZ — the container's clock reads as Gulf time.
+#
+# Everything user-facing already renders through the helpers in
+# src/lib/dates.ts, which apply UTC+4 explicitly and do not depend on this. It
+# is set anyway so that the things those helpers do NOT touch agree with them:
+# server log timestamps, `new Date()` in an ad-hoc script, and anything a
+# future contributor writes before reading that file. A container whose clock
+# says one thing while its pages say another is a debugging trap.
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
+    TZ=Asia/Dubai \
     STORAGE_DRIVER=db
 
 # Run as an unprivileged user. `node` (uid 1000) already exists in the base image.

@@ -52,6 +52,8 @@ const settings = {
   colorSand: "#FBF7F0",
   serviceFeePercent: 5,
   depositPercent: 30,
+  commissionPercent: 5,
+  reviewInviteDays: 15,
   freeCancelHours: 48,
   checkInTime: "٤ عصرًا",
   checkOutTime: "١٢ ظهرًا",

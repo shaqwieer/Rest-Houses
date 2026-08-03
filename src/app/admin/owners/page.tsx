@@ -188,6 +188,19 @@ export default async function AdminOwnersPage({
                       membershipExpiresAt={
                         o.membershipExpiresAt ? toISODate(o.membershipExpiresAt) : null
                       }
+                      // Everything the manage dialog can edit, pre-filled from
+                      // the row that is already on screen — no second query,
+                      // and no field that starts blank and saves over a value.
+                      account={{
+                        fullName: o.fullName,
+                        businessName: o.businessName,
+                        email: o.user.email,
+                        phone: o.phone,
+                        whatsapp: o.whatsapp,
+                        city: o.city,
+                        idNumber: o.idNumber ?? "",
+                        about: o.about,
+                      }}
                     />
                   </Td>
                 </tr>

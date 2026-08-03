@@ -8,6 +8,8 @@ import {
   resetDatabase,
   seedSettings,
 } from "./db";
+import { humanCheckFields } from "./human-check";
+import { resetRateLimits, resetSpentChallenges } from "@/lib/security";
 
 /**
  * Requirement 2 & 3: the owner registration → review → approval lifecycle, and
@@ -72,6 +74,9 @@ beforeEach(async () => {
   await resetDatabase();
   await seedSettings();
   signInAs(null);
+  // Module-memory counters — see the same call in tests/booking.test.ts.
+  resetRateLimits();
+  resetSpentChallenges();
 });
 
 async function createAdmin(email = "admin@test.ae") {
@@ -106,6 +111,8 @@ describe("owner registration", () => {
       ...overrides,
     };
     for (const [k, v] of Object.entries(base)) fd.set(k, v);
+    // The signed challenge + proof of work the registration widget attaches.
+    for (const [k, v] of Object.entries(humanCheckFields("owner-register"))) fd.set(k, v);
     return fd;
   }
 
