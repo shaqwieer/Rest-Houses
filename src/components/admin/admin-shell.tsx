@@ -53,6 +53,7 @@ type AdminTabKey =
   | "ownerRequests"
   | "customers"
   | "payments"
+  | "reviews"
   | "auditLog"
   | "settings";
 
@@ -71,6 +72,7 @@ const TABS: {
   { href: "/admin/calendar", labelKey: "calendar", icon: "calendar_month" },
   { href: "/admin/customers", labelKey: "customers", icon: "contact_phone" },
   { href: "/admin/payments", labelKey: "payments", icon: "payments" },
+  { href: "/admin/reviews", labelKey: "reviews", icon: "rate_review" },
   { href: "/admin/audit", labelKey: "auditLog", icon: "history" },
   { href: "/admin/settings", labelKey: "settings", icon: "tune" },
 ];
