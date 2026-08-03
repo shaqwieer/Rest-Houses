@@ -11,7 +11,8 @@ import {
   setOwnerRequestStatus,
   setRequestStatus,
 } from "@/app/actions/requests";
-import { arDayMonth } from "@/lib/dates";
+import { BookingWorkflow, type WorkflowBooking } from "@/components/admin/booking-workflow";
+import { arDayMonth, todayISO } from "@/lib/dates";
 import { arNum, formatReference } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
 
@@ -35,6 +36,11 @@ export type RequestCardData = {
   status: string;
   /** Pre-built wa.me link with the owner's reply pre-typed. */
   whatsappHref: string;
+  /**
+   * Everything the handover stepper needs, or null on a surface that only
+   * wants to display the request (the read-only views).
+   */
+  workflow: WorkflowBooking | null;
 };
 
 /**
@@ -57,10 +63,13 @@ export function RequestCard({
   request,
   readOnly = false,
   scope = "admin",
+  reviewInviteDays = 15,
 }: {
   request: RequestCardData;
   readOnly?: boolean;
   scope?: "admin" | "owner";
+  /** Passed to the stepper so step 7 states the configured link validity. */
+  reviewInviteDays?: number;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -91,6 +100,11 @@ export function RequestCard({
 
   const isNew = request.status === "NEW";
   const isConfirmed = request.status === "CONFIRMED";
+
+  // Mirrors the server-side rule in `setOwnerRequestStatus` — the guard that
+  // matters is there; this one only stops the owner pressing a button that was
+  // always going to be refused.
+  const cancelLocked = isOwner && request.checkIn <= todayISO();
 
   return (
     <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4 shadow-e1">
@@ -157,12 +171,21 @@ export function RequestCard({
         <p className="m-0 flex items-center gap-2 rounded-xl bg-ok-bg px-3 py-2.5 text-[12px] font-semibold text-ok">
           <Icon name="event_available" size={16} />
           {t.admin.datesBooked}
-          {request.depositDue > 0
-            ? ` · ${t.admin.depositDue} ${arNum(request.depositPercent, locale)}${
-                locale === "ar" ? "٪" : "%"
-              } (${arNum(request.depositDue, locale)} ${t.common.aed})`
-            : ` · ${t.booking.noDepositRequired}`}
         </p>
+      )}
+
+      {/*
+        The handover, in place of what used to be a bare "confirm" button.
+        Confirming is now step 1 of seven, so the money it records — and every
+        step that follows it — lives here rather than in a status line that
+        stated the deposit and then stopped.
+      */}
+      {!readOnly && request.workflow && (
+        <BookingWorkflow
+          booking={request.workflow}
+          scope={scope}
+          reviewInviteDays={reviewInviteDays}
+        />
       )}
 
       {/* actions */}
@@ -178,61 +201,61 @@ export function RequestCard({
           <Icon name="chat" size={20} />
         </a>
 
-        {!readOnly && isNew ? (
-          <>
-            <button
-              type="button"
-              onClick={() => act("CONFIRMED")}
-              disabled={pending}
-              className="flex-1 rounded-xl bg-ok p-3 text-[13.5px] font-bold text-white transition hover:brightness-110 disabled:opacity-60"
-            >
-              {t.common.confirm}
-            </button>
-            <button
-              type="button"
-              onClick={() => act("REJECTED")}
-              disabled={pending}
-              className="rounded-xl bg-busy-bg px-4.5 py-3 text-[13.5px] font-bold text-busy transition hover:bg-[#f0d2cc] disabled:opacity-60"
-            >
-              {t.admin.reject}
-            </button>
-          </>
-        ) : !readOnly ? (
-          <>
-            {isConfirmed && (
-              <button
-                type="button"
-                onClick={() => act("CANCELLED")}
-                disabled={pending}
-                className="flex-1 rounded-xl border border-line bg-surface p-3 text-[13px] font-bold text-ink transition hover:border-busy hover:text-busy disabled:opacity-60"
-              >
-                {t.admin.cancelBookingFreeDates}
-              </button>
-            )}
-            {!isConfirmed && (
-              <button
-                type="button"
-                onClick={() => act("NEW")}
-                disabled={pending}
-                className="flex-1 rounded-xl border border-line bg-surface p-3 text-[13px] font-bold text-ink transition hover:border-gold-500 disabled:opacity-60"
-              >
-                {t.admin.returnToQueue}
-              </button>
-            )}
-            {!isOwner && (
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                disabled={pending}
-                title={t.admin.deleteRequest}
-                aria-label={t.admin.deleteRequest}
-                className="grid size-10 shrink-0 place-items-center rounded-xl bg-busy-bg text-busy disabled:opacity-60"
-              >
-                <Icon name="delete" size={18} />
-              </button>
-            )}
-          </>
-        ) : null}
+        {!readOnly && isNew && (
+          <button
+            type="button"
+            onClick={() => act("REJECTED")}
+            disabled={pending}
+            className="flex-1 rounded-xl bg-busy-bg p-3 text-[13.5px] font-bold text-busy transition hover:bg-[#f0d2cc] disabled:opacity-60"
+          >
+            {t.admin.reject}
+          </button>
+        )}
+
+        {!readOnly && isConfirmed && (
+          /*
+           * An owner cannot cancel a stay that has already started.
+           *
+           * Cancelling deletes the BOOKED rows for every night of the range, so
+           * doing it to a past booking rewrites a calendar that other decisions
+           * were already made against — and it would take the platform's
+           * commission on a completed stay with it. An operator can still do
+           * it; they are accountable for it in the audit log.
+           */
+          <button
+            type="button"
+            onClick={() => act("CANCELLED")}
+            disabled={pending || cancelLocked}
+            title={cancelLocked ? t.validation.pastBookingLocked : undefined}
+            className="flex-1 rounded-xl border border-line bg-surface p-3 text-[13px] font-bold text-ink transition hover:border-busy hover:text-busy disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {t.admin.cancelBookingFreeDates}
+          </button>
+        )}
+
+        {!readOnly && !isNew && !isConfirmed && (
+          <button
+            type="button"
+            onClick={() => act("NEW")}
+            disabled={pending}
+            className="flex-1 rounded-xl border border-line bg-surface p-3 text-[13px] font-bold text-ink transition hover:border-gold-500 disabled:opacity-60"
+          >
+            {t.admin.returnToQueue}
+          </button>
+        )}
+
+        {!readOnly && !isOwner && (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            disabled={pending}
+            title={t.admin.deleteRequest}
+            aria-label={t.admin.deleteRequest}
+            className="grid size-10 shrink-0 place-items-center rounded-xl bg-busy-bg text-busy disabled:opacity-60"
+          >
+            <Icon name="delete" size={18} />
+          </button>
+        )}
       </div>
 
       {confirmingDelete && (

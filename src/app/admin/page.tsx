@@ -32,6 +32,8 @@ export default async function AdminOverviewPage() {
     revenue,
     owners,
     hiddenCount,
+    commissionToConfirm,
+    pendingReviews,
   ] = await Promise.all([
     prisma.bookingRequest.count({ where: { status: "NEW" } }),
     prisma.bookingRequest.count({ where: { status: "CONFIRMED" } }),
@@ -55,6 +57,16 @@ export default async function AdminOverviewPage() {
     }),
     ownerCounts(),
     hiddenByOwnerStateCount(),
+    // Step 6, waiting on this desk: the owner says the transfer went out and
+    // nobody has confirmed it arrived.
+    prisma.bookingRequest.count({
+      where: {
+        status: "CONFIRMED",
+        commissionSentAt: { not: null },
+        commissionConfirmedAt: null,
+      },
+    }),
+    prisma.review.count({ where: { status: "PENDING" } }),
   ]);
 
   const [bookedNights, publishedCount] = occupancy;
@@ -125,6 +137,25 @@ export default async function AdminOverviewPage() {
       sub: t.admin.statRevenueSub,
       icon: "payments",
       href: "/admin/payments",
+    },
+    // The two things the workflow puts on the OPERATOR's desk. Both are the
+    // last step of somebody else's work waiting on a decision here, so they
+    // belong on the page the operator opens first — a commission transfer the
+    // owner has declared and a review the guest has written are otherwise
+    // invisible until someone thinks to go looking.
+    {
+      label: t.admin.statCommissionToConfirm,
+      value: arNum(commissionToConfirm, locale),
+      sub: t.admin.statCommissionToConfirmSub,
+      icon: "receipt_long",
+      href: "/admin/payments",
+    },
+    {
+      label: t.admin.statReviewsToModerate,
+      value: arNum(pendingReviews, locale),
+      sub: t.admin.statReviewsToModerateSub,
+      icon: "rate_review",
+      href: "/admin/reviews",
     },
   ];
 

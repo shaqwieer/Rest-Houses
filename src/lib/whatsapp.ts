@@ -202,6 +202,8 @@ export type BookingMessageInput = {
   total: number;
   depositDue?: number;
   depositPercent?: number;
+  /** Refundable security deposit, from the booking's own snapshot. */
+  securityDeposit?: number;
   notes?: string | null;
   locale?: Locale;
 };
@@ -241,6 +243,13 @@ export function bookingRequestMessage(input: BookingMessageInput): string {
   // "0%" — a guest reading "deposit 0%" wonders whether something is broken.
   if (input.depositDue && input.depositDue > 0) {
     lines.push(`${mark}${t.deposit(n(input.depositPercent ?? 0), n(input.depositDue))}`);
+  }
+
+  // Same rule for the refundable security deposit: it goes in the message when
+  // there is one, so the owner and the guest are working from the same figure
+  // when they settle up, and is absent entirely when there isn't.
+  if (input.securityDeposit && input.securityDeposit > 0) {
+    lines.push(`${mark}${t.securityDeposit(n(input.securityDeposit))}`);
   }
 
   lines.push(

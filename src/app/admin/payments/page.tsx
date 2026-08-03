@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import { PaymentBadge, StatusBadge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/badge";
 import {
   AdminFilterChips,
   AdminPagination,
@@ -11,24 +11,28 @@ import {
   Th,
 } from "@/components/admin/table-shell";
 import { requireAdminPage } from "@/lib/auth";
-import { depositTotals, listBookings, readPage } from "@/lib/admin-queries";
-import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
+import { listBookings, readPage, revenueTotals } from "@/lib/admin-queries";
+import { BOOKING_STATUSES, isBookingStatus, stageNumber } from "@/lib/constants";
+import { getSettings } from "@/lib/settings";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 import { arDayMonth } from "@/lib/dates";
 
 /**
- * Payments and deposits.
+ * Revenue and commission.
  *
- * Online payment is not enabled on this platform (see the disabled stub in
- * src/lib/payments/index.ts), so every `paymentStatus` is "NONE" and the deposit
- * is collected by the owner directly. This page is therefore a *ledger of what
- * is owed*, not of what has been taken — and it says so at the top rather than
- * letting an operator read the totals as money received.
+ * ─── What changed, and why ──────────────────────────────────────────────────
+ * This page used to be "payments and deposits": four tiles, two of them
+ * deposits, and two table columns for the deposit rate and the deposit due.
+ * None of that was the platform's business. A deposit is money the OWNER
+ * collects from the guest as part of the booking total — it is not revenue,
+ * it is not owed to the platform, and putting it beside the total meant the
+ * same dirhams were counted twice on one screen.
  *
- * The deposit percentage shown per row is the one snapshotted on the booking,
- * not the listing's current setting: an owner changing their rate must not
- * retroactively relabel what an old customer was quoted.
+ * What the operator actually needs to know is two numbers: the value flowing
+ * through the platform, and the commission owed on it — split by whether it
+ * has actually arrived. The deposit did not disappear; it moved to step 1 of
+ * the booking workflow, where the person who collects it records it.
  */
 export default async function AdminPaymentsPage({
   searchParams,
@@ -44,33 +48,14 @@ export default async function AdminPaymentsPage({
   const search = typeof sp.q === "string" ? sp.q : "";
   const status = isBookingStatus(sp.status) ? sp.status : "all";
 
-  const [result, totals] = await Promise.all([
+  const [result, totals, settings] = await Promise.all([
     listBookings({ page, search, status }),
-    depositTotals(),
+    revenueTotals(),
+    getSettings(),
   ]);
 
-  const tiles = [
-    {
-      label: t.admin.depositConfirmedTile,
-      value: `${arNum(totals.depositConfirmed, locale)} ${t.common.aed}`,
-      icon: "savings" as const,
-    },
-    {
-      label: t.admin.revenueConfirmedTile,
-      value: `${arNum(totals.totalConfirmed, locale)} ${t.common.aed}`,
-      icon: "payments" as const,
-    },
-    {
-      label: t.admin.depositAllTile,
-      value: `${arNum(totals.depositAll, locale)} ${t.common.aed}`,
-      icon: "receipt_long" as const,
-    },
-    {
-      label: t.admin.revenueAllTile,
-      value: `${arNum(totals.totalAll, locale)} ${t.common.aed}`,
-      icon: "confirmation_number" as const,
-    },
-  ];
+  const money = (n: number) => `${arNum(n, locale)} ${t.common.aed}`;
+  const percent = (n: number) => `${arNum(n, locale)}${locale === "ar" ? "٪" : "%"}`;
 
   return (
     <div className="animate-fade-up">
@@ -81,21 +66,42 @@ export default async function AdminPaymentsPage({
         <p className="m-0 text-[12.5px] text-muted">{t.admin.paymentsSubtitle}</p>
       </div>
 
-      <div className="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-        {tiles.map((tile) => (
-          <div
-            key={tile.label}
-            className="rounded-[20px] border border-line bg-surface p-4 shadow-e1"
-          >
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="text-[12px] font-semibold text-muted">{tile.label}</span>
-              <Icon name={tile.icon} size={20} className="text-gold-600" />
-            </div>
-            <div className="font-display text-[19px] font-extrabold leading-tight text-ink">
-              {tile.value}
-            </div>
-          </div>
-        ))}
+      {/*
+        Two figures, stated at two different weights.
+
+        The booking value is the headline — it is the number that describes the
+        business. The commission tiles sit beside it in the accent colour
+        because they are the number that describes this platform's income, and
+        splitting "owed" from "received" is the only way the outstanding column
+        is ever chased.
+      */}
+      <div className="mb-3 grid gap-2.5 md:grid-cols-2">
+        <HeadlineTile
+          label={t.admin.confirmedValueTile}
+          value={money(totals.totalConfirmed)}
+          sub={`${t.admin.allValueTile}: ${money(totals.totalAll)}`}
+          icon="payments"
+        />
+        <HeadlineTile
+          label={t.admin.commissionConfirmedTile}
+          value={money(totals.commissionConfirmed)}
+          sub={t.admin.commissionRateNote(percent(settings.commissionPercent))}
+          icon="receipt_long"
+          accent
+        />
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-2.5">
+        <SmallTile
+          label={t.admin.commissionCollectedTile}
+          value={money(totals.commissionCollected)}
+          tone="ok"
+        />
+        <SmallTile
+          label={t.admin.commissionOutstandingTile}
+          value={money(totals.commissionOutstanding)}
+          tone={totals.commissionOutstanding > 0 ? "busy" : "muted"}
+        />
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -120,10 +126,10 @@ export default async function AdminPaymentsPage({
             <Th>{t.booking.fullName}</Th>
             <Th>{t.listing.dates}</Th>
             <Th>{t.listing.total}</Th>
-            <Th>{t.admin.depositPercentCol}</Th>
-            <Th>{t.admin.depositDue}</Th>
+            <Th>{t.admin.commissionCol}</Th>
+            <Th>{t.admin.commissionStateCol}</Th>
+            <Th>{t.admin.stageCol}</Th>
             <Th>{t.common.status}</Th>
-            <Th>{t.admin.paymentStatus}</Th>
           </tr>
         </thead>
         <tbody>
@@ -155,21 +161,25 @@ export default async function AdminPaymentsPage({
                 <Td className="text-[12px] whitespace-nowrap">
                   {arDayMonth(b.checkIn, locale)} – {arDayMonth(b.checkOut, locale)}
                 </Td>
-                <Td className="font-bold whitespace-nowrap">
-                  {arNum(b.total, locale)} {t.common.aed}
+                <Td className="font-bold whitespace-nowrap">{money(b.total)}</Td>
+                <Td className="font-bold whitespace-nowrap text-bronze">
+                  {money(b.commissionDue)}
+                  <span className="block text-[10.5px] font-medium text-muted">
+                    {percent(b.commissionPercent)}
+                  </span>
                 </Td>
-                <Td className="whitespace-nowrap">
-                  {arNum(b.depositPercent, locale)}
-                  {locale === "ar" ? "٪" : "%"}
+                <Td>
+                  <CommissionState booking={b} />
                 </Td>
-                <Td className="font-bold whitespace-nowrap">
-                  {arNum(b.depositDue, locale)} {t.common.aed}
+                <Td className="text-[11.5px] whitespace-nowrap text-muted">
+                  {b.status === "CONFIRMED"
+                    ? b.stage === "DONE"
+                      ? t.workflow.completed
+                      : t.workflow.stepOf(arNum(stageNumber(b.stage), locale), arNum(7, locale))
+                    : "—"}
                 </Td>
                 <Td>
                   <StatusBadge status={b.status} />
-                </Td>
-                <Td>
-                  <PaymentBadge status={b.paymentStatus} />
                 </Td>
               </tr>
             ))
@@ -183,6 +193,109 @@ export default async function AdminPaymentsPage({
         total={result.total}
         pageSize={result.pageSize}
       />
+    </div>
+  );
+}
+
+/**
+ * Where one booking's commission has got to.
+ *
+ * Four states, not two, because "the owner says they sent it" and "we have it"
+ * are genuinely different facts and the gap between them is the only thing on
+ * this page worth chasing.
+ */
+async function CommissionState({
+  booking,
+}: {
+  booking: {
+    status: string;
+    commissionSentAt: Date | null;
+    commissionConfirmedAt: Date | null;
+  };
+}) {
+  const { t } = await getI18n();
+
+  if (booking.status !== "CONFIRMED") {
+    return <span className="text-[11.5px] text-off">{t.admin.commissionNotDue}</span>;
+  }
+  if (booking.commissionConfirmedAt) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-ok-bg px-2.5 py-1 text-[11.5px] font-bold text-ok">
+        <Icon name="check" size={13} />
+        {t.admin.commissionReceived}
+      </span>
+    );
+  }
+  if (booking.commissionSentAt) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-gold-100 px-2.5 py-1 text-[11.5px] font-bold text-bronze">
+        <Icon name="schedule" size={13} />
+        {t.admin.commissionSent}
+      </span>
+    );
+  }
+  return (
+    <span className="text-[11.5px] font-semibold text-muted">{t.admin.commissionWaiting}</span>
+  );
+}
+
+function HeadlineTile({
+  label,
+  value,
+  sub,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: "payments" | "receipt_long";
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={`rounded-[20px] border p-4 shadow-e1 ${
+        accent ? "border-gold-500 bg-gold-100" : "border-line bg-surface"
+      }`}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span
+          className={`text-[12px] font-semibold ${accent ? "text-bronze" : "text-muted"}`}
+        >
+          {label}
+        </span>
+        <Icon name={icon} size={20} className={accent ? "text-bronze" : "text-gold-600"} />
+      </div>
+      <div
+        className={`font-display text-[26px] font-extrabold leading-tight ${
+          accent ? "text-bronze" : "text-ink"
+        }`}
+      >
+        {value}
+      </div>
+      <p className={`m-0 mt-1 text-[11.5px] ${accent ? "text-bronze/80" : "text-muted"}`}>
+        {sub}
+      </p>
+    </div>
+  );
+}
+
+function SmallTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "ok" | "busy" | "muted";
+}) {
+  const toneClass =
+    tone === "ok" ? "text-ok" : tone === "busy" ? "text-busy" : "text-ink";
+
+  return (
+    <div className="rounded-[18px] border border-line bg-surface p-3.5 shadow-e1">
+      <span className="mb-1 block text-[11.5px] font-semibold text-muted">{label}</span>
+      <span className={`font-display text-[17px] font-extrabold ${toneClass}`}>{value}</span>
     </div>
   );
 }

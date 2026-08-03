@@ -6,6 +6,7 @@ import { requireAdminPage } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
+import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 
@@ -43,14 +44,14 @@ export default async function AdminRequestsPage({
           where: { status: "NEW" },
           // Oldest first: the request that has waited longest needs answering.
           orderBy: { createdAt: "asc" },
-          include: { listing: { select: { name: true, slug: true } } },
+          include: WORKFLOW_INCLUDE,
         }),
     statusFilter === "NEW"
       ? Promise.resolve([])
       : prisma.bookingRequest.findMany({
           where: statusFilter ? { status: statusFilter } : { status: { not: "NEW" } },
           orderBy: { createdAt: "desc" },
-          include: { listing: { select: { name: true, slug: true } } },
+          include: WORKFLOW_INCLUDE,
           take: 200,
         }),
     prisma.bookingRequest.groupBy({ by: ["status"], _count: { _all: true } }),
@@ -105,6 +106,7 @@ export default async function AdminRequestsPage({
           {ordered.map((r) => (
             <RequestCard
               key={r.id}
+              reviewInviteDays={settings.reviewInviteDays}
               request={{
                 id: r.id,
                 reference: r.reference,
@@ -124,6 +126,7 @@ export default async function AdminRequestsPage({
                 depositPercent: r.depositPercent,
                 notes: r.notes,
                 status: r.status,
+                workflow: toWorkflowBooking(r),
                 // The operator's reply link targets the *customer's* number,
                 // with an opening message referencing their request pre-typed.
                 whatsappHref: whatsappLink(

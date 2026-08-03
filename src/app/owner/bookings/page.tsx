@@ -5,6 +5,7 @@ import { getActiveOwnerSession } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
+import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 import Link from "next/link";
@@ -41,7 +42,7 @@ export default async function OwnerBookingsPage({
           where: { status: "NEW", ...mine },
           // Oldest first: the request that has waited longest needs answering.
           orderBy: { createdAt: "asc" },
-          include: { listing: { select: { name: true, slug: true } } },
+          include: WORKFLOW_INCLUDE,
         }),
     statusFilter === "NEW"
       ? Promise.resolve([])
@@ -50,7 +51,7 @@ export default async function OwnerBookingsPage({
             ? { status: statusFilter, ...mine }
             : { status: { not: "NEW" }, ...mine },
           orderBy: { createdAt: "desc" },
-          include: { listing: { select: { name: true, slug: true } } },
+          include: WORKFLOW_INCLUDE,
           take: 200,
         }),
     prisma.bookingRequest.groupBy({
@@ -111,6 +112,7 @@ export default async function OwnerBookingsPage({
               // belong to their own listing, so there is nothing here an
               // operator needs to do on their behalf.
               scope="owner"
+              reviewInviteDays={settings.reviewInviteDays}
               request={{
                 id: r.id,
                 reference: r.reference,
@@ -128,6 +130,7 @@ export default async function OwnerBookingsPage({
                 depositPercent: r.depositPercent,
                 notes: r.notes,
                 status: r.status,
+                workflow: toWorkflowBooking(r),
                 // The reply link targets the *customer's* number, with an
                 // opening message referencing their request already typed.
                 whatsappHref: whatsappLink(

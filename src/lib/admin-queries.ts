@@ -108,6 +108,12 @@ export async function listOwners(opts: {
         phone: true,
         whatsapp: true,
         city: true,
+        // Read for the manage-account dialog, which pre-fills every field it
+        // can save. A form that starts blank and overwrites on submit would
+        // silently wipe an owner's ID number the first time an admin corrected
+        // a typo in their name.
+        idNumber: true,
+        about: true,
         status: true,
         rejectionReason: true,
         membershipExpiresAt: true,
@@ -293,20 +299,47 @@ export async function listBookings(opts: {
   return paged(rows, total, opts.page);
 }
 
-/** Deposit totals for the payments view. */
-export async function depositTotals() {
-  const [all, confirmed] = await Promise.all([
-    prisma.bookingRequest.aggregate({ _sum: { depositDue: true, total: true } }),
+/**
+ * Totals for the revenue view.
+ *
+ * ─── Why deposits are not here any more ─────────────────────────────────────
+ * The page used to lead with two deposit tiles. A deposit is neither revenue
+ * nor a receivable — it is part of the booking total, collected earlier — so
+ * summing it alongside the total meant the same money appeared in two tiles
+ * and the operator's eye added them together. What the platform actually needs
+ * to see is the value it is handling and the commission it is owed on that
+ * value. The deposit still matters to the *owner*, at step 1 of the booking
+ * workflow, which is exactly where it now lives.
+ *
+ * `commissionCollected` counts only bookings an operator has confirmed the
+ * transfer for — money that has genuinely arrived, never money that has merely
+ * been declared sent, which is the whole reason step 6 has two halves.
+ */
+export async function revenueTotals() {
+  const [all, confirmed, collected] = await Promise.all([
+    prisma.bookingRequest.aggregate({ _sum: { commissionDue: true, total: true } }),
     prisma.bookingRequest.aggregate({
       where: { status: "CONFIRMED" },
-      _sum: { depositDue: true, total: true },
+      _sum: { commissionDue: true, total: true },
+    }),
+    prisma.bookingRequest.aggregate({
+      where: { status: "CONFIRMED", commissionConfirmedAt: { not: null } },
+      _sum: { commissionDue: true },
     }),
   ]);
+
+  const commissionConfirmed = confirmed._sum.commissionDue ?? 0;
+  const commissionCollected = collected._sum.commissionDue ?? 0;
+
   return {
-    depositAll: all._sum.depositDue ?? 0,
     totalAll: all._sum.total ?? 0,
-    depositConfirmed: confirmed._sum.depositDue ?? 0,
+    commissionAll: all._sum.commissionDue ?? 0,
     totalConfirmed: confirmed._sum.total ?? 0,
+    commissionConfirmed,
+    commissionCollected,
+    // What is owed but has not landed. Clamped at 0 so a confirmation recorded
+    // against a booking that was later cancelled can never render a negative.
+    commissionOutstanding: Math.max(0, commissionConfirmed - commissionCollected),
   };
 }
 
