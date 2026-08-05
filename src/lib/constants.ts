@@ -344,6 +344,13 @@ export const AUDIT_ACTIONS = [
   // that it happened and never what was set.
   "OWNER_UPDATED",
   "OWNER_PASSWORD_RESET",
+  // The operator editing their OWN account, kept separate from the two above
+  // for the reason those two are separate from each other: the log has to be
+  // able to answer "who changed the admin sign-in address" without that being
+  // indistinguishable from an admin editing somebody else's. The password entry
+  // records that a change happened and never what was set.
+  "ADMIN_ACCOUNT_UPDATED",
+  "ADMIN_PASSWORD_CHANGED",
   "MEMBERSHIP_UPDATED",
   "LISTING_CREATED",
   "LISTING_UPDATED",

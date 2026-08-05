@@ -108,7 +108,7 @@ export default async function AdminOwnersPage({
         <thead>
           <tr>
             <Th>{t.owner.fullName}</Th>
-            <Th>{t.owner.email}</Th>
+            <Th>{t.owner.yourUsername}</Th>
             <Th>{t.owner.whatsapp}</Th>
             <Th>{t.common.status}</Th>
             <Th>{t.admin.membershipExpiresAt}</Th>
@@ -139,8 +139,16 @@ export default async function AdminOwnersPage({
                       </span>
                     )}
                   </Td>
+                  {/* The number they sign in with, with the email underneath —
+                      an operator helping an owner who can't get in needs the
+                      username first, and it is no longer the address. */}
                   <Td className="text-[12px]">
-                    <span dir="ltr">{o.user.email}</span>
+                    <span dir="ltr" className="block font-bold text-ink">
+                      {o.user.username ?? "—"}
+                    </span>
+                    <span dir="ltr" className="block text-[11px] text-muted">
+                      {o.user.email}
+                    </span>
                   </Td>
                   <Td>
                     {waHref ? (

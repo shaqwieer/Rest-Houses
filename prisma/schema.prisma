@@ -63,6 +63,34 @@ datasource db {
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
+
+  // ---------------------------------------------------------------------
+  // The owner's sign-in name: their phone number, canonical digits, no "+".
+  //
+  //     971503322119
+  //
+  // Owners were asked to remember an email address for an account they use a
+  // handful of times a year. They know their own mobile number. So the number
+  // they already gave at registration *is* the username, kept in the exact
+  // shape `normalizePhone()` produces (src/lib/phone.ts) — one string, so a
+  // number typed as "+971 50 332 2119" at registration and "0503322119" at
+  // login resolves to the same account.
+  //
+  // Nullable, and both reasons matter:
+  //   * the ADMIN account signs in with an email and has no phone to derive
+  //     one from. NULL means "this account has no username", not "empty".
+  //   * the backfill migration deliberately skips any owner whose normalised
+  //     number collides with another's. PostgreSQL permits many NULLs under a
+  //     unique index, so the two of them land as NULL for an operator to
+  //     resolve rather than failing the migration and stopping the deploy.
+  //
+  // An email address signs in operators only — see `authorize()` in
+  // src/lib/auth.ts. So for an OWNER this column is the *only* credential, and
+  // an owner left NULL by that collision cannot sign in until an operator gives
+  // them a distinct number from /admin/owners. That surface shows the username
+  // (or "—") on every row precisely so the case is visible rather than silent.
+  username     String?  @unique
+
   name         String?
   passwordHash String
   role         String   @default("ADMIN") // "ADMIN" | "OWNER"
@@ -106,6 +134,10 @@ model OwnerProfile {
 
   // Account + business information collected at registration.
   fullName     String
+  // Stored in the canonical form `normalizePhone()` produces — digits, country
+  // code first, no "+". This is not merely tidiness: `User.username` is derived
+  // from this column, so a number stored as typed would be a login nobody could
+  // reproduce. See src/lib/phone.ts.
   phone        String
   whatsapp     String // drives every wa.me link on this owner's listings
   businessName String  @default("")
@@ -217,6 +249,35 @@ model SiteSettings {
   tiktok    String? @default("")
   snapchat  String? @default("")
   youtube   String? @default("")
+
+  // ---------------------------------------------------------------------
+  // The platform's own bank account — where owners send their commission.
+  //
+  // This is the counterpart to step 6 of the booking workflow. That step has
+  // always asked the owner to transfer `commissionDue` and type a reference,
+  // without ever telling them *where* to send it: the account details lived in
+  // a WhatsApp message somewhere, which is exactly the kind of thing that goes
+  // stale and gets mistyped. Now the step renders them.
+  //
+  // Stored on the settings row rather than hardcoded for the same reason as
+  // everything else here — the operator changes bank without a deploy.
+  //
+  // All default to "": an empty field renders nothing at all rather than an
+  // empty label, and a platform that has not filled these in sees precisely the
+  // step it had before. Not validated beyond a length cap, deliberately —
+  // account-number and IBAN formats differ by country, and an operator banking
+  // outside the UAE must not be locked out by a regex tuned for AE IBANs.
+  bankName          String @default("")
+  bankAccountHolder String @default("")
+  bankAccountNumber String @default("")
+  bankIban          String @default("")
+
+  // Commercial trade licence number, shown in the site footer.
+  //
+  // A legal disclosure, not a marketing string: a UAE business is expected to
+  // publish it. "" hides the line entirely rather than printing a label with
+  // nothing after it.
+  tradeLicense      String @default("")
 
   // Google Maps location used by the footer map + settings preview
   mapLat       Float   @default(24.7614)
@@ -364,6 +425,24 @@ model Listing {
   // amenities: ["pool","wifi",…]  categories: ["family","wedding",…]
   amenities  String @default("[]")
   categories String @default("[]")
+
+  // ---------------------------------------------------------------------
+  // The rest house's own Instagram profile.
+  //
+  // Distinct from `SiteSettings.instagram`, which is the *platform's* account
+  // in the footer. This one belongs to the individual rest house: guests here
+  // routinely want to see a venue's own feed — more photos, more recent, and
+  // from other guests — before they commit to a booking, and the alternative is
+  // that they leave the site to search for it and may not come back.
+  //
+  // A full URL, matching how the platform's own social links are stored, so the
+  // detail page links it directly with no reconstruction from a handle. Handles
+  // are ambiguous (with or without the "@", profile vs. explore path) and a URL
+  // is what an owner has in their clipboard anyway.
+  //
+  // Nullable and null by default: an owner with no Instagram gets no icon at
+  // all, rather than one that opens instagram.com's home page.
+  instagram String?
 
   // Presentation flags
   verified  Boolean @default(false)
@@ -513,6 +592,33 @@ model BookingRequest {
   nights   Int
   guests   Int
 
+  // ---------------------------------------------------------------------
+  // A day-use booking (حجز بدون مبيت): arrive and leave on the same day.
+  //
+  // For one of these, `checkIn === checkOut` and `nights === 0`. Both are the
+  // literal truth rather than a workaround, and storing the truth is what the
+  // rest of this model already does everywhere else.
+  //
+  // The tempting alternative was to store `checkOut = checkIn + 1` and
+  // `nights = 1`, which would have let the existing night-based machinery run
+  // untouched. It was rejected: it stores a lie. Every screen, every WhatsApp
+  // message and every future query would then have to remember to undo it —
+  // subtracting a day before display, special-casing "1 night" that is not a
+  // night — and the first place that forgot would quietly tell a guest they were
+  // staying over.
+  //
+  // What the flag buys, concretely:
+  //   * `quote()` prices from `Listing.dayUsePrice` instead of the nightly rate.
+  //     Without it, `nightsInRange` returns [] for a same-day range, the
+  //     subtotal is 0, and the booking is free.
+  //   * `occupiedDays()` (src/lib/dates.ts) yields the single day, so
+  //     confirmation blocks the calendar. Without it, nothing is blocked and the
+  //     day stays bookable by somebody else.
+  //
+  // Defaults false, so every row that predates this is an overnight stay —
+  // which every one of them was.
+  dayUse   Boolean @default(false)
+
   // Price snapshot at request time. Stored so a later price change on the
   // listing does not silently rewrite the history of what was quoted.
   subtotal     Int
@@ -619,6 +725,7 @@ model BookingRequest {
 
   @@index([status, createdAt])
   @@index([listingId])
+  @@index([dayUse])
   // Drives the owner's "what needs me next" queue and the operator's
   // commission-to-confirm list, both of which filter on stage within status.
   @@index([status, stage])

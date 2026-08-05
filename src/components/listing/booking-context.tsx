@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { DateRange } from "./availability-calendar";
 import { quote, type Quote } from "@/lib/pricing";
 import type { ISODate } from "@/lib/dates";
@@ -17,18 +17,46 @@ import type { ISODate } from "@/lib/dates";
  *
  * The quote is derived here rather than in either consumer, so the total in the
  * sidebar and the total carried into the booking form can't disagree.
+ *
+ * ─── Two kinds of stay ───────────────────────────────────────────────────────
+ * `stayType` is the mode the whole page runs in:
+ *
+ *   "overnight" — the original behaviour. Two clicks on the calendar pick a
+ *                 check-in and a check-out, and the quote is per night.
+ *   "dayUse"    — حجز بدون مبيت. ONE click picks the day; check-in and check-out
+ *                 are the same date, there are no nights, and the quote comes
+ *                 from the listing's day rate.
+ *
+ * Holding it here rather than on the calendar is what lets the price card, the
+ * mobile bar and the link into the booking form all agree about which kind of
+ * booking is being made — they read one flag instead of each inferring it from
+ * whether the two dates happen to be equal, which is also what an incomplete
+ * overnight selection looks like.
+ *
+ * The mode is only offered when the listing actually has a day rate;
+ * `dayUseAvailable` carries that decision down from the server so no component
+ * has to re-derive "is 0 the same as not offered" (it is — see
+ * `Listing.dayUsePrice` in prisma/schema.prisma).
  */
+
+export type StayType = "overnight" | "dayUse";
 
 type BookingContextValue = {
   range: DateRange;
   setRange: (r: DateRange) => void;
+  stayType: StayType;
+  setStayType: (t: StayType) => void;
+  /** False when this listing has no day rate — the toggle is not rendered. */
+  dayUseAvailable: boolean;
   guests: number;
   setGuests: (n: number) => void;
-  /** null until a full range is selected. */
+  /** null until the selection is complete for the current stay type. */
   currentQuote: Quote | null;
   unavailableDates: ISODate[];
   /** Query string for the booking page, e.g. "?from=…&to=…&guests=30". */
   bookingQuery: string;
+  /** True once the selection is enough to send a request. */
+  ready: boolean;
 };
 
 const BookingContext = createContext<BookingContextValue | null>(null);
@@ -37,6 +65,8 @@ export function BookingProvider({
   unavailableDates,
   pricePerNight,
   weekendPrice,
+  dayUsePrice,
+  dayUseWeekendPrice,
   serviceFeePercent,
   depositPercent,
   capacity,
@@ -45,47 +75,120 @@ export function BookingProvider({
   unavailableDates: ISODate[];
   pricePerNight: number;
   weekendPrice: number;
+  dayUsePrice: number;
+  dayUseWeekendPrice: number;
   serviceFeePercent: number;
   depositPercent: number;
   capacity: number;
   children: React.ReactNode;
 }) {
-  const [range, setRange] = useState<DateRange>({ checkIn: null, checkOut: null });
+  const [range, setRangeState] = useState<DateRange>({ checkIn: null, checkOut: null });
+  const [stayType, setStayTypeState] = useState<StayType>("overnight");
   // Default to a sensible share of the venue rather than 1 — these are group
   // venues, and the design's mock shows "٣٠ ضيفًا" pre-filled.
-  const [guests, setGuests] = useState(() => Math.min(capacity, Math.max(1, Math.round(capacity / 2))));
+  const [guests, setGuests] = useState(() =>
+    Math.min(capacity, Math.max(1, Math.round(capacity / 2))),
+  );
+
+  const dayUseAvailable = dayUsePrice > 0;
+
+  const setStayType = useCallback((next: StayType) => {
+    setStayTypeState(next);
+    // Switching mode clears the dates. A range picked as an overnight stay
+    // ("the 4th to the 7th") is not a day booking, and silently reinterpreting
+    // it as "the 4th" would quietly change what the guest asked for while the
+    // price on screen changed under them. Starting over is one extra tap and
+    // leaves no room for that.
+    setRangeState({ checkIn: null, checkOut: null });
+  }, []);
+
+  const isDayUse = stayType === "dayUse";
+
+  const setRange = useCallback(
+    (next: DateRange) => {
+      // In day-use mode a single click is the whole selection, so check-out is
+      // pinned to check-in here — one place, rather than trusting every caller
+      // to remember. That equality is exactly what the server then requires.
+      if (isDayUse) {
+        setRangeState({ checkIn: next.checkIn, checkOut: next.checkIn });
+        return;
+      }
+      setRangeState(next);
+    },
+    [isDayUse],
+  );
+
+  const ready = isDayUse
+    ? Boolean(range.checkIn)
+    : Boolean(range.checkIn && range.checkOut);
 
   const currentQuote = useMemo(() => {
-    if (!range.checkIn || !range.checkOut) return null;
+    if (!range.checkIn) return null;
+    if (!isDayUse && !range.checkOut) return null;
+
     return quote({
       checkIn: range.checkIn,
-      checkOut: range.checkOut,
+      // Same day on the day-use path, which is what `quote` prices from.
+      checkOut: isDayUse ? range.checkIn : range.checkOut!,
       pricePerNight,
       weekendPrice,
       serviceFeePercent,
       depositPercent,
+      dayUse: isDayUse,
+      dayUsePrice,
+      dayUseWeekendPrice,
     });
-  }, [range, pricePerNight, weekendPrice, serviceFeePercent, depositPercent]);
+  }, [
+    range,
+    isDayUse,
+    pricePerNight,
+    weekendPrice,
+    dayUsePrice,
+    dayUseWeekendPrice,
+    serviceFeePercent,
+    depositPercent,
+  ]);
 
   const bookingQuery = useMemo(() => {
     const p = new URLSearchParams();
     if (range.checkIn) p.set("from", range.checkIn);
-    if (range.checkOut) p.set("to", range.checkOut);
+    // Always sent, and equal to `from` for a day booking — the booking page
+    // reads both and re-derives nothing.
+    if (isDayUse ? range.checkIn : range.checkOut) {
+      p.set("to", isDayUse ? range.checkIn! : range.checkOut!);
+    }
+    if (isDayUse) p.set("dayUse", "1");
     p.set("guests", String(guests));
     return `?${p.toString()}`;
-  }, [range, guests]);
+  }, [range, guests, isDayUse]);
 
   const value = useMemo<BookingContextValue>(
     () => ({
       range,
       setRange,
+      stayType,
+      setStayType,
+      dayUseAvailable,
       guests,
       setGuests: (n) => setGuests(Math.min(Math.max(1, n), capacity)),
       currentQuote,
       unavailableDates,
       bookingQuery,
+      ready,
     }),
-    [range, guests, currentQuote, unavailableDates, bookingQuery, capacity],
+    [
+      range,
+      setRange,
+      stayType,
+      setStayType,
+      dayUseAvailable,
+      guests,
+      currentQuote,
+      unavailableDates,
+      bookingQuery,
+      ready,
+      capacity,
+    ],
   );
 
   return <BookingContext.Provider value={value}>{children}</BookingContext.Provider>;

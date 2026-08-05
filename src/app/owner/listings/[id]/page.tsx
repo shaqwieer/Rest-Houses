@@ -52,6 +52,7 @@ export default async function EditOwnerListingPage({
         dayUseCheckOutTime: listing.dayUseCheckOutTime,
         dayUseCheckOutTimeEn: listing.dayUseCheckOutTimeEn ?? "",
         securityDeposit: listing.securityDeposit,
+        instagram: listing.instagram ?? "",
         capacity: listing.capacity,
         lat: listing.lat,
         lng: listing.lng,

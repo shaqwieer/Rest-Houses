@@ -6,6 +6,11 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { SETTINGS_ID } from "@/lib/settings";
 import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
+import {
+  optionalEmailField,
+  optionalPhoneField,
+  whatsappField,
+} from "@/lib/validation";
 import type { ActionResult } from "./listings";
 import { getI18n } from "@/lib/i18n/server";
 import type { Dictionary } from "@/lib/i18n";
@@ -34,19 +39,30 @@ function settingsSchema(t: Dictionary) {
   tagline: z.string().trim().max(120).default(""),
   logoGlyph: z.string().trim().min(1).max(2).default("و"),
 
-  // contact
-  whatsappNumber: z
-    .string()
-    .trim()
-    .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.whatsappIncomplete),
-  phone: z.string().trim().max(40).default(""),
-    email: z.string().trim().email(t.validation.invalidEmail).or(z.literal("")).default(""),
+  // contact — both stored in the canonical plus-less form, so the site's own
+  // number is written exactly like every owner's and the footer, the header CTA
+  // and the wa.me links all read the same string.
+  whatsappNumber: whatsappField(t),
+  phone: optionalPhoneField(t),
+    email: optionalEmailField(t),
 
   // socials — full URLs so the footer can link them directly
   instagram: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
   tiktok: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
   snapchat: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
   youtube: z.string().trim().url(t.validation.invalidUrl).or(z.literal("")).default(""),
+
+  // ---- the platform's bank account, and the trade licence ---------------
+  //
+  // Free text with a length cap and nothing else. Account-number and IBAN
+  // formats vary by country, and a regex tuned for a UAE IBAN would lock out an
+  // operator who banks elsewhere — a validation rule that refuses correct data
+  // is worse than none, because there is no way around it from the form.
+  bankName: z.string().trim().max(120).default(""),
+  bankAccountHolder: z.string().trim().max(120).default(""),
+  bankAccountNumber: z.string().trim().max(64).default(""),
+  bankIban: z.string().trim().max(64).default(""),
+  tradeLicense: z.string().trim().max(64).default(""),
 
   // location
   mapLat: z.coerce.number().min(-90).max(90),
@@ -138,6 +154,11 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     tiktok: formData.get("tiktok") ?? "",
     snapchat: formData.get("snapchat") ?? "",
     youtube: formData.get("youtube") ?? "",
+    bankName: formData.get("bankName") ?? "",
+    bankAccountHolder: formData.get("bankAccountHolder") ?? "",
+    bankAccountNumber: formData.get("bankAccountNumber") ?? "",
+    bankIban: formData.get("bankIban") ?? "",
+    tradeLicense: formData.get("tradeLicense") ?? "",
     mapLat: coords?.lat ?? formData.get("mapLat") ?? 24.7614,
     mapLng: coords?.lng ?? formData.get("mapLng") ?? 55.334,
     mapZoom: formData.get("mapZoom") || 10,

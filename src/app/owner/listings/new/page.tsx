@@ -40,6 +40,7 @@ export default async function NewOwnerListingPage() {
         dayUseCheckOutTime: "",
         dayUseCheckOutTimeEn: "",
         securityDeposit: 0,
+        instagram: "",
         capacity: 40,
         lat: settings.mapLat,
         lng: settings.mapLng,

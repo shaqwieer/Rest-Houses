@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Field, TextArea, TextInput } from "@/components/ui/field";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useToast } from "@/components/ui/toast";
 import { removeLogo, saveSettings, uploadHeroImage, uploadLogo } from "@/app/actions/settings";
 import { arNum } from "@/lib/format";
@@ -49,6 +50,11 @@ export type SettingsFormValues = {
   tiktok: string;
   snapchat: string;
   youtube: string;
+  bankName: string;
+  bankAccountHolder: string;
+  bankAccountNumber: string;
+  bankIban: string;
+  tradeLicense: string;
   mapLat: number;
   mapLng: number;
   mapZoom: number;
@@ -251,11 +257,9 @@ export function SettingsForm({
             hint={t.admin.fieldWhatsappHint}
             error={errors.whatsappNumber}
           >
-            <TextInput
+            <PhoneInput
               name="whatsappNumber"
               defaultValue={values.whatsappNumber}
-              dir="ltr"
-              inputMode="tel"
               required
               invalid={Boolean(errors.whatsappNumber)}
               className="text-end"
@@ -263,11 +267,10 @@ export function SettingsForm({
           </Field>
 
           <Field label={t.admin.fieldPhone} hint={t.admin.fieldPhoneHint} error={errors.phone}>
-            <TextInput
+            <PhoneInput
               name="phone"
               defaultValue={values.phone}
-              dir="ltr"
-              inputMode="tel"
+              invalid={Boolean(errors.phone)}
               className="text-end"
             />
           </Field>
@@ -302,6 +305,80 @@ export function SettingsForm({
               <TextInput name="youtube" defaultValue={values.youtube} dir="ltr" className="text-end" />
             </Field>
           </div>
+        </Card>
+
+        {/* =============== legal + banking ===============
+
+            The account owners transfer their commission into, and the trade
+            licence number the footer publishes. Grouped because both are the
+            platform's own paperwork rather than anything a guest sees — and
+            because an operator setting the site up fills them in together.
+
+            Every field may be left blank: each of the two surfaces that reads
+            them (step 6 of the booking workflow, the footer) renders nothing at
+            all when they are empty, rather than an empty label. */}
+        <Card icon="payments" title={t.admin.cardBanking}>
+          <p className="m-0 text-[12px] leading-relaxed text-muted">
+            {t.admin.bankingIntro}
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t.admin.fieldBankName} error={errors.bankName}>
+              <TextInput
+                name="bankName"
+                defaultValue={values.bankName}
+                placeholder={t.admin.fieldBankNamePlaceholder}
+                invalid={Boolean(errors.bankName)}
+              />
+            </Field>
+
+            <Field label={t.admin.fieldAccountHolder} error={errors.bankAccountHolder}>
+              <TextInput
+                name="bankAccountHolder"
+                defaultValue={values.bankAccountHolder}
+                invalid={Boolean(errors.bankAccountHolder)}
+              />
+            </Field>
+
+            <Field label={t.admin.fieldAccountNumber} error={errors.bankAccountNumber}>
+              <TextInput
+                name="bankAccountNumber"
+                defaultValue={values.bankAccountNumber}
+                dir="ltr"
+                invalid={Boolean(errors.bankAccountNumber)}
+                className="text-end"
+              />
+            </Field>
+
+            <Field
+              label={t.admin.fieldIban}
+              hint={t.admin.fieldIbanHint}
+              error={errors.bankIban}
+            >
+              <TextInput
+                name="bankIban"
+                defaultValue={values.bankIban}
+                dir="ltr"
+                placeholder="AE000000000000000000000"
+                invalid={Boolean(errors.bankIban)}
+                className="text-end"
+              />
+            </Field>
+          </div>
+
+          <Field
+            label={t.admin.fieldTradeLicense}
+            hint={t.admin.fieldTradeLicenseHint}
+            error={errors.tradeLicense}
+          >
+            <TextInput
+              name="tradeLicense"
+              defaultValue={values.tradeLicense}
+              dir="ltr"
+              invalid={Boolean(errors.tradeLicense)}
+              className="text-end"
+            />
+          </Field>
         </Card>
 
         {/* =============== theme =============== */}

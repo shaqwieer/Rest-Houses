@@ -41,19 +41,48 @@ export default async function BookPage({
   const guestsRaw = Number(typeof sp.guests === "string" ? sp.guests : "");
 
   /**
+   * Is this a day booking (حجز بدون مبيت)?
+   *
+   * The flag comes from the URL, but it is only *believed* to the extent the
+   * listing supports it: a link carrying `dayUse=1` for a rest house whose day
+   * rate is 0 falls back to an overnight booking, and the range check below
+   * then rejects it as it would any other same-day range. Trusting the query
+   * string alone would render a form quoting a day price the owner never set —
+   * and the server action refuses such a request anyway, so the guest would
+   * fill it in and only then be told no.
+   */
+  const dayUse = sp.dayUse === "1" && listing.dayUsePrice > 0;
+
+  /**
    * Arriving here without a usable range means the visitor deep-linked or the
    * dates expired. Send them to the calendar rather than rendering a form that
    * can only fail — the calendar is where the decision actually gets made.
+   *
+   * The two kinds of stay have different shapes: a day booking is one date
+   * (`from === to`), a stay is two (`from < to`). Both are checked here, and
+   * both again inside `createBookingRequest`.
    */
-  const detailUrl = `/listings/${encodeURIComponent(listing.slug)}#availability`;
-  if (!isISODate(from) || !isISODate(to) || from! >= to! || from! < todayISO()) {
-    redirect(detailUrl);
+  const detailPath = `/listings/${encodeURIComponent(listing.slug)}`;
+  const rangeOk = dayUse ? from === to : from! < to!;
+  if (!isISODate(from) || !isISODate(to) || !rangeOk || from! < todayISO()) {
+    // No flag here: a bad or expired range means a stale link or a deep link,
+    // and there is nothing to tell the visitor beyond "pick your dates", which
+    // is what the calendar they land on already says.
+    redirect(`${detailPath}#availability`);
   }
 
   // Someone else may have taken the dates between the detail page and here.
-  const stillFree = await isRangeAvailable(listing.id, from!, to!);
+  const stillFree = await isRangeAvailable(listing.id, from!, to!, dayUse);
   if (!stillFree) {
-    redirect(`${detailUrl}?unavailable=1`);
+    // ─── Query BEFORE fragment ────────────────────────────────────────────
+    // This used to build `…#availability?unavailable=1`. Everything after the
+    // "#" is the fragment, so `?unavailable=1` was part of the fragment string
+    // and never reached the server as a search param — the flag could not be
+    // read even in principle, and the detail page did not ask for it either.
+    // A guest whose dates were taken mid-form was therefore bounced back to the
+    // calendar with no explanation at all, which reads as the site losing their
+    // booking. The detail page now takes `searchParams` and says so.
+    redirect(`${detailPath}?unavailable=1#availability`);
   }
 
   const settings = await getSettings();
@@ -74,6 +103,9 @@ export default async function BookPage({
     weekendPrice: listing.weekendPrice,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
+    dayUse,
+    dayUsePrice: listing.dayUsePrice,
+    dayUseWeekendPrice: listing.dayUseWeekendPrice,
   });
 
   const l = localizeListing(listing, locale);
@@ -108,6 +140,8 @@ export default async function BookPage({
             listingSlug={listing.slug}
             checkIn={from!}
             checkOut={to!}
+            dayUse={dayUse}
+            dayUseCheckOutTime={l.dayUseCheckOutTime}
             guests={guests}
             capacity={listing.capacity}
             freeCancelHours={settings.freeCancelHours}
@@ -139,18 +173,37 @@ export default async function BookPage({
 
             <div className="mb-3.5 h-px bg-line" />
 
+            {/* One date for a day booking, two for a stay — and the price line
+                names itself rather than rendering "0 nights × the nightly
+                rate", which is neither the figure charged nor a sentence that
+                makes sense. */}
             <SummaryRow
-              label={t.listing.dates}
-              value={`${arDayMonth(from!, locale)} – ${arDayMonth(to!, locale)}`}
+              label={dayUse ? t.listing.dayUsePickDay : t.listing.dates}
+              value={
+                dayUse
+                  ? arDayMonth(from!, locale)
+                  : `${arDayMonth(from!, locale)} – ${arDayMonth(to!, locale)}`
+              }
             />
             <SummaryRow
-              label={t.listing.nightsLine(
-                arNum(listing.pricePerNight, locale),
-                arNum(q.nights, locale),
-                q.nights,
-              )}
+              label={
+                dayUse
+                  ? t.listing.dayUseLine
+                  : t.listing.nightsLine(
+                      arNum(listing.pricePerNight, locale),
+                      arNum(q.nights, locale),
+                      q.nights,
+                    )
+              }
               value={arNum(q.subtotal, locale)}
             />
+            {dayUse && l.dayUseCheckOutTime && (
+              <SummaryRow
+                label={t.listing.dayUseCheckOut}
+                value={l.dayUseCheckOutTime}
+                muted
+              />
+            )}
             {/* Only when a fee actually applies — see the note in
                 booking-card.tsx. At the shipped 0% the total is the nights. */}
             {settings.serviceFeePercent > 0 && (

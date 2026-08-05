@@ -6,6 +6,7 @@ import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
 import type { IconName } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { BankDetailsPanel, hasBankDetails, type BankDetails } from "./bank-details";
 import {
   advanceOwnerRequestStage,
   advanceRequestStage,
@@ -102,11 +103,18 @@ export function BookingWorkflow({
   booking,
   scope,
   reviewInviteDays,
+  bank,
 }: {
   booking: WorkflowBooking;
   scope: "admin" | "owner";
   /** From site settings, so step 7 states the real validity rather than "15". */
   reviewInviteDays: number;
+  /**
+   * The platform's bank account, also from site settings, so step 6 can tell
+   * the owner where to send the commission it is asking them to transfer.
+   * Blank fields render nothing at all — see `BankDetailsPanel`.
+   */
+  bank?: BankDetails | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -174,7 +182,11 @@ export function BookingWorkflow({
   const total = WORKFLOW_STAGES.length;
 
   return (
-    <div className="rounded-[18px] border border-line bg-sand-50 p-3.5">
+    // `min-w-0` for the same reason as on the card that contains this — a
+    // shrinkable box is the right default for a panel full of amounts,
+    // references and links. See the note on `RequestCard`'s root for why it is
+    // a guard rather than the fix for the overflow that was reported.
+    <div className="min-w-0 rounded-[18px] border border-line bg-sand-50 p-3.5">
       <div className="mb-3 flex items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-display text-[13.5px] font-extrabold text-ink">
           <Icon name="task_alt" size={17} className="text-gold-600" />
@@ -263,6 +275,7 @@ export function BookingWorkflow({
                     scope={scope}
                     pending={pending}
                     reviewInviteDays={reviewInviteDays}
+                    bank={bank}
                     money={money}
                     percent={percent}
                     reviewUrl={reviewUrl}
@@ -303,6 +316,7 @@ function StepPanel({
   scope,
   pending,
   reviewInviteDays,
+  bank,
   money,
   percent,
   reviewUrl,
@@ -314,6 +328,7 @@ function StepPanel({
   scope: "admin" | "owner";
   pending: boolean;
   reviewInviteDays: number;
+  bank?: BankDetails | null;
   money: (n: number) => string;
   percent: (n: number) => string;
   reviewUrl: string | null;
@@ -515,6 +530,23 @@ function StepPanel({
           </>
         ) : (
           <>
+            {/* Where the money goes. Rendered only on the half of this step
+                that asks for a transfer — once it has been sent, the account
+                details are noise, and the panel is replaced by the "waiting on
+                the operator" line above.
+
+                An owner with no account details on screen is told so plainly
+                rather than left to guess: the alternative is a transfer to a
+                number remembered from somewhere else. */}
+            {hasBankDetails(bank) ? (
+              <BankDetailsPanel bank={bank!} />
+            ) : (
+              <p className="m-0 mt-2 flex items-start gap-1.5 text-[11.5px] leading-relaxed text-busy">
+                <Icon name="error" size={14} className="mt-0.5 shrink-0" />
+                {t.workflow.bankDetailsMissing}
+              </p>
+            )}
+
             <input
               value={reference}
               onChange={(e) => setReference(e.target.value)}
@@ -561,17 +593,40 @@ function ReviewLinkBox({ url, booking }: { url: string; booking: WorkflowBooking
   const message = `${t.review.subtitle(booking.listingName)}\n${url}`;
 
   return (
-    <div className="mt-2 rounded-xl border border-gold-500 bg-gold-100 p-2.5">
+    <div className="mt-2 min-w-0 rounded-xl border border-gold-500 bg-gold-100 p-2.5">
       <p className="m-0 mb-1.5 text-[11.5px] font-bold text-bronze">
         {t.workflow.reviewLinkReady}
       </p>
+      {/* ─── `break-all`, and why `truncate` was not enough ───────────────────
+          This line used to be `truncate`, and it still broke the page on a
+          phone: the whole admin layout was pushed wider than the screen and the
+          browser zoomed out to fit.
+
+          `truncate` is `overflow:hidden` + `text-overflow:ellipsis` +
+          **`white-space:nowrap`**, and that last part is the problem. Clipping
+          happens at paint time, but `nowrap` means the element's *min-content*
+          width is the entire unbroken string — measured here at 472px for a
+          93-character review URL. Min-content is what a grid track with
+          `min-width:auto` sizes itself to, so the card, its track and the page
+          were all forced to 472px+ no matter how the text was later clipped. An
+          element cannot ellipsis its way out of the width it demands.
+
+          Allowing a break anywhere drops min-content from 472px to 23px — it
+          becomes one character, so this line can never size anything again.
+          `line-clamp-2` keeps it to two lines, which is enough to recognise the
+          link; the copy button below is how anyone actually takes it, and the
+          full value is in the `title` for a hover. */}
       <p
         dir="ltr"
-        className="m-0 mb-2 truncate rounded-lg bg-surface px-2 py-1.5 text-[10.5px] text-muted"
+        title={url}
+        className="m-0 mb-2 line-clamp-2 rounded-lg bg-surface px-2 py-1.5 text-[10.5px] break-all text-muted"
       >
         {url}
       </p>
-      <div className="flex gap-2">
+      {/* Wraps rather than squashing: at a phone width these two Arabic labels
+          do not fit side by side, and a button whose text is clipped mid-word
+          is worse than one on its own line. */}
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => {
@@ -583,7 +638,7 @@ function ReviewLinkBox({ url, booking }: { url: string; booking: WorkflowBooking
               .then(() => toast(t.workflow.linkCopied, "ok"))
               .catch(() => toast(t.workflow.copyLink, "error"));
           }}
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-2 text-[11.5px] font-bold text-ink"
+          className="flex min-w-28 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-2 text-[11.5px] font-bold text-ink"
         >
           <Icon name="content_copy" size={14} />
           {t.workflow.copyLink}
@@ -592,7 +647,7 @@ function ReviewLinkBox({ url, booking }: { url: string; booking: WorkflowBooking
           href={whatsappLink(booking.customerPhone, message)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-wa px-2 py-2 text-[11.5px] font-bold text-wa-ink no-underline hover:no-underline"
+          className="flex min-w-28 flex-1 items-center justify-center gap-1.5 rounded-lg bg-wa px-2 py-2 text-[11.5px] font-bold text-wa-ink no-underline hover:no-underline"
         >
           <Icon name="chat" size={14} />
           {t.workflow.sendOnWhatsapp}

@@ -34,6 +34,14 @@ const FALLBACK = {
   tiktok: "",
   snapchat: "",
   youtube: "",
+  // Empty, not a plausible-looking example. A fresh install must show owners no
+  // bank account rather than one they might actually try to pay into, and the
+  // footer must show no licence number rather than an invented one.
+  bankName: "",
+  bankAccountHolder: "",
+  bankAccountNumber: "",
+  bankIban: "",
+  tradeLicense: "",
   mapLat: 24.7614,
   mapLng: 55.334,
   mapZoom: 10,
@@ -120,6 +128,24 @@ export function localizeSettings(settings: Settings, locale: Locale = DEFAULT_LO
     heroTitleAlt: localized(settings.heroTitleAlt, settings.heroTitleAltEn, locale),
     heroSubtitle: localized(settings.heroSubtitle, settings.heroSubtitleEn, locale),
     footerAbout: localized(settings.footerAbout, settings.footerAboutEn, locale),
+  };
+}
+
+/**
+ * Just the bank fields, as the shape the commission step takes.
+ *
+ * A named picker rather than passing the whole settings row into the workflow
+ * component: that row carries the operator's email, the site's private map
+ * coordinates and every piece of SEO copy, none of which has any business
+ * crossing into a client bundle rendered for an owner. Four fields go, and it
+ * is obvious at the call site which four.
+ */
+export function bankDetails(settings: Settings) {
+  return {
+    bankName: settings.bankName,
+    bankAccountHolder: settings.bankAccountHolder,
+    bankAccountNumber: settings.bankAccountNumber,
+    bankIban: settings.bankIban,
   };
 }
 

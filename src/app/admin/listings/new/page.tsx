@@ -35,6 +35,7 @@ export default async function NewListingPage() {
         dayUseCheckOutTime: "",
         dayUseCheckOutTimeEn: "",
         securityDeposit: 0,
+        instagram: "",
         capacity: 40,
         lat: settings.mapLat,
         lng: settings.mapLng,

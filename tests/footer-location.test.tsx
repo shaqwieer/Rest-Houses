@@ -42,6 +42,13 @@ const settings = {
   tiktok: "",
   snapchat: "",
   youtube: "",
+  // Blank by default so the base fixture exercises the "not configured" path;
+  // the trade-licence tests below clone this row and fill the one field in.
+  bankName: "",
+  bankAccountHolder: "",
+  bankAccountNumber: "",
+  bankIban: "",
+  tradeLicense: "",
   mapLat: 24.7614,
   mapLng: 55.334,
   mapZoom: 10,
@@ -80,10 +87,10 @@ const settings = {
   updatedAt: new Date(),
 } satisfies Settings;
 
-function renderFooter(locale: "ar" | "en") {
+function renderFooter(locale: "ar" | "en", overrides: Partial<Settings> = {}) {
   return renderToStaticMarkup(
     <LocaleProvider locale={locale}>
-      <SiteFooter settings={settings} />
+      <SiteFooter settings={{ ...settings, ...overrides }} />
     </LocaleProvider>,
   );
 }
@@ -144,5 +151,55 @@ describe("the removed location section", () => {
     // `footerAboutEn` is "" above, so English must show the Arabic blurb rather
     // than an empty paragraph.
     expect(markups.en).toContain("منصّة إماراتية لحجز الاستراحات");
+  });
+});
+
+/**
+ * Requirement 5: the footer publishes the commercial trade licence number, and
+ * the operator fills it in from /admin/settings.
+ *
+ * The interesting case is the blank one. A legal disclosure rendered as
+ * "Trade licence no." with nothing after it looks like a broken page on exactly
+ * the block a visitor might be checking for legitimacy, so an unset value has
+ * to remove the whole line rather than leave a dangling label.
+ */
+describe("the trade licence number", () => {
+  it("is absent entirely when it has not been set", () => {
+    const html = renderFooter("ar");
+    expect(html).not.toContain("رقم الرخصة التجارية");
+    expect(renderFooter("en")).not.toContain("Trade licence");
+  });
+
+  it("renders the configured number in each language", () => {
+    const ar = renderFooter("ar", { tradeLicense: "CN-1234567" });
+    expect(ar).toContain("رقم الرخصة التجارية");
+    expect(ar).toContain("CN-1234567");
+
+    const en = renderFooter("en", { tradeLicense: "CN-1234567" });
+    expect(en).toContain("Trade licence");
+    expect(en).toContain("CN-1234567");
+  });
+
+  /**
+   * The number is a Latin reference code sitting inside an RTL line. Without an
+   * explicit `dir="ltr"` the digits and the hyphen reorder on screen, which for
+   * a licence number is not cosmetic — it prints a different number.
+   */
+  it("renders the number left-to-right inside the Arabic footer", () => {
+    const html = renderFooter("ar", { tradeLicense: "CN-1234567" });
+    expect(html).toMatch(/dir="ltr"[^>]*>CN-1234567/);
+  });
+
+  it("sits in the bottom bar, right after the copyright line", () => {
+    const html = renderFooter("en", { tradeLicense: "CN-1234567" });
+    const rights = html.indexOf("All rights reserved");
+    const licence = html.indexOf("CN-1234567");
+    // `lastIndexOf`, because /policies also appears far earlier as the "Terms"
+    // entry in the help column — the bottom bar's copy is the last one.
+    const bottomBarTerms = html.lastIndexOf("/policies");
+
+    expect(rights).toBeGreaterThan(-1);
+    expect(licence).toBeGreaterThan(rights);
+    expect(licence).toBeLessThan(bottomBarTerms);
   });
 });

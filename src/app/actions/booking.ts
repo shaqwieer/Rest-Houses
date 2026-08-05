@@ -4,11 +4,17 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { isRangeAvailable, withPublicListingWhere } from "@/lib/listings";
-import { platformCommission, quote, resolveDepositPercent } from "@/lib/pricing";
+import {
+  dayUseRate,
+  platformCommission,
+  quote,
+  resolveDepositPercent,
+} from "@/lib/pricing";
 import { isISODate, nightsBetween, todayISO } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { guardSubmission } from "@/lib/security";
+import { optionalEmailField, phoneField } from "@/lib/validation";
 import type { Dictionary } from "@/lib/i18n";
 
 /**
@@ -40,21 +46,24 @@ function bookingSchema(t: Dictionary) {
     listingId: z.string().min(1),
     checkIn: z.string().refine(isISODate, t.validation.invalidCheckIn),
     checkOut: z.string().refine(isISODate, t.validation.invalidCheckOut),
+    /**
+     * A day-use stay (حجز بدون مبيت) — one day, no overnight.
+     *
+     * A checkbox posts "on" or nothing, so this reads the presence of the value
+     * rather than parsing a boolean. The flag only *claims* day use; whether the
+     * listing actually offers it, and at what price, is decided below from the
+     * database — never from this form.
+     */
+    dayUse: z.coerce.boolean().default(false),
     guests: z.coerce.number().int().min(1, t.validation.guestsInvalid).max(1000),
     customerName: z.string().trim().min(3, t.validation.fullNameRequired).max(120),
-    customerPhone: z
-      .string()
-      .trim()
-      // Deliberately permissive on formatting (spaces, dashes, +) but insists on
-      // enough digits to be a real mobile number.
-      .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.phoneIncomplete)
-      .refine((v) => v.replace(/[^0-9]/g, "").length <= 15, t.validation.phoneInvalid),
-    customerEmail: z
-      .string()
-      .trim()
-      .email(t.validation.invalidEmail)
-      .optional()
-      .or(z.literal("")),
+    // Permissive on what the guest types (spaces, dashes, +, Arabic-Indic
+    // digits) and strict about what gets stored: the shared field normalises to
+    // `971503322119`. That matters twice below — the duplicate check and the
+    // rate-limit identity both key on this string, and both were defeatable by
+    // re-typing the same number in a different shape.
+    customerPhone: phoneField(t),
+    customerEmail: optionalEmailField(t),
     notes: z.string().trim().max(2000).optional().or(z.literal("")),
   });
 }
@@ -91,6 +100,7 @@ export async function createBookingRequest(
     listingId: formData.get("listingId"),
     checkIn: formData.get("checkIn"),
     checkOut: formData.get("checkOut"),
+    dayUse: formData.get("dayUse") === "on" || formData.get("dayUse") === "true",
     guests: formData.get("guests"),
     customerName: formData.get("customerName"),
     customerPhone: formData.get("customerPhone"),
@@ -128,15 +138,32 @@ export async function createBookingRequest(
   }
 
   // --- date sanity -------------------------------------------------------
+  //
+  // The two kinds of stay have genuinely different rules, so they are checked
+  // separately rather than through one relaxed condition. The important
+  // property is that a zero-night range is STILL rejected on the overnight
+  // path: `nights < 1` was the only thing standing between a malformed range
+  // and a booking priced at nothing, and day use must not weaken it.
   const nights = nightsBetween(data.checkIn, data.checkOut);
-  if (nights < 1) {
-    return { ok: false, error: t.validation.checkOutBeforeCheckIn };
+
+  if (data.dayUse) {
+    // One day means one day. A day-use request carrying a different check-out
+    // is either a stale form or a hand-made POST; either way the honest
+    // response is to refuse rather than to guess which date was meant.
+    if (data.checkOut !== data.checkIn) {
+      return { ok: false, error: t.validation.dayUseSingleDay };
+    }
+  } else {
+    if (nights < 1) {
+      return { ok: false, error: t.validation.checkOutBeforeCheckIn };
+    }
+    if (nights > 60) {
+      return { ok: false, error: t.validation.tooManyNights };
+    }
   }
+
   if (data.checkIn < todayISO()) {
     return { ok: false, error: t.validation.pastDate };
-  }
-  if (nights > 60) {
-    return { ok: false, error: t.validation.tooManyNights };
   }
 
   // --- listing -----------------------------------------------------------
@@ -155,6 +182,8 @@ export async function createBookingRequest(
       capacity: true,
       pricePerNight: true,
       weekendPrice: true,
+      dayUsePrice: true,
+      dayUseWeekendPrice: true,
       depositPercent: true,
       securityDeposit: true,
     },
@@ -162,6 +191,22 @@ export async function createBookingRequest(
 
   if (!listing) {
     return { ok: false, error: t.validation.listingUnavailable };
+  }
+
+  // --- does this listing actually offer day use? --------------------------
+  //
+  // `dayUsePrice` of 0 means "not offered" (see the column's note in
+  // prisma/schema.prisma), so a day-use request against such a listing must be
+  // refused outright. Without this check the quote below would price the stay
+  // at 0 and write a booking worth nothing — reachable by anyone who posts the
+  // flag directly, and by any visitor whose page was rendered before the owner
+  // switched day use off.
+  //
+  // Asked through `dayUseRate` rather than by reading the column, so the guard
+  // and the pricing can never disagree about whether a rate exists: the weekend
+  // rate is part of that answer.
+  if (data.dayUse && dayUseRate(listing, data.checkIn) <= 0) {
+    return { ok: false, error: t.validation.dayUseUnavailable };
   }
 
   if (data.guests > listing.capacity) {
@@ -173,7 +218,15 @@ export async function createBookingRequest(
   }
 
   // --- availability, re-checked against the database ----------------------
-  const available = await isRangeAvailable(listing.id, data.checkIn, data.checkOut);
+  //
+  // `dayUse` is passed through: a same-day range has no nights, so without it
+  // this would check an empty set of dates and report every day as free.
+  const available = await isRangeAvailable(
+    listing.id,
+    data.checkIn,
+    data.checkOut,
+    data.dayUse,
+  );
   if (!available) {
     return { ok: false, error: t.validation.datesTaken };
   }
@@ -184,11 +237,13 @@ export async function createBookingRequest(
   // repeating one payload all land here as a second identical request. The owner
   // reading their inbox should see one, not three.
   //
-  // Matched on the phone number exactly as typed rather than on its digits:
-  // Prisma cannot strip punctuation inside a WHERE clause without dropping to
-  // raw SQL, and someone who re-types the same number differently is describing
-  // a different attempt, not a duplicate. Only NEW requests count — a guest whose
-  // request was rejected must be able to ask again.
+  // Matching on `customerPhone` is an equality test in SQL, which only works
+  // because the schema above normalised the number first: Prisma cannot strip
+  // punctuation inside a WHERE clause without raw SQL, so while numbers were
+  // stored as typed, "+971 50 332 2119" and "0503322119" were two different
+  // guests to this query and the second submission sailed past. Only NEW
+  // requests count — a guest whose request was rejected must be able to ask
+  // again.
   const duplicate = await prisma.bookingRequest.findFirst({
     where: {
       listingId: listing.id,
@@ -221,6 +276,11 @@ export async function createBookingRequest(
     weekendPrice: listing.weekendPrice,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
+    // The rates come from the row just read, never from the form — the same
+    // rule as every other amount here.
+    dayUse: data.dayUse,
+    dayUsePrice: listing.dayUsePrice,
+    dayUseWeekendPrice: listing.dayUseWeekendPrice,
   });
 
   const commission = platformCommission(q.total, settings.commissionPercent);
@@ -248,7 +308,11 @@ export async function createBookingRequest(
       notes: data.notes || null,
       checkIn: data.checkIn,
       checkOut: data.checkOut,
+      // 0 for a day-use stay, and stored as such. See the note on
+      // `BookingRequest.dayUse` in prisma/schema.prisma for why this is not
+      // faked into a night.
       nights: q.nights,
+      dayUse: q.dayUse,
       guests: data.guests,
       subtotal: q.subtotal,
       serviceFee: q.serviceFee,

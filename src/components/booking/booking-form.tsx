@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { Field, TextArea, TextInput } from "@/components/ui/field";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { HumanCheck } from "@/components/security/human-check";
 import { createBookingRequest } from "@/app/actions/booking";
 import { arDayMonth } from "@/lib/dates";
@@ -28,6 +29,8 @@ export function BookingForm({
   listingSlug,
   checkIn,
   checkOut,
+  dayUse,
+  dayUseCheckOutTime,
   guests: initialGuests,
   capacity,
   freeCancelHours,
@@ -37,6 +40,10 @@ export function BookingForm({
   listingSlug: string;
   checkIn: string;
   checkOut: string;
+  /** A day booking (حجز بدون مبيت): one day, `checkOut === checkIn`. */
+  dayUse: boolean;
+  /** The hour a day guest must leave by. "" when the owner set none. */
+  dayUseCheckOutTime: string;
   guests: number;
   capacity: number;
   freeCancelHours: number;
@@ -101,6 +108,11 @@ export function BookingForm({
       <input type="hidden" name="listingId" value={listingId} />
       <input type="hidden" name="checkIn" value={checkIn} />
       <input type="hidden" name="checkOut" value={checkOut} />
+      {/* Sent only when it is true, which is what a checkbox would do, and what
+          the action reads. Like every other hidden field here it is a *claim*:
+          `createBookingRequest` re-checks that this listing offers day use and
+          prices it from the database regardless. */}
+      {dayUse && <input type="hidden" name="dayUse" value="on" />}
 
       {error && (
         <p
@@ -116,8 +128,13 @@ export function BookingForm({
       <div>
         {stepHeading(locale === "ar" ? "١" : "1", t.booking.stayDetails)}
         <div className="grid gap-3 sm:grid-cols-3">
+          {/* A day booking has one date, not two. Showing the same day twice
+              under "check-in" and "check-out" is technically what is stored,
+              and reads as a mistake to the guest about to confirm it. */}
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-bold text-bronze">{t.booking.checkInDate}</span>
+            <span className="text-[12.5px] font-bold text-bronze">
+              {dayUse ? t.booking.dayUseDate : t.booking.checkInDate}
+            </span>
             <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 py-3 text-[14.5px] font-semibold text-ink">
               <Icon name="calendar_today" size={19} className="text-gold-600" />
               {arDayMonth(checkIn, locale)}
@@ -125,10 +142,14 @@ export function BookingForm({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-[12.5px] font-bold text-bronze">{t.booking.checkOutDate}</span>
+            <span className="text-[12.5px] font-bold text-bronze">
+              {dayUse ? t.booking.dayUseLeaveLabel : t.booking.checkOutDate}
+            </span>
             <span className="flex items-center gap-2 rounded-[13px] border border-line bg-sand-50 px-3.5 py-3 text-[14.5px] font-semibold text-ink">
-              <Icon name="event" size={19} className="text-gold-600" />
-              {arDayMonth(checkOut, locale)}
+              <Icon name={dayUse ? "schedule" : "event"} size={19} className="text-gold-600" />
+              {dayUse
+                ? dayUseCheckOutTime || t.booking.dayUseSameDay
+                : arDayMonth(checkOut, locale)}
             </span>
           </div>
 
@@ -176,14 +197,8 @@ export function BookingForm({
           </Field>
 
           <Field label={t.booking.phone} required error={fieldErrors.customerPhone}>
-            <TextInput
+            <PhoneInput
               name="customerPhone"
-              type="tel"
-              // Latin digits and LTR here on purpose: this is a phone number, and
-              // `inputMode="tel"` gives the right keypad on a phone.
-              dir="ltr"
-              inputMode="tel"
-              placeholder="+971 5X XXX XXXX"
               autoComplete="tel"
               required
               invalid={Boolean(fieldErrors.customerPhone)}

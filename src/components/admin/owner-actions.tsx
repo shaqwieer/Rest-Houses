@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
 import { useToast } from "@/components/ui/toast";
+import { phoneFieldProps } from "@/components/ui/phone-input";
 import {
   approveOwner,
   rejectOwner,
@@ -279,26 +280,27 @@ export function OwnerActions({
               </ModalField>
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <ModalField label={t.owner.phone} error={errors.phone}>
+                {/* This number is the owner's username. Editing it here moves
+                    their login with it — see `updateOwnerAccount`. */}
+                <ModalField
+                  label={t.owner.phone}
+                  error={errors.phone}
+                  hint={t.owner.phoneIsUsernameHint}
+                >
                   <input
                     name="phone"
-                    type="tel"
-                    dir="ltr"
-                    inputMode="tel"
-                    defaultValue={account.phone}
                     required
                     className={inputClass}
+                    {...phoneFieldProps(account.phone)}
                   />
                 </ModalField>
 
                 <ModalField label={t.owner.whatsapp} error={errors.whatsapp}>
                   <input
                     name="whatsapp"
-                    dir="ltr"
-                    inputMode="tel"
-                    defaultValue={account.whatsapp}
                     required
                     className={inputClass}
+                    {...phoneFieldProps(account.whatsapp)}
                   />
                 </ModalField>
               </div>
@@ -472,17 +474,23 @@ const inputClass =
 function ModalField({
   label,
   error,
+  hint,
   children,
 }: {
   label: string;
   error?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   return (
     <label className="block">
       <span className="mb-1.5 block text-[12.5px] font-bold text-bronze">{label}</span>
       {children}
-      {error && <span className="mt-1 block text-[11.5px] text-busy">{error}</span>}
+      {error ? (
+        <span className="mt-1 block text-[11.5px] text-busy">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-[11.5px] text-muted">{hint}</span>
+      ) : null}
     </label>
   );
 }

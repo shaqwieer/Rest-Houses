@@ -38,11 +38,23 @@ export function AvailabilityCalendar({
   onChange,
   /** Number of months to render side by side from `md:` up. */
   months = 1,
+  /**
+   * Single-day selection, for a day booking (حجز بدون مبيت).
+   *
+   * One click completes the selection: the day becomes both check-in and
+   * check-out. The two-click range logic below is skipped entirely rather than
+   * being coaxed into producing an equal pair — a "range" of one day would
+   * otherwise be indistinguishable from a half-finished overnight selection,
+   * and the prompt at the bottom would keep asking for a check-out that is
+   * never coming.
+   */
+  singleDay = false,
 }: {
   unavailableDates: ISODate[];
   value: DateRange;
   onChange: (next: DateRange) => void;
   months?: number;
+  singleDay?: boolean;
 }) {
   const today = todayISO();
   const unavailable = useMemo(() => new Set(unavailableDates), [unavailableDates]);
@@ -69,6 +81,13 @@ export function AvailabilityCalendar({
 
   function pick(iso: ISODate) {
     const { checkIn, checkOut } = value;
+
+    // A day booking is one click. The day is both ends of the stay, which is
+    // what the server requires of a day-use request (`checkOut === checkIn`).
+    if (singleDay) {
+      onChange({ checkIn: iso, checkOut: iso });
+      return;
+    }
 
     // No selection yet, or a complete range → start over from this day.
     if (!checkIn || checkOut) {
@@ -232,7 +251,9 @@ export function AvailabilityCalendar({
         />
       </div>
 
-      {value.checkIn && !value.checkOut && (
+      {/* Suppressed in single-day mode: there is no check-out to ask for, and
+          the prompt would sit there permanently after a completed selection. */}
+      {!singleDay && value.checkIn && !value.checkOut && (
         <p className="m-0 mt-3 rounded-xl bg-gold-100 px-3 py-2.5 text-[12.5px] font-semibold text-bronze">
           {t.listing.pickCheckOutNow}
         </p>

@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, AuthorizationError } from "@/lib/auth";
 import { auditData } from "@/lib/audit";
-import { isValidWhatsapp, normalizeWhatsapp } from "@/lib/whatsapp";
+import { emailField, phoneField, whatsappField } from "@/lib/validation";
 import { CITIES, isOwnerStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { guardSubmission } from "@/lib/security";
@@ -38,17 +38,14 @@ function registrationSchema(t: Dictionary) {
   return z
     .object({
       fullName: z.string().trim().min(3, t.validation.nameTooShort).max(120),
-      email: z.string().trim().toLowerCase().email(t.validation.invalidEmail).max(160),
-      phone: z
-        .string()
-        .trim()
-        .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.phoneIncomplete)
-        .refine((v) => v.replace(/[^0-9]/g, "").length <= 15, t.validation.phoneInvalid),
-      // Validated with the shared normaliser rather than a bespoke regex, so
-      // what is accepted here is exactly what will produce a working wa.me link
-      // later. A number that passes validation but can't be linked is worse than
-      // one that is rejected up front.
-      whatsapp: z.string().trim().refine(isValidWhatsapp, t.validation.whatsappInvalid),
+      email: emailField(t),
+      // Both numbers go through the shared validators, so what is accepted here
+      // is exactly what will produce a working wa.me link later — and, for
+      // `phone`, exactly the string this owner will type to sign in. A number
+      // that passes validation but can't be linked (or can't be logged in with)
+      // is worse than one rejected up front.
+      phone: phoneField(t),
+      whatsapp: whatsappField(t),
       password: z.string().min(8, t.validation.passwordTooShort).max(200),
       confirmPassword: z.string(),
       businessName: z.string().trim().max(160).default(""),
@@ -123,6 +120,23 @@ export async function registerOwner(formData: FormData): Promise<RegisterOwnerRe
     };
   }
 
+  // The phone number is this account's username, so it has to be as unique as
+  // the email — and refused the same way, as a field error pointing at the
+  // field. Letting the unique index raise P2002 would surface as a generic
+  // "couldn't save" with nothing indicating which of the eight inputs was the
+  // problem.
+  const phoneTaken = await prisma.user.findUnique({
+    where: { username: data.phone },
+    select: { id: true },
+  });
+  if (phoneTaken) {
+    return {
+      ok: false,
+      error: t.validation.phoneTaken,
+      fieldErrors: { phone: t.validation.phoneTaken },
+    };
+  }
+
   // Spent immediately before the write, for the same reason as on the booking
   // form: a registration that bounced off "this email is taken" must be
   // resubmittable with a different address and the token already in hand.
@@ -141,6 +155,10 @@ export async function registerOwner(formData: FormData): Promise<RegisterOwnerRe
       const user = await tx.user.create({
         data: {
           email: data.email,
+          // What this owner will actually type to sign in. Set here, at the one
+          // moment the account is created, from the same normalised value that
+          // goes into `OwnerProfile.phone` below — the two must never disagree.
+          username: data.phone,
           name: data.fullName,
           passwordHash,
           role: "OWNER",
@@ -151,10 +169,12 @@ export async function registerOwner(formData: FormData): Promise<RegisterOwnerRe
         data: {
           userId: user.id,
           fullName: data.fullName,
+          // Both arrive already normalised from the schema, so every consumer
+          // gets link-ready digits and no component has to re-parse whatever
+          // shape the owner typed. `phone` is also this account's username —
+          // see the User row created just above.
           phone: data.phone,
-          // Stored normalised, so every consumer gets link-ready digits and no
-          // component has to re-parse whatever shape the owner typed.
-          whatsapp: normalizeWhatsapp(data.whatsapp),
+          whatsapp: data.whatsapp,
           businessName: data.businessName,
           idNumber: data.idNumber || null,
           city: data.city,
@@ -220,7 +240,7 @@ async function loadOwner(ownerId: string, t: Dictionary) {
       businessName: true,
       status: true,
       membershipExpiresAt: true,
-      user: { select: { id: true, email: true } },
+      user: { select: { id: true, email: true, username: true } },
       _count: { select: { listings: true } },
     },
   });
@@ -477,13 +497,9 @@ export async function setOwnerMembershipExpiry(
 function ownerAccountSchema(t: Dictionary) {
   return z.object({
     fullName: z.string().trim().min(3, t.validation.nameTooShort).max(120),
-    email: z.string().trim().toLowerCase().email(t.validation.invalidEmail).max(160),
-    phone: z
-      .string()
-      .trim()
-      .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.phoneIncomplete)
-      .refine((v) => v.replace(/[^0-9]/g, "").length <= 15, t.validation.phoneInvalid),
-    whatsapp: z.string().trim().refine(isValidWhatsapp, t.validation.whatsappInvalid),
+    email: emailField(t),
+    phone: phoneField(t),
+    whatsapp: whatsappField(t),
     businessName: z.string().trim().max(160).default(""),
     idNumber: z.string().trim().max(60).default(""),
     city: z
@@ -567,20 +583,41 @@ export async function updateOwnerAccount(
     }
   }
 
-  const whatsapp = normalizeWhatsapp(data.whatsapp);
+  // The same check on the number, because the number is the username. Editing
+  // an owner's phone here MOVES THEIR LOGIN — that is the intended behaviour
+  // (an owner who changes their mobile expects to sign in with the new one),
+  // and it is why the dialog labels this field as the username.
+  if (data.phone !== owner.user.username) {
+    const clash = await prisma.user.findFirst({
+      where: { username: data.phone, id: { not: owner.user.id } },
+      select: { id: true },
+    });
+    if (clash) {
+      return {
+        ok: false,
+        error: t.validation.phoneTaken,
+        fieldErrors: { phone: t.validation.phoneTaken },
+      };
+    }
+  }
 
   try {
     await prisma.$transaction([
       prisma.user.update({
         where: { id: owner.user.id },
-        data: { email: data.email, name: data.fullName },
+        // `username` moves with the phone number, inside the same transaction
+        // as the profile row it is derived from. Split across two writes they
+        // could diverge on a failure, leaving an owner whose stored number and
+        // whose login are different strings — unrecoverable without database
+        // access, because neither screen would show the one that works.
+        data: { email: data.email, username: data.phone, name: data.fullName },
       }),
       prisma.ownerProfile.update({
         where: { id: ownerId },
         data: {
           fullName: data.fullName,
           phone: data.phone,
-          whatsapp,
+          whatsapp: data.whatsapp,
           businessName: data.businessName,
           idNumber: data.idNumber || null,
           city: data.city,

@@ -91,10 +91,19 @@ export async function generateMetadata({
 
 export default async function ListingDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  /**
+   * Only one flag is read: `?unavailable=1`, set when the booking page turned a
+   * guest back because their dates were taken while they were filling the form
+   * in. See the redirect in ./book/page.tsx.
+   */
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
+  const sp = await searchParams;
+  const datesTaken = sp.unavailable === "1";
 
   // `getListingBySlug` applies the shared public predicate, so a listing whose
   // owner is suspended, rejected or out of membership 404s by direct URL just as
@@ -190,6 +199,11 @@ export default async function ListingDetailPage({
       unavailableDates={[...unavailable]}
       pricePerNight={listing.pricePerNight}
       weekendPrice={listing.weekendPrice}
+      // The day rates decide whether the "no overnight" option is offered at
+      // all: 0 means the owner does not do day bookings. See the note on
+      // `Listing.dayUsePrice` in prisma/schema.prisma.
+      dayUsePrice={listing.dayUsePrice}
+      dayUseWeekendPrice={listing.dayUseWeekendPrice}
       serviceFeePercent={settings.serviceFeePercent}
       depositPercent={depositPercent}
       capacity={listing.capacity}
@@ -261,6 +275,27 @@ export default async function ListingDetailPage({
                       {t.listing.pastBookings(arNum(listing.bookingsCount, locale))}
                     </span>
                   )}
+
+                  {/* The rest house's own Instagram, beside the location and
+                      the rating because that is where a guest is already
+                      looking when they want more photos of the venue.
+
+                      `target="_blank"` with `rel="noopener noreferrer"`: this is
+                      an outbound link to a third party, and leaving the booking
+                      flow in the same tab is how a half-finished booking gets
+                      abandoned. Rendered only when the owner has given one — no
+                      icon at all otherwise, rather than a link to nowhere. */}
+                  {listing.instagram && (
+                    <a
+                      href={listing.instagram}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-[13px] font-bold text-bronze no-underline transition hover:border-gold-500 hover:bg-gold-100 hover:no-underline"
+                    >
+                      <Icon name="instagram" size={17} />
+                      {t.listing.instagram}
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
@@ -309,10 +344,14 @@ export default async function ListingDetailPage({
                 The whole section is absent unless the owner has entered at
                 least one of these, which is the requirement: a listing that
                 offers no day booking and asks for no security deposit must
-                look exactly as it does today. Nothing here is bookable through
-                the calendar — a day booking is arranged with the owner on
-                WhatsApp, and the prices are published so that conversation
-                starts from a number rather than a question. */}
+                look exactly as it does today.
+
+                These rates ARE bookable now: the calendar below carries a
+                "بدون مبيت / day only" toggle whenever `dayUsePrice` is set, and
+                a request made through it is priced from exactly the figures
+                shown here. This block stayed as the reference table — a guest
+                comparing weekday against weekend before choosing a day still
+                wants to see both at once, which a calendar cannot show. */}
             {(hasDayUse || listing.securityDeposit > 0) && (
               <section className="border-b border-line py-6">
                 <h2 className="m-0 mb-2.5 font-display text-[19px] font-extrabold text-ink">
@@ -394,7 +433,12 @@ export default async function ListingDetailPage({
             )}
 
             {/* availability calendar (shares state with the sidebar card) */}
-            <CalendarSection checkIn={s.checkInTime} checkOut={s.checkOutTime} />
+            <CalendarSection
+              checkIn={s.checkInTime}
+              checkOut={s.checkOutTime}
+              dayUseCheckOutTime={l.dayUseCheckOutTime}
+              datesTaken={datesTaken}
+            />
 
             {/* location — the per-listing Leaflet map, which is a different
                 component from the removed footer embed and stays. */}

@@ -110,6 +110,24 @@ function listingSchema(t: Dictionary) {
     dayUseCheckOutTimeEn: blankToNull(40),
     /** Refundable security deposit in whole dirhams. 0 = none asked for. */
     securityDeposit: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    /**
+     * The rest house's Instagram profile URL.
+     *
+     * `.url()` matches how the platform's own social links are validated in
+     * `settingsSchema` — one rule for "this is a link we will render as an
+     * anchor", so an owner cannot store a bare handle here that the detail page
+     * would then turn into a link to nowhere. Blank becomes null via the same
+     * helper the `*En` fields use: "" and NULL would both mean "no Instagram",
+     * and one representation is better than two.
+     */
+    instagram: z
+      .string()
+      .trim()
+      .url(t.validation.invalidUrl)
+      .max(300)
+      .or(z.literal(""))
+      .optional()
+      .transform((v) => (v && v.length > 0 ? v : null)),
     capacity: z.coerce.number().int().min(1, t.validation.capacityRequired).max(5000),
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
@@ -168,6 +186,7 @@ function readListingForm(formData: FormData, t: Dictionary) {
     dayUseCheckOutTime: formData.get("dayUseCheckOutTime") ?? "",
     dayUseCheckOutTimeEn: formData.get("dayUseCheckOutTimeEn") ?? "",
     securityDeposit: formData.get("securityDeposit") ?? 0,
+    instagram: formData.get("instagram") ?? "",
     capacity: formData.get("capacity"),
     lat: formData.get("lat") || 24.7614,
     lng: formData.get("lng") || 55.334,
@@ -290,6 +309,10 @@ function listingColumns(
     dayUseCheckOutTime: data.dayUseCheckOutTime,
     dayUseCheckOutTimeEn: data.dayUseCheckOutTimeEn,
     securityDeposit: data.securityDeposit,
+    // The rest house's own Instagram, in `common` alongside the other contact
+    // details for the same reason: it is the owner's account, not an editorial
+    // decision, so an owner sets it on their own listing.
+    instagram: data.instagram,
     capacity: data.capacity,
     lat: data.lat,
     lng: data.lng,

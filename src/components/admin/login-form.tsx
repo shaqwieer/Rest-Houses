@@ -38,16 +38,23 @@ export function LoginForm({ next }: { next: string }) {
     <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
 
-      <Field label={t.auth.email} required>
+      {/* One field, both kinds of account: an owner signs in with the phone
+          number they registered, the operator with an email address.
+
+          `type="text"`, emphatically not `type="email"` — the browser refuses
+          to submit a phone number from an email input, which would have made
+          every owner's login fail before the request left the page. The server
+          tells the two apart by looking for an "@". */}
+      <Field label={t.auth.identifier} required hint={t.auth.identifierHint}>
         <span className="flex items-center gap-2.5 rounded-2xl border border-line bg-surface px-3.5 focus-within:border-gold-500 focus-within:shadow-[0_0_0_3px_var(--gold-100)]">
-          <Icon name="mail" size={20} className="text-gold-600" />
+          <Icon name="person" size={20} className="text-gold-600" />
           <input
-            name="email"
-            type="email"
+            name="identifier"
+            type="text"
             dir="ltr"
             required
             autoComplete="username"
-            placeholder="admin@example.ae"
+            placeholder="971503322119"
             className="min-w-0 flex-1 border-0 bg-transparent py-4 text-end text-[16px] font-semibold text-ink outline-none placeholder:text-off"
           />
         </span>

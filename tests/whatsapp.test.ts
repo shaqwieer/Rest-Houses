@@ -88,13 +88,29 @@ describe("whatsappLink", () => {
   });
 });
 
+/**
+ * ─── Why there is no "+" any more ────────────────────────────────────────────
+ * Numbers are entered, stored and displayed in one plus-less shape:
+ * `971503322119`. That is the format the operator asked for, and it is also
+ * what an owner now types to sign in — `User.username` holds exactly these
+ * digits. A display that added a "+" would show owners a string one character
+ * away from their own username, which is precisely the near-miss the whole
+ * normalisation change exists to remove. Grouping stays: it is readability, not
+ * a different value.
+ */
 describe("formatWhatsappDisplay", () => {
-  it("groups a UAE number the way it is written", () => {
-    expect(formatWhatsappDisplay("971502148890")).toBe("+971 50 214 8890");
+  it("groups a UAE number the way it is written, with no plus", () => {
+    expect(formatWhatsappDisplay("971502148890")).toBe("971 50 214 8890");
   });
 
-  it("falls back to a plain +digits form for anything else", () => {
-    expect(formatWhatsappDisplay("+966501234567")).toBe("+966501234567");
+  it("falls back to bare digits for anything else", () => {
+    expect(formatWhatsappDisplay("+966501234567")).toBe("966501234567");
+  });
+
+  /** The displayed UAE number is the stored one with spaces — nothing else. */
+  it("displays a number that round-trips back to what is stored", () => {
+    const stored = "971503322119";
+    expect(formatWhatsappDisplay(stored).replace(/ /g, "")).toBe(stored);
   });
 });
 

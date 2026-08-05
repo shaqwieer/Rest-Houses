@@ -55,7 +55,8 @@ type AdminTabKey =
   | "payments"
   | "reviews"
   | "auditLog"
-  | "settings";
+  | "settings"
+  | "account";
 
 const TABS: {
   href: string;
@@ -75,6 +76,11 @@ const TABS: {
   { href: "/admin/reviews", labelKey: "reviews", icon: "rate_review" },
   { href: "/admin/audit", labelKey: "auditLog", icon: "history" },
   { href: "/admin/settings", labelKey: "settings", icon: "tune" },
+  // The operator's own credentials, deliberately its own page rather than a
+  // card inside /admin/settings: everything there is *the site's* configuration,
+  // which any admin may change freely, while this is one person's sign-in and
+  // needs their current password to touch.
+  { href: "/admin/account", labelKey: "account", icon: "person" },
 ];
 
 export function AdminShell({

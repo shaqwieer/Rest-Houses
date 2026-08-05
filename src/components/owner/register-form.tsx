@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { HumanCheck } from "@/components/security/human-check";
 import { registerOwner } from "@/app/actions/owners";
 import { useLocale } from "@/lib/i18n/provider";
@@ -126,13 +127,16 @@ export function OwnerRegisterForm() {
             />
           </Field>
 
-          <Field label={t.owner.phone} required error={fieldErrors.phone}>
-            <TextInput
+          {/* This is the field that becomes their username, so it says so
+              rather than leaving them to discover it at the login screen. */}
+          <Field
+            label={t.owner.phone}
+            required
+            error={fieldErrors.phone}
+            hint={t.owner.phoneIsUsernameHint}
+          >
+            <PhoneInput
               name="phone"
-              type="tel"
-              dir="ltr"
-              inputMode="tel"
-              placeholder="+971 5X XXX XXXX"
               autoComplete="tel"
               required
               invalid={Boolean(fieldErrors.phone)}
@@ -145,12 +149,8 @@ export function OwnerRegisterForm() {
             error={fieldErrors.whatsapp}
             hint={t.owner.whatsappHint}
           >
-            <TextInput
+            <PhoneInput
               name="whatsapp"
-              type="tel"
-              dir="ltr"
-              inputMode="tel"
-              placeholder="+971 5X XXX XXXX"
               required
               invalid={Boolean(fieldErrors.whatsapp)}
             />

@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireApprovedOwner, AuthorizationError } from "@/lib/auth";
-import { isValidWhatsapp, normalizeWhatsapp } from "@/lib/whatsapp";
+import { phoneField, whatsappField } from "@/lib/validation";
 import { CITIES } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import type { Dictionary } from "@/lib/i18n";
@@ -32,12 +32,8 @@ const VALID_CITY_IDS = CITIES.map((c) => c.id);
 function profileSchema(t: Dictionary) {
   return z.object({
     fullName: z.string().trim().min(3, t.validation.nameTooShort).max(120),
-    phone: z
-      .string()
-      .trim()
-      .refine((v) => v.replace(/[^0-9]/g, "").length >= 9, t.validation.phoneIncomplete)
-      .refine((v) => v.replace(/[^0-9]/g, "").length <= 15, t.validation.phoneInvalid),
-    whatsapp: z.string().trim().refine(isValidWhatsapp, t.validation.whatsappInvalid),
+    phone: phoneField(t),
+    whatsapp: whatsappField(t),
     businessName: z.string().trim().max(160).default(""),
     city: z
       .string()
@@ -87,18 +83,50 @@ export async function saveOwnerProfile(formData: FormData): Promise<ActionResult
 
   const data = parsed.data;
 
-  await prisma.ownerProfile.update({
-    // Scoped to the session's own profile id — never an id from the form.
-    where: { id: owner.id },
-    data: {
-      fullName: data.fullName,
-      phone: data.phone,
-      whatsapp: normalizeWhatsapp(data.whatsapp),
-      businessName: data.businessName,
-      city: data.city,
-      about: data.about,
-    },
-  });
+  // ─── Changing the phone number changes the login ──────────────────────────
+  //
+  // `User.username` is this owner's phone number, so saving a new one here has
+  // to move their sign-in with it — otherwise an owner updates their mobile,
+  // signs out, and can never get back in: the number on their profile is not
+  // the number that authenticates, and no screen shows the one that does.
+  //
+  // Checked before writing, and reported on the `phone` field, for the same
+  // reason as everywhere else: a P2002 from the unique index would reach the
+  // owner as "couldn't save" with nothing saying why.
+  if (data.phone !== owner.phone) {
+    const clash = await prisma.user.findFirst({
+      where: { username: data.phone, id: { not: owner.userId } },
+      select: { id: true },
+    });
+    if (clash) {
+      return {
+        ok: false,
+        error: t.validation.phoneTaken,
+        fieldErrors: { phone: t.validation.phoneTaken },
+      };
+    }
+  }
+
+  // One transaction, because the profile's number and the account's username
+  // are the same fact stored twice and must not be able to disagree.
+  await prisma.$transaction([
+    prisma.ownerProfile.update({
+      // Scoped to the session's own profile id — never an id from the form.
+      where: { id: owner.id },
+      data: {
+        fullName: data.fullName,
+        phone: data.phone,
+        whatsapp: data.whatsapp,
+        businessName: data.businessName,
+        city: data.city,
+        about: data.about,
+      },
+    }),
+    prisma.user.update({
+      where: { id: owner.userId },
+      data: { username: data.phone, name: data.fullName },
+    }),
+  ]);
 
   // The owner's name and number appear on their public listing pages, so those
   // have to be revalidated too — not just the dashboard.

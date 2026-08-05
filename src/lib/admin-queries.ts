@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
+import { normalizePhone } from "./phone";
 import { isOwnerActive } from "./owners";
 
 /**
@@ -82,6 +83,14 @@ export async function listOwners(opts: {
       { fullName: { contains: term } },
       { businessName: { contains: term } },
       { user: { email: { contains: term } } },
+      // Searching by number is how an operator finds the owner who just phoned
+      // them — and, now that the number is the username, how they answer "which
+      // account is 0503322119?". Normalised first so a term typed in any shape
+      // matches the one shape that is stored; `|| term` keeps a non-numeric
+      // search (a name) working, since `normalizePhone` returns "" for it and a
+      // bare "" would `contains`-match every row.
+      { phone: { contains: normalizePhone(term) || term } },
+      { whatsapp: { contains: normalizePhone(term) || term } },
     ];
   }
   if (opts.status && opts.status !== "all") {
@@ -118,7 +127,7 @@ export async function listOwners(opts: {
         rejectionReason: true,
         membershipExpiresAt: true,
         createdAt: true,
-        user: { select: { email: true } },
+        user: { select: { email: true, username: true } },
         _count: { select: { listings: true } },
       },
     }),

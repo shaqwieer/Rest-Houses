@@ -12,7 +12,7 @@ import {
   nextStage,
   type BookingStage,
 } from "@/lib/constants";
-import { nightsInRange, todayISO } from "@/lib/dates";
+import { occupiedDays, todayISO } from "@/lib/dates";
 import { generateInviteToken, reviewInviteUrl } from "@/lib/reviews";
 import { getSettings } from "@/lib/settings";
 import { getI18n } from "@/lib/i18n/server";
@@ -171,13 +171,19 @@ async function applyRequestStatus(
       listingId: true,
       checkIn: true,
       checkOut: true,
+      dayUse: true,
       listing: { select: { slug: true } },
     },
   });
   if (!request) return { ok: false, error: t.validation.requestNotFound };
 
   const requestId = request.id;
-  const nights = nightsInRange(request.checkIn, request.checkOut);
+  // The days this booking takes off the market — the single night-or-day
+  // question, answered in one place. A day-use booking has no nights, so
+  // `nightsInRange` would return an empty list here and this confirmation would
+  // block nothing at all, leaving the day bookable by the next guest. See
+  // `occupiedDays` in src/lib/dates.ts.
+  const nights = occupiedDays(request.checkIn, request.checkOut, request.dayUse);
 
   if (status === "CONFIRMED") {
     // Someone else may have been confirmed for overlapping dates in the
@@ -282,7 +288,13 @@ export async function deleteRequest(requestId: string): Promise<ActionResult> {
 
   const request = await prisma.bookingRequest.findUnique({
     where: { id: requestId },
-    select: { status: true, listingId: true, checkIn: true, checkOut: true },
+    select: {
+      status: true,
+      listingId: true,
+      checkIn: true,
+      checkOut: true,
+      dayUse: true,
+    },
   });
   if (!request) return { ok: false, error: t.validation.requestNotFound };
 
@@ -291,7 +303,7 @@ export async function deleteRequest(requestId: string): Promise<ActionResult> {
     await prisma.availability.deleteMany({
       where: {
         listingId: request.listingId,
-        date: { in: nightsInRange(request.checkIn, request.checkOut) },
+        date: { in: occupiedDays(request.checkIn, request.checkOut, request.dayUse) },
         status: "BOOKED",
       },
     });

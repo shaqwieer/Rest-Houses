@@ -47,6 +47,10 @@ export async function resetDatabase(): Promise<void> {
   await prisma.ownerProfile.deleteMany();
   await prisma.user.deleteMany();
   await prisma.siteSettings.deleteMany();
+  // The rows those numbers were unique against are gone, so the sequence starts
+  // over — otherwise a long suite would drift away from the readable
+  // 97150000001, 97150000002 … that make a failure message easy to trace.
+  resetOwnerPhoneCounter();
 }
 
 /** The settings row most tests assume exists. */
@@ -75,11 +79,32 @@ type OwnerOptions = {
   fullName?: string;
 };
 
+/**
+ * Distinct default numbers, because an owner's number is now their username and
+ * `User.username` is unique.
+ *
+ * Every owner used to default to the same "971500000000", which was harmless
+ * when the column did not exist and is a unique-constraint violation now. A
+ * counter rather than a random value so a failing test names the same owner on
+ * every run. Reset with the database — see `resetDatabase` below.
+ */
+let ownerPhoneCounter = 0;
+
+export function resetOwnerPhoneCounter() {
+  ownerPhoneCounter = 0;
+}
+
 /** An owner account + profile in one call. */
 export async function createOwner(opts: OwnerOptions) {
+  const phone = opts.whatsapp ?? `9715000000${String(++ownerPhoneCounter).padStart(2, "0")}`;
+
   const user = await prisma.user.create({
     data: {
       email: opts.email,
+      // Owners sign in with their number, so a test owner needs one — and it
+      // must be the same string as `OwnerProfile.phone` below, which is exactly
+      // the invariant the production code maintains.
+      username: phone,
       name: opts.fullName ?? "Test Owner",
       // A fixed non-verifying hash: no test signs in with a password.
       passwordHash: "$2a$10$testtesttesttesttesttesttesttesttesttesttesttesttestte",
@@ -91,8 +116,8 @@ export async function createOwner(opts: OwnerOptions) {
     data: {
       userId: user.id,
       fullName: opts.fullName ?? "Test Owner",
-      phone: opts.whatsapp ?? "971500000000",
-      whatsapp: opts.whatsapp ?? "971500000000",
+      phone,
+      whatsapp: phone,
       status: opts.status ?? "APPROVED",
       membershipExpiresAt:
         opts.membershipExpiresAt === undefined ? daysFromNow(365) : opts.membershipExpiresAt,
@@ -114,6 +139,9 @@ export async function createListing(
     depositPercent?: number | null;
     capacity?: number;
     city?: string;
+    /** 0 (the default) means this listing does not offer day bookings. */
+    dayUsePrice?: number;
+    dayUseWeekendPrice?: number;
   } = {},
 ) {
   listingCounter += 1;
@@ -129,6 +157,10 @@ export async function createListing(
       published: opts.published ?? true,
       ownerId: opts.ownerId ?? null,
       depositPercent: opts.depositPercent ?? null,
+      // Defaults to 0 — "not offered" — so every existing fixture keeps
+      // describing an overnight-only rest house, which is what they all were.
+      dayUsePrice: opts.dayUsePrice ?? 0,
+      dayUseWeekendPrice: opts.dayUseWeekendPrice ?? 0,
       categories: JSON.stringify(["family"]),
       amenities: JSON.stringify(["pool"]),
     },

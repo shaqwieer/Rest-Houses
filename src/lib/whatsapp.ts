@@ -1,5 +1,6 @@
 import { arFullDate, type ISODate } from "./dates";
-import { arNum, normalizeDigits, whatsappDigits } from "./format";
+import { arNum, whatsappDigits } from "./format";
+import { formatPhoneDisplay, isValidPhone, normalizePhone } from "./phone";
 import { getDictionary } from "./i18n";
 import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
 
@@ -18,83 +19,23 @@ import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
 /* Number normalisation                                                       */
 /* -------------------------------------------------------------------------- */
 
-/** UAE country calling code — the default when a bare local number is entered. */
-const DEFAULT_COUNTRY_CODE = "971";
-
 /**
- * Turn whatever an owner typed into the digits `wa.me` expects.
+ * A WhatsApp number is a phone number, so all three of these are now the
+ * canonical helpers in src/lib/phone.ts under their original names.
  *
- * Handles the shapes people actually enter for an Emirati mobile:
- *   "+971 50 214 8890" → 971502148890   (already international)
- *   "00971502148890"   → 971502148890   (00 international prefix)
- *   "0502148890"       → 971502148890   (national trunk 0 → country code)
- *   "502148890"        → 971502148890   (bare national number)
- *   "٠٥٠٢١٤٨٨٩٠"        → 971502148890   (Arabic-Indic digits)
+ * They were duplicated here first, which is how `OwnerProfile.whatsapp` came to
+ * be stored normalised while `OwnerProfile.phone` was stored exactly as typed —
+ * the same value in two shapes in two adjacent columns. One implementation
+ * means the number an owner signs in with, the number on their listings and the
+ * number in the admin table cannot drift apart.
  *
- * A number that already carries some other country code is left alone — the
- * platform is Emirati but an owner may perfectly well have a Saudi or Omani
- * number, and silently rewriting it would send guests to the wrong person.
- *
- * Returns "" for anything that cannot be a phone number; callers must treat ""
- * as "no WhatsApp link available" rather than rendering a bare `wa.me/`.
+ * Kept as aliases rather than renamed at the call sites: these names read
+ * correctly where a WhatsApp link is specifically what is being built, and a
+ * tree-wide rename would be churn with no behavioural payoff.
  */
-export function normalizeWhatsapp(
-  raw: string | null | undefined,
-  countryCode: string = DEFAULT_COUNTRY_CODE,
-): string {
-  const input = normalizeDigits(String(raw ?? "")).trim();
-  if (!input) return "";
-
-  // Note whether it was written in an explicitly international form before
-  // stripping the punctuation that carries that information.
-  const hadPlus = input.startsWith("+");
-  let digits = input.replace(/[^0-9]/g, "");
-  if (!digits) return "";
-
-  if (digits.startsWith("00")) {
-    // "00" is the ITU international access prefix — equivalent to a leading "+".
-    digits = digits.slice(2);
-  } else if (hadPlus) {
-    // Already international; nothing to add.
-  } else if (digits.startsWith("0")) {
-    // National trunk prefix: drop the 0 and prepend the country code.
-    digits = countryCode + digits.slice(1);
-  } else if (!digits.startsWith(countryCode)) {
-    // A bare national number (no trunk 0, no country code). Only assume the
-    // default country for lengths that plausibly *are* national numbers —
-    // anything long enough to already carry a foreign country code is left be.
-    if (digits.length <= 10) digits = countryCode + digits;
-  }
-
-  return digits;
-}
-
-/**
- * Is this a usable WhatsApp number?
- *
- * E.164 allows 8–15 digits including the country code. Deliberately permissive
- * about *which* country: whether a number is a real, reachable line is
- * something only sending a message can establish, and rejecting valid foreign
- * numbers to enforce a guess would be worse than accepting an unusual one.
- */
-export function isValidWhatsapp(raw: string | null | undefined): boolean {
-  const digits = normalizeWhatsapp(raw);
-  return digits.length >= 8 && digits.length <= 15;
-}
-
-/**
- * Format a number for *display*, grouped the way a UAE number is written.
- * "971502148890" → "+971 50 214 8890". Anything else renders as "+digits".
- */
-export function formatWhatsappDisplay(raw: string | null | undefined): string {
-  const digits = normalizeWhatsapp(raw);
-  if (!digits) return "";
-  if (digits.startsWith(DEFAULT_COUNTRY_CODE) && digits.length === 12) {
-    const rest = digits.slice(3);
-    return `+${DEFAULT_COUNTRY_CODE} ${rest.slice(0, 2)} ${rest.slice(2, 5)} ${rest.slice(5)}`;
-  }
-  return `+${digits}`;
-}
+export const normalizeWhatsapp = normalizePhone;
+export const isValidWhatsapp = isValidPhone;
+export const formatWhatsappDisplay = formatPhoneDisplay;
 
 /* -------------------------------------------------------------------------- */
 /* Resolving which number a listing uses                                      */
@@ -196,6 +137,10 @@ export type BookingMessageInput = {
   checkIn: ISODate;
   checkOut: ISODate;
   nights: number;
+  /** A day booking (حجز بدون مبيت) — one day, no nights. */
+  dayUse?: boolean;
+  /** The hour the day guest must leave by, if the owner set one. */
+  dayUseCheckOutTime?: string | null;
   guests: number;
   customerName: string;
   customerPhone: string;
@@ -227,14 +172,30 @@ export function bookingRequestMessage(input: BookingMessageInput): string {
 
   const area = input.listingArea ? ` — ${input.listingArea}` : "";
 
+  // A day booking says so in its own words. The owner reads this message on a
+  // phone and acts on it — telling them "check-out: 28 July, nights: 0" for a
+  // guest arriving and leaving that morning is how somebody's whole day gets
+  // held for a stay that was never requested.
+  const stayLines = input.dayUse
+    ? [
+        `${mark}${t.dayUseDate(arFullDate(input.checkIn, locale))}`,
+        `${mark}${t.dayUseNoOvernight}`,
+        ...(input.dayUseCheckOutTime
+          ? [`${mark}${t.dayUseLeaveBy(input.dayUseCheckOutTime)}`]
+          : []),
+      ]
+    : [
+        `${mark}${t.checkIn(arFullDate(input.checkIn, locale))}`,
+        `${mark}${t.checkOut(arFullDate(input.checkOut, locale))}`,
+        `${mark}${t.nights(n(input.nights))}`,
+      ];
+
   const lines: string[] = [
     `${mark}${t.greeting}`,
     `${mark}${t.bookingIntro(input.listingName)}${area}`,
     "",
     `${mark}${t.reference(input.reference)}`,
-    `${mark}${t.checkIn(arFullDate(input.checkIn, locale))}`,
-    `${mark}${t.checkOut(arFullDate(input.checkOut, locale))}`,
-    `${mark}${t.nights(n(input.nights))}`,
+    ...stayLines,
     `${mark}${t.guests(n(input.guests))}`,
     `${mark}${t.total(n(input.total))}`,
   ];

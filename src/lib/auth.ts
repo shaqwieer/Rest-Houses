@@ -3,6 +3,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "./prisma";
+import { normalizePhone } from "./phone";
 import { isOwnerActive } from "./owners";
 import { LOGIN_RATE_RULES } from "./security";
 import { clientIp, consumeAll } from "./security/rate-limit";
@@ -28,10 +29,77 @@ declare module "next-auth" {
   }
 }
 
+/**
+ * The sign-in form posts one field, `identifier`, holding either form.
+ *
+ * It was `email`, validated with `z.string().email()`. That single line is what
+ * would have made "sign in with your phone number" fail silently: an owner
+ * typing 971503322119 fails the schema, `authorize` returns null, and the form
+ * says "check your details" — indistinguishable from a wrong password, with
+ * nothing in the logs. Hence a plain non-empty string here, with the decision
+ * about *what kind* of identifier it is made in `resolveAccount` below.
+ */
 const credentialsSchema = z.object({
-  email: z.string().email(),
+  identifier: z.string().trim().min(1).max(160),
   password: z.string().min(1),
 });
+
+/**
+ * Which account an identifier names, and the key its login attempts are
+ * budgeted against.
+ *
+ * ─── One canonical key, not one per spelling ─────────────────────────────────
+ * The rate limiter budgets per subject. If the subject were the raw input, then
+ * "+971 50 332 2119", "0503322119" and "971503322119" would draw three separate
+ * budgets against the same account — so an attacker gets three times the
+ * attempts for free, simply by re-typing the number differently. Normalising
+ * before keying is what makes the per-account budget mean an account.
+ *
+ * An "@" is the discriminator. It cannot appear in a phone number and must
+ * appear in an email address, so the test needs nothing cleverer.
+ *
+ * `kind` is carried through because an email identifier is **operators only** —
+ * see `authorize` below.
+ */
+function resolveAccount(raw: string): {
+  kind: "email" | "username";
+  where: { email: string } | { username: string };
+  key: string;
+} {
+  if (raw.includes("@")) {
+    const email = raw.toLowerCase();
+    return { kind: "email", where: { email }, key: `email:${email}` };
+  }
+  const username = normalizePhone(raw);
+  return { kind: "username", where: { username }, key: `user:${username}` };
+}
+
+/**
+ * May an account of this role sign in with this kind of identifier?
+ *
+ * ─── An email address signs in operators, and nobody else ────────────────────
+ * An owner's username is their phone number, full stop. Their email is still
+ * collected and still shown in /admin/owners — it is how the operator reaches
+ * them — but it is not a credential, and accepting it would mean every owner
+ * had two ways in when they were told they had one.
+ *
+ * Exported and pure so the rule can be asserted directly rather than inferred
+ * from a login attempt: this is an authorisation decision, and one buried
+ * inside `authorize()` alongside rate limiting and bcrypt is one nobody can
+ * test in isolation.
+ *
+ * Consequence worth stating: an owner with no `username` cannot sign in at all.
+ * That can only happen to a row the backfill migration skipped because two
+ * owners shared a number. The operator fixes it by setting a distinct phone
+ * number on /admin/owners, which writes the username in the same transaction.
+ */
+export function mayUseIdentifier(
+  kind: "email" | "username",
+  role: string | undefined,
+): boolean {
+  if (kind === "username") return true;
+  return role === "ADMIN";
+}
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   // AUTH_SECRET is read automatically; fail loudly in prod if it's missing.
@@ -48,23 +116,27 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Credentials({
       name: "credentials",
       credentials: {
-        email: { label: "البريد الإلكتروني", type: "email" },
+        // `type: "text"`, not "email". The declared type reaches the browser as
+        // an <input type="…"> on NextAuth's own fallback page, where "email"
+        // would fail client-side validation on a perfectly good phone number
+        // before the request was ever sent.
+        identifier: { label: "رقم الهاتف أو البريد الإلكتروني", type: "text" },
         password: { label: "كلمة المرور", type: "password" },
       },
       async authorize(raw) {
         const parsed = credentialsSchema.safeParse(raw);
         if (!parsed.success) return null;
 
-        const email = parsed.data.email.trim().toLowerCase();
+        const account = resolveAccount(parsed.data.identifier);
 
         // ─── Throttle before doing any work ─────────────────────────────
         //
         // Without this, the login form is an unlimited password oracle: the
         // constant-time comparison below stops an attacker learning *which*
-        // emails exist, but nothing stopped them trying a dictionary against
-        // one. Budgeted per IP and per email address, so guessing at one
-        // account does not lock out everyone behind the same office router,
-        // and one attacker cycling addresses still runs out of IP budget.
+        // accounts exist, but nothing stopped them trying a dictionary against
+        // one. Budgeted per IP and per account, so guessing at one account does
+        // not lock out everyone behind the same office router, and one attacker
+        // cycling identifiers still runs out of IP budget.
         //
         // Returning null here is indistinguishable from a wrong password — the
         // form says "check your details". That is a deliberate trade: a
@@ -75,22 +147,35 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           console.warn(`login throttled for ip ${ip}`);
           return null;
         }
-        if (!consumeAll(LOGIN_RATE_RULES, `email:${email}`).allowed) {
-          console.warn(`login throttled for ${email}`);
+        if (!consumeAll(LOGIN_RATE_RULES, account.key).allowed) {
+          console.warn(`login throttled for ${account.key}`);
           return null;
         }
 
-        const user = await prisma.user.findUnique({ where: { email } });
+        // `normalizePhone` returns "" for input that holds no digits at all —
+        // someone who typed their name into the field. There is no account to
+        // find, so skip the query rather than spend one on a value that cannot
+        // match. (It would return null anyway: NULL never equals ''.)
+        const user =
+          "username" in account.where && !account.where.username
+            ? null
+            : await prisma.user.findUnique({ where: account.where });
 
-        // Compare even when the user is missing, against a dummy hash, so a
-        // wrong email and a wrong password take the same time to reject and
-        // the endpoint can't be used to enumerate valid accounts.
+        // An email address signs in operators and nobody else — see
+        // `mayUseIdentifier` above for the rule and why it lives there.
+        const identifierAllowed = mayUseIdentifier(account.kind, user?.role);
+
+        // Compare even when the user is missing or barred, against a dummy
+        // hash, so that a wrong address, an owner's address and a wrong
+        // password all take the same time to reject. Skipping the comparison on
+        // the branches above would turn this endpoint into an oracle for which
+        // addresses exist and which of them are operators.
         const hash =
           user?.passwordHash ??
           "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvalidiu";
 
         const ok = await bcrypt.compare(parsed.data.password, hash);
-        if (!ok || !user) return null;
+        if (!ok || !user || !identifierAllowed) return null;
 
         return {
           id: user.id,

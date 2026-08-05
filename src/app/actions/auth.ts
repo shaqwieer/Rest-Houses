@@ -4,6 +4,7 @@ import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
 import { signIn, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { normalizePhone } from "@/lib/phone";
 import { getI18n } from "@/lib/i18n/server";
 
 /**
@@ -37,10 +38,20 @@ function safeRedirect(next: unknown): string | null {
  * anyway is how a sign-in used to end in a redirect loop rather than on a page.
  * /login is the honest answer, and it renders the form for such an account
  * instead of forwarding it — see `dashboardForSession` in src/lib/auth.ts.
+ *
+ * Takes the identifier in whichever form it was typed and resolves it the same
+ * way `authorize()` did, so the account this lands on is by construction the
+ * account that was just authenticated.
  */
-async function landingFor(email: string): Promise<string> {
+async function landingFor(identifier: string): Promise<string> {
+  const where = identifier.includes("@")
+    ? { email: identifier.toLowerCase() }
+    : { username: normalizePhone(identifier) };
+
+  if ("username" in where && !where.username) return "/login";
+
   const user = await prisma.user.findUnique({
-    where: { email },
+    where,
     select: { role: true, ownerProfile: { select: { id: true } } },
   });
 
@@ -52,18 +63,22 @@ async function landingFor(email: string): Promise<string> {
 export async function loginAction(formData: FormData): Promise<LoginResult> {
   const { t } = await getI18n();
 
-  const email = String(formData.get("email") ?? "")
-    .trim()
-    .toLowerCase();
+  // One field for both kinds of account: an owner types their phone number,
+  // the operator types their email. Deliberately NOT lower-cased here — that
+  // happens inside `resolveAccount` on the email branch only, where it is
+  // correct. Lower-casing a phone number is harmless but doing it up front
+  // meant the raw value and the value that was looked up could differ, which
+  // is the sort of near-miss this whole change exists to remove.
+  const identifier = String(formData.get("identifier") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const requested = safeRedirect(formData.get("next"));
 
-  if (!email || !password) {
+  if (!identifier || !password) {
     return { ok: false, error: t.auth.missingCredentials };
   }
 
   try {
-    await signIn("credentials", { email, password, redirect: false });
+    await signIn("credentials", { identifier, password, redirect: false });
   } catch (error) {
     if (error instanceof AuthError) {
       // Deliberately generic: distinguishing "no such user" from "wrong
@@ -76,7 +91,7 @@ export async function loginAction(formData: FormData): Promise<LoginResult> {
   // An explicit `?next=` wins — it is how the middleware returns someone to the
   // page they were trying to reach — but only after the credentials check, so a
   // failed login never reveals whether the target exists.
-  return { ok: true, redirectTo: requested ?? (await landingFor(email)) };
+  return { ok: true, redirectTo: requested ?? (await landingFor(identifier)) };
 }
 
 export async function logoutAction() {

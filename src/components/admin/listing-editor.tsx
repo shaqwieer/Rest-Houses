@@ -67,6 +67,8 @@ export type ListingDraft = {
   dayUseCheckOutTime: string;
   dayUseCheckOutTimeEn: string;
   securityDeposit: number;
+  /** Full profile URL, or "" for a rest house with no Instagram. */
+  instagram: string;
   capacity: number;
   lat: number;
   lng: number;
@@ -516,6 +518,26 @@ export function ListingEditor({
             </span>
           </Field>
         </div>
+
+        {/* ---- the rest house's own Instagram ----
+            Not the platform's account (that one lives in /admin/settings and
+            appears in the footer) — this is the venue's own feed, which is
+            where a guest goes looking for more photos before they book. Blank
+            means no icon at all on the listing page. */}
+        <Field
+          label={t.admin.listingInstagram}
+          hint={errors.instagram ? undefined : t.admin.listingInstagramHint}
+          error={errors.instagram}
+        >
+          <TextInput
+            name="instagram"
+            defaultValue={draft.instagram}
+            dir="ltr"
+            placeholder="https://instagram.com/username"
+            invalid={Boolean(errors.instagram)}
+            className="text-end"
+          />
+        </Field>
 
         <Field label={t.admin.descriptionLabel} error={errors.description}>
           <TextArea

@@ -3,7 +3,7 @@ import { RequestCard } from "@/components/admin/request-card";
 import { Icon } from "@/components/ui/icon";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
+import { bankDetails, getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
 import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
 import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
@@ -107,6 +107,7 @@ export default async function AdminRequestsPage({
             <RequestCard
               key={r.id}
               reviewInviteDays={settings.reviewInviteDays}
+              bank={bankDetails(settings)}
               request={{
                 id: r.id,
                 reference: r.reference,
@@ -118,6 +119,7 @@ export default async function AdminRequestsPage({
                 checkIn: r.checkIn,
                 checkOut: r.checkOut,
                 nights: r.nights,
+                dayUse: r.dayUse,
                 guests: r.guests,
                 total: r.total,
                 depositDue: r.depositDue,

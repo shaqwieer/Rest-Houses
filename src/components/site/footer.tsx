@@ -198,6 +198,20 @@ export function SiteFooter({ settings }: { settings: Settings }) {
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gold-500/20 py-4.5">
           <span className="text-[12.5px] text-sand-100/45">
             {t.footer.rights(year, s.siteName)}
+            {/* A legal disclosure, so it sits with the copyright line rather
+                than among the marketing links. The number keeps `dir="ltr"`
+                inside an RTL line: it is a reference code, and mirroring it
+                would print the digits in the wrong order. Absent entirely when
+                unset — a label with nothing after it reads as a bug. */}
+            {settings.tradeLicense && (
+              <>
+                {" · "}
+                <span>
+                  {t.footer.tradeLicense}{" "}
+                  <span dir="ltr">{settings.tradeLicense}</span>
+                </span>
+              </>
+            )}
           </span>
           <span className="flex gap-4.5">
             <Link

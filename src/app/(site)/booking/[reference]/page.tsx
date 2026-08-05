@@ -62,6 +62,12 @@ export default async function BookingConfirmationPage({
           city: true,
           description: true,
           descriptionEn: true,
+          // Selected because a day booking's WhatsApp message quotes the
+          // leave-by hour. `localizeListing` returns "" for columns a caller
+          // did not ask for, so omitting these would drop the line silently —
+          // no error, just an owner who never learns when the guest leaves.
+          dayUseCheckOutTime: true,
+          dayUseCheckOutTimeEn: true,
           ownerName: true,
           ownerWhatsapp: true,
           owner: { select: publicOwnerFields() },
@@ -93,6 +99,10 @@ export default async function BookingConfirmationPage({
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
     nights: booking.nights,
+    // So the owner reads "day booking, leave by 10pm" rather than a check-out
+    // date identical to the check-in and a night count of zero.
+    dayUse: booking.dayUse,
+    dayUseCheckOutTime: l.dayUseCheckOutTime,
     guests: booking.guests,
     customerName: booking.customerName,
     customerPhone: booking.customerPhone,
@@ -131,17 +141,50 @@ export default async function BookingConfirmationPage({
           </div>
         </div>
 
+        {/* ---- the WhatsApp hand-off ----
+            Above the summary, not below it, and the reason is the countdown.
+
+            This block sends the guest to WhatsApp on its own after five
+            seconds. Below a summary card it was off-screen on a phone: the
+            page navigated away while the guest was still reading the totals,
+            with the "stop" button they never saw scrolled out of view. An
+            automatic action has to be visible for as long as it is counting, or
+            it is not really cancellable.
+
+            Reading order works out too — the summary is a receipt to check
+            afterwards, while sending the request is the one thing still to do.
+
+            See the component for why it navigates this tab rather than opening
+            a new one, and how a back-button return is stopped from re-firing.
+            `waHref` is "" when the listing has no usable number, and the
+            component renders nothing in that case. */}
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <WhatsappAutoSend href={waHref} reference={booking.reference} />
+        </div>
+
         {/* ---- summary ---- */}
         <div className="mb-5.5 rounded-[28px] border border-line bg-surface p-5.5 text-start shadow-e1">
           <h2 className="m-0 mb-4 font-display text-[16px] font-extrabold text-ink">
             {t.booking.summaryTitle}
           </h2>
           <Row label={t.admin.listings} value={l.name} />
+          {/* A day booking is one date and no nights. Rendering "28 July –
+              28 July" and then "Nights: 0" on a confirmation screen would read
+              as a broken booking at the exact moment the guest is checking
+              their booking is right. */}
           <Row
-            label={t.listing.dates}
-            value={`${arDayMonth(booking.checkIn, locale)} – ${arDayMonth(booking.checkOut, locale)}`}
+            label={booking.dayUse ? t.listing.dayUsePickDay : t.listing.dates}
+            value={
+              booking.dayUse
+                ? arDayMonth(booking.checkIn, locale)
+                : `${arDayMonth(booking.checkIn, locale)} – ${arDayMonth(booking.checkOut, locale)}`
+            }
           />
-          <Row label={t.common.night} value={arNum(booking.nights, locale)} />
+          {booking.dayUse ? (
+            <Row label={t.listing.stayType} value={t.listing.stayDayUse} />
+          ) : (
+            <Row label={t.common.night} value={arNum(booking.nights, locale)} />
+          )}
           <Row label={t.listing.guests} value={arNum(booking.guests, locale)} />
           <Row label={t.booking.fullName} value={booking.customerName} />
           <Row
@@ -199,13 +242,12 @@ export default async function BookingConfirmationPage({
           </div>
         )}
 
-        {/* The WhatsApp hand-off starts on its own after five seconds — see
-            the component for why it navigates this tab rather than opening a
-            new one, and how a back-button return is stopped from re-firing it.
-            `waHref` is "" when the listing has no usable number, and the
-            component renders nothing in that case. */}
+        {/* "Browse rest houses" stays at the bottom. It is where the guest goes
+            *after* they are done here, so it belongs below the receipt — and it
+            must not sit next to the WhatsApp button, where a guest reaching for
+            the one that matters could tap it by mistake and leave the page mid
+            countdown. */}
         <div className="flex flex-col items-center gap-3">
-          <WhatsappAutoSend href={waHref} reference={booking.reference} />
           <ButtonLink href="/listings" variant="secondary" size="lg">
             {t.common.browse}
           </ButtonLink>

@@ -12,6 +12,7 @@ import {
   setRequestStatus,
 } from "@/app/actions/requests";
 import { BookingWorkflow, type WorkflowBooking } from "@/components/admin/booking-workflow";
+import type { BankDetails } from "@/components/admin/bank-details";
 import { arDayMonth, todayISO } from "@/lib/dates";
 import { arNum, formatReference } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
@@ -27,6 +28,8 @@ export type RequestCardData = {
   checkIn: string;
   checkOut: string;
   nights: number;
+  /** A day booking (حجز بدون مبيت): one day, `checkOut === checkIn`, 0 nights. */
+  dayUse: boolean;
   guests: number;
   total: number;
   depositDue: number;
@@ -64,12 +67,15 @@ export function RequestCard({
   readOnly = false,
   scope = "admin",
   reviewInviteDays = 15,
+  bank,
 }: {
   request: RequestCardData;
   readOnly?: boolean;
   scope?: "admin" | "owner";
   /** Passed to the stepper so step 7 states the configured link validity. */
   reviewInviteDays?: number;
+  /** Passed to the stepper so step 6 shows where to send the commission. */
+  bank?: BankDetails | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -107,7 +113,21 @@ export function RequestCard({
   const cancelLocked = isOwner && request.checkIn <= todayISO();
 
   return (
-    <div className="flex flex-col gap-3 rounded-[20px] border border-line bg-surface p-4 shadow-e1">
+    // `min-w-0` because this is a grid item, and a grid item's default
+    // `min-width: auto` resolves to its min-content width — so any one wide
+    // thing inside can push the track, the card and the page past the screen.
+    //
+    // It is a guard, not the cure. What actually broke this card on a phone was
+    // the review link inside the stepper: `white-space: nowrap` gave that line
+    // a min-content width of the whole URL, and no amount of `min-w-0` on the
+    // ancestors reduces a descendant's own min-content. That is fixed at source
+    // in `ReviewLinkBox` — see the note there. This stays because the card also
+    // carries emails and long rest-house names, and a grid item that can shrink
+    // is the correct default regardless.
+    //
+    // `overflow-hidden` clips anything that still overshoots rather than
+    // letting it escape the rounded border.
+    <div className="flex min-w-0 flex-col gap-3 overflow-hidden rounded-[20px] border border-line bg-surface p-4 shadow-e1">
       {/* header */}
       <div className="flex items-start justify-between gap-2.5">
         <div className="min-w-0">
@@ -128,9 +148,16 @@ export function RequestCard({
 
       {/* facts */}
       <div className="grid grid-cols-3 gap-2">
+        {/* A day booking is one date. Rendering "28 July – 28 July" here would
+            leave an owner scanning their queue unable to tell it apart from a
+            stay, which changes what they have to prepare. */}
         <Cell
-          label={t.listing.dates}
-          value={`${arDayMonth(request.checkIn, locale)} – ${arDayMonth(request.checkOut, locale)}`}
+          label={request.dayUse ? t.listing.stayDayUse : t.listing.dates}
+          value={
+            request.dayUse
+              ? arDayMonth(request.checkIn, locale)
+              : `${arDayMonth(request.checkIn, locale)} – ${arDayMonth(request.checkOut, locale)}`
+          }
         />
         <Cell label={t.listing.guests} value={arNum(request.guests, locale)} />
         <Cell
@@ -185,6 +212,7 @@ export function RequestCard({
           booking={request.workflow}
           scope={scope}
           reviewInviteDays={reviewInviteDays}
+          bank={bank}
         />
       )}
 

@@ -104,6 +104,43 @@ export function nightsInRange(checkIn: ISODate, checkOut: ISODate): ISODate[] {
   return out;
 }
 
+/**
+ * The calendar days a booking takes off the market — the ONE place that answers
+ * that question for both kinds of stay.
+ *
+ * ─── Why this exists rather than `nightsInRange` everywhere ──────────────────
+ * A day-use booking (حجز بدون مبيت) stores `checkOut === checkIn` and
+ * `nights = 0`, because that is the truth: the guest arrives and leaves the same
+ * day. `nightsInRange` correctly returns `[]` for that range — there are no
+ * nights — and every caller that blocks, re-checks or releases a calendar would
+ * therefore block *nothing*. The rest house would stay bookable by someone else
+ * on a day it is already taken, and the clash check that guards a confirmation
+ * would wave the second booking straight through.
+ *
+ * So availability goes through here and pricing does not: `quote()` prices a
+ * day-use stay from the day rate and has its own branch. This function answers
+ * exactly one question — which days are occupied — and every call site that
+ * writes, reads or deletes an `Availability` row uses it.
+ *
+ * ─── The over-block, stated plainly ──────────────────────────────────────────
+ * A day-use booking blocks its whole day, which also stops an overnight guest
+ * *checking out* that morning — something that would in reality be fine, since
+ * one leaves at noon and the other arrives in the afternoon. Modelling that
+ * needs a second availability semantic (half-days, or a distinction between
+ * "arriving" and "departing" on the same date) threaded through the calendar,
+ * the clash check and the owner's blocking tool. That is a much larger change
+ * than "let people book a day", and the error here is in the safe direction: an
+ * occasional lost booking rather than two guests turning up at once.
+ */
+export function occupiedDays(
+  checkIn: ISODate,
+  checkOut: ISODate,
+  dayUse = false,
+): ISODate[] {
+  if (dayUse) return [checkIn];
+  return nightsInRange(checkIn, checkOut);
+}
+
 /** 0 = Sunday … 6 = Saturday, for the given calendar day. */
 export function dayOfWeek(iso: ISODate): number {
   return parseISODate(iso).getUTCDay();

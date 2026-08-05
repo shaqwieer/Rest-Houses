@@ -6,7 +6,7 @@ import { cityLabel, DEFAULT_PHOTO_URL, getAmenities, type SortId } from "./const
 import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import type { ISODate } from "./dates";
-import { nightsInRange, todayISO } from "./dates";
+import { nightsInRange, occupiedDays, todayISO } from "./dates";
 
 /**
  * Listing queries — the read side of the public site.
@@ -472,12 +472,19 @@ export async function isRangeAvailable(
   listingId: string,
   checkIn: ISODate,
   checkOut: ISODate,
+  dayUse = false,
 ): Promise<boolean> {
-  const nights = nightsInRange(checkIn, checkOut);
-  if (nights.length === 0) return false;
+  // `occupiedDays`, not `nightsInRange`: a day-use stay has zero nights, so the
+  // night-based helper returns an empty list and the guard below would report
+  // "available" for a day that is fully booked. See src/lib/dates.ts.
+  const days = occupiedDays(checkIn, checkOut, dayUse);
+
+  // Still false for an empty list, which now means only one thing: an overnight
+  // range with no nights in it. That is not an available stay, it is not a stay.
+  if (days.length === 0) return false;
 
   const clash = await prisma.availability.findFirst({
-    where: { listingId, date: { in: nights } },
+    where: { listingId, date: { in: days } },
     select: { id: true },
   });
   return clash === null;

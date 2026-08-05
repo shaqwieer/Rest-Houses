@@ -347,6 +347,9 @@ async function main() {
       role: "ADMIN",
     },
   });
+  // No `username` for the operator: they sign in with an email address, which
+  // is why the column is nullable. See the note on `User.username` in
+  // prisma/schema.prisma.
   console.log(`✅ حساب المشرف: ${adminEmail}`);
   if (adminPassword === "ChangeMe123!") {
     console.log("   ⚠️  كلمة المرور هي الافتراضية — غيّر ADMIN_PASSWORD في .env");
@@ -420,11 +423,21 @@ async function main() {
   const ownerIds: Record<string, string> = {};
 
   for (const o of ownerSeeds) {
+    // `username` is what these accounts actually sign in with — their phone
+    // number, which for the seed is the same as their WhatsApp number. Set on
+    // both branches so re-seeding an existing database backfills it rather than
+    // leaving the demo owners unable to log in the new way.
     const user = await prisma.user.upsert({
       where: { email: o.email },
-      update: { passwordHash: ownerHash, name: o.fullName, role: "OWNER" },
+      update: {
+        passwordHash: ownerHash,
+        name: o.fullName,
+        role: "OWNER",
+        username: o.whatsapp,
+      },
       create: {
         email: o.email,
+        username: o.whatsapp,
         name: o.fullName,
         passwordHash: ownerHash,
         role: "OWNER",
@@ -467,7 +480,10 @@ async function main() {
 
   console.log(`✅ حسابات المُلّاك: ${ownerSeeds.length} (كلمة المرور: ${ownerPassword})`);
   for (const o of ownerSeeds) {
-    console.log(`   • ${o.email} — ${o.status}`);
+    // The number is printed first because it is what these accounts sign in
+    // with — printing only the email would send whoever is verifying this to a
+    // login form that no longer takes it as an owner's username.
+    console.log(`   • ${o.whatsapp} (${o.email}) — ${o.status}`);
   }
 
   /* --- site settings ---------------------------------------------------- */
@@ -698,7 +714,7 @@ async function main() {
 
   console.log("\n🎉 تمت التهيئة. شغّل  npm run dev  ثم افتح http://localhost:3000");
   console.log(`   لوحة التحكم: http://localhost:3000/admin  (${adminEmail})`);
-  console.log("   لوحة المالك:  http://localhost:3000/owner   (owner.active@example.ae)");
+  console.log("   لوحة المالك:  http://localhost:3000/owner   (اسم المستخدم: 971501110001)");
   console.log("   تسجيل مالك:   http://localhost:3000/register/owner");
 }
 

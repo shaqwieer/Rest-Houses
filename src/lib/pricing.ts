@@ -26,6 +26,19 @@ export type QuoteInput = {
   serviceFeePercent: number;
   /** Already resolved through `resolveDepositPercent` — 0..100. */
   depositPercent: number;
+
+  /**
+   * A day-use stay (حجز بدون مبيت): the guest arrives and leaves the same day.
+   *
+   * When true, `checkOut` is expected to equal `checkIn` and the two day rates
+   * below are used instead of the nightly ones. The result carries `nights: 0`,
+   * which is the honest number — there are none.
+   */
+  dayUse?: boolean;
+  /** Weekday day-use rate. 0 means the listing does not offer day use. */
+  dayUsePrice?: number | null;
+  /** Friday/Saturday day-use rate. 0 or missing → same as dayUsePrice. */
+  dayUseWeekendPrice?: number | null;
 };
 
 export type Quote = {
@@ -37,9 +50,37 @@ export type Quote = {
   depositDue: number;
   /** The rate that produced `depositDue`, carried through for the snapshot. */
   depositPercent: number;
+  /**
+   * Whether this quote priced a day-use stay.
+   *
+   * Carried on the result so a consumer never has to infer it from
+   * `nights === 0` — which is also what an *invalid* range produces, and the two
+   * mean opposite things: one is a real booking priced at the day rate, the
+   * other is nothing at all.
+   */
+  dayUse: boolean;
   /** Per-night breakdown, so a weekend uplift can be shown if we ever want to. */
   breakdown: { date: ISODate; amount: number; weekend: boolean }[];
 };
+
+/**
+ * Which day-use rate applies on a given date, or 0 when day use is not offered.
+ *
+ * Exported because both the quote and the server-side guard in
+ * `createBookingRequest` need the same answer: the guard refuses a day-use
+ * request on a listing whose rate is 0, and it must ask the question exactly the
+ * way the pricing does or the two can disagree about whether a booking is free.
+ */
+export function dayUseRate(
+  listing: { dayUsePrice?: number | null; dayUseWeekendPrice?: number | null },
+  date: ISODate,
+): number {
+  const base = listing.dayUsePrice ?? 0;
+  if (base <= 0) return 0; // not offered — see Listing.dayUsePrice in the schema
+
+  const weekendRate = listing.dayUseWeekendPrice ?? 0;
+  return isWeekend(date) && weekendRate > 0 ? weekendRate : base;
+}
 
 /**
  * Which deposit rate applies to a listing.
@@ -98,10 +139,38 @@ export function quote(input: QuoteInput): Quote {
 
   const weekendRate = weekendPrice && weekendPrice > 0 ? weekendPrice : pricePerNight;
 
-  const breakdown = nightsInRange(checkIn, checkOut).map((date) => {
-    const weekend = isWeekend(date);
-    return { date, weekend, amount: weekend ? weekendRate : pricePerNight };
-  });
+  // ─── Day use: one day, no nights ─────────────────────────────────────────
+  //
+  // Branched here rather than folded into the loop below, because the loop is
+  // built on `nightsInRange`, which returns [] when check-in and check-out are
+  // the same day — correctly, since a same-day stay has no nights. Running a
+  // day-use booking through it unchanged would produce an empty breakdown, a
+  // subtotal of 0 and a free booking. That is the single most expensive way
+  // this feature could have gone wrong, and it is why `dayUse` is an explicit
+  // input rather than something inferred from the dates.
+  //
+  // A rate of 0 means the listing does not offer day use at all. This still
+  // returns the quote — the caller decides what to do about it — but
+  // `createBookingRequest` refuses such a request outright rather than writing
+  // a booking worth nothing. See the guard there.
+  const breakdown = input.dayUse
+    ? [
+        {
+          date: checkIn,
+          weekend: isWeekend(checkIn),
+          amount: dayUseRate(
+            {
+              dayUsePrice: input.dayUsePrice,
+              dayUseWeekendPrice: input.dayUseWeekendPrice,
+            },
+            checkIn,
+          ),
+        },
+      ]
+    : nightsInRange(checkIn, checkOut).map((date) => {
+        const weekend = isWeekend(date);
+        return { date, weekend, amount: weekend ? weekendRate : pricePerNight };
+      });
 
   const subtotal = breakdown.reduce((sum, n) => sum + n.amount, 0);
   const serviceFee = Math.round((subtotal * serviceFeePercent) / 100);
@@ -119,12 +188,16 @@ export function quote(input: QuoteInput): Quote {
   const depositDue = Math.round((total * safePercent) / 100);
 
   return {
-    nights: breakdown.length,
+    // 0 for a day-use stay, and that is the honest figure — the guest is not
+    // staying a night. Every consumer reads `dayUse` rather than testing this
+    // against 0 to decide what to render.
+    nights: input.dayUse ? 0 : breakdown.length,
     subtotal,
     serviceFee,
     total,
     depositDue,
     depositPercent: safePercent,
+    dayUse: Boolean(input.dayUse),
     breakdown,
   };
 }

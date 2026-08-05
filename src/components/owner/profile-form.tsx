@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { useToast } from "@/components/ui/toast";
 import { saveOwnerProfile } from "@/app/actions/owner-profile";
 import { useLocale } from "@/lib/i18n/provider";
@@ -90,16 +91,28 @@ export function OwnerProfileForm({
           />
         </Field>
 
+        {/* Read-only, and shown at all because an owner who has forgotten how
+            they sign in should be able to find out from their own profile
+            rather than from support. It mirrors `phone` below — editing that
+            field is what changes this. */}
+        <Field label={t.owner.yourUsername} hint={t.owner.phoneIsUsernameHint}>
+          <TextInput value={profile.phone} dir="ltr" readOnly disabled />
+        </Field>
+
         <Field label={t.owner.email} hint={t.owner.emailReadOnlyHint}>
           <TextInput value={profile.email} dir="ltr" readOnly disabled />
         </Field>
 
-        <Field label={t.owner.phone} required error={errors.phone}>
-          <TextInput
+        {/* Changing this changes how the owner signs in, so the hint says so
+            outright — see `saveOwnerProfile`, which moves the username with it. */}
+        <Field
+          label={t.owner.phone}
+          required
+          hint={t.owner.phoneIsUsernameHint}
+          error={errors.phone}
+        >
+          <PhoneInput
             name="phone"
-            type="tel"
-            dir="ltr"
-            inputMode="tel"
             defaultValue={profile.phone}
             required
             invalid={Boolean(errors.phone)}
@@ -112,11 +125,8 @@ export function OwnerProfileForm({
           hint={t.owner.whatsappHint}
           error={errors.whatsapp}
         >
-          <TextInput
+          <PhoneInput
             name="whatsapp"
-            type="tel"
-            dir="ltr"
-            inputMode="tel"
             defaultValue={profile.whatsapp}
             required
             invalid={Boolean(errors.whatsapp)}
