@@ -1,39 +1,34 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
 import { useLocale } from "@/lib/i18n/provider";
 import { useStaleBuildReload } from "@/lib/stale-build";
 
 /**
- * Error boundary for the public site.
+ * Catch-all error boundary — the dashboards' safety net.
  *
- * ─── Why this file exists ────────────────────────────────────────────────────
- * There was no `error.tsx` anywhere in the tree, so any failure below the site
- * layout fell all the way through to Next's built-in root boundary, whose
- * entire output is the sentence «Application error: a client-side exception has
- * occurred (see the browser console for more information)» on a blank page.
- * That is the screen guests were being shown. It offers them nothing to do, and
- * it offers us nothing to debug: the real message is minified away in a
- * production build, and the visitor is the only person who can see the console.
+ * ─── Why this sits at the app root and not under /owner and /admin ───────────
+ * Only `src/app/(site)/error.tsx` existed, so a failure anywhere in the owner or
+ * admin dashboard fell through to Next's built-in boundary, whose entire output
+ * is «Application error: a server-side exception has occurred… Digest: …» on a
+ * blank page. That is the screen a new owner was shown when a photo upload died
+ * (the truncated-body bug fixed in next.config.ts alongside this file): no
+ * explanation, no way back, and no clue that their work was not saved.
  *
- * This boundary changes both halves of that:
+ * A boundary is placed *here* rather than as `owner/error.tsx` + `admin/error.tsx`
+ * because `error.tsx` cannot catch a throw from the layout it lives beside — and
+ * both dashboard layouts query the database on every request, which is exactly
+ * where a failure is likely. One boundary in the parent segment covers the pages,
+ * both layouts and /login, and there is one copy of the markup instead of two.
  *
- *   • the guest gets the site's own chrome, a sentence in their language, a
- *     retry button and a way back to the catalogue
- *   • we get `error.digest` printed on the page — the id Next also writes into
- *     the *server* log for the same failure, so a guest can read six characters
- *     over the phone and we can `grep` the container log for the stack
- *
- * ─── The chunk-load case, which is handled rather than reported ──────────────
- * One failure mode here is not worth showing anybody: a tab holding the previous
- * build asking for a chunk hash the new deploy no longer has. That is detected
- * and self-healed with a single reload by `useStaleBuildReload` — see
- * src/lib/stale-build.ts for why it is a reload rather than `reset()`, and why it
- * is rate-limited. The dashboard boundaries share that hook.
+ * The nested `(site)` boundary still wins for guest pages: it keeps the site
+ * chrome and a link into the catalogue, which is the right offer for a visitor
+ * and the wrong one for a signed-in owner.
  */
 
-export default function SiteError({
+export default function DashboardError({
   error,
   reset,
 }: {
@@ -41,7 +36,17 @@ export default function SiteError({
   reset: () => void;
 }) {
   const { t } = useLocale();
+  const pathname = usePathname();
   const reloading = useStaleBuildReload(error);
+
+  // Send the operator back to their own dashboard rather than to the public
+  // home page. Read off the URL because a boundary this high in the tree serves
+  // owners, admins and the login page, and it has no session to ask.
+  const home = pathname?.startsWith("/owner")
+    ? { href: "/owner", label: t.owner.goToDashboard }
+    : pathname?.startsWith("/admin")
+      ? { href: "/admin", label: t.admin.dashboard }
+      : { href: "/", label: t.notFound.home };
 
   return (
     <div className="grid min-h-[70vh] place-items-center bg-sand-50 px-4 py-14">
@@ -60,7 +65,9 @@ export default function SiteError({
 
         {!reloading && (
           <>
-            <p className="m-0 mb-7 text-[15px] leading-[1.9] text-muted">{t.error.body}</p>
+            <p className="m-0 mb-7 text-[15px] leading-[1.9] text-muted">
+              {t.error.dashboardBody}
+            </p>
 
             <div className="flex flex-wrap justify-center gap-2.5">
               <button
@@ -72,14 +79,14 @@ export default function SiteError({
                 {t.error.retry}
               </button>
               <Link
-                href="/listings"
+                href={home.href}
                 className="inline-flex items-center gap-2 rounded-full border border-line bg-surface px-6 py-3.5 text-[15px] font-bold text-ink no-underline hover:border-gold-500 hover:no-underline"
               >
-                {t.notFound.browse}
+                {home.label}
               </Link>
             </div>
 
-            {/* The one piece of machine-readable evidence a guest can pass on.
+            {/* The one piece of machine-readable evidence the owner can pass on.
                 Next writes the same digest into the server log for the failure
                 that produced it, so this turns "it broke" into a grep. */}
             {error.digest && (

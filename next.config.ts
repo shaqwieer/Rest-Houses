@@ -20,6 +20,28 @@ const nextConfig: NextConfig = {
    */
   experimental: {
     serverActions: { bodySizeLimit: "200mb" },
+
+    /**
+     * The third link in the same chain, and the one that fails worst.
+     *
+     * `src/middleware.ts` matches /admin/:path* and /owner/:path*, which is
+     * exactly where photo uploads are posted. Whenever middleware runs, Next
+     * tees the request body so the handler can still read it afterwards — and
+     * that tee is capped separately from `serverActions.bodySizeLimit`, at 10 MB
+     * by default (see getCloneableBody in next/dist/server/body-streams.js).
+     *
+     * Over the cap it does not reject the request: it ends both streams early
+     * and logs a warning. The server action then receives a *truncated*
+     * multipart body and dies with "Unexpected end of form" inside the
+     * framework — before addListingImages runs, so the action's own try/catch
+     * never sees it and the owner gets a blank "server-side exception" page
+     * instead of a message. Three phone photos are enough to cross 10 MB.
+     *
+     * Keep this equal to the limits above and to nginx's `client_max_body_size`.
+     * nginx rejects anything genuinely larger with a 413 before the body is ever
+     * teed here, so this value never has to be the one that says no.
+     */
+    middlewareClientMaxBodySize: "200mb",
   },
 
   /**

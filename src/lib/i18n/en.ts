@@ -1372,5 +1372,7 @@ export const en: Dictionary = {
     retry: "Try again",
     updating: "Refreshing the page…",
     reference: "Error reference",
+    dashboardBody:
+      "That request did not go through. Try again — nothing was saved half-finished. If it keeps happening, send us the error reference below.",
   },
 };

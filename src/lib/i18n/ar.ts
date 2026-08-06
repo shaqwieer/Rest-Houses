@@ -1475,6 +1475,11 @@ export const ar = {
     retry: "إعادة المحاولة",
     updating: "جارٍ تحديث الصفحة…",
     reference: "رمز الخطأ",
+    // The dashboard needs its own wording: the guest text above sends the reader
+    // off to browse the catalogue, which is no help at all to an owner who was
+    // halfway through editing their own rest house.
+    dashboardBody:
+      "لم يكتمل هذا الطلب. أعد المحاولة — ولم يُحفظ شيء ناقص. إن تكرّر الأمر أرسل لنا رمز الخطأ أدناه.",
   },
 };
 // NOTE: deliberately **not** `as const`. Narrowing every value to its own
