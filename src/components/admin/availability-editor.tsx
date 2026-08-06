@@ -8,7 +8,14 @@ import { Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import { setRangeBlocked, toggleBlockedDate } from "@/app/actions/availability";
 import { dayNamesShort } from "@/lib/constants";
-import { arMonthLabel, buildMonthGrid, shiftMonth, todayISO, type ISODate } from "@/lib/dates";
+import {
+  arMonthLabel,
+  buildMonthGrid,
+  shiftMonth,
+  todayISO,
+  toWeekendMode,
+  type ISODate,
+} from "@/lib/dates";
 import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
 
@@ -29,7 +36,8 @@ export function AvailabilityEditor({
   selectedId,
   entries,
 }: {
-  listings: { id: string; name: string }[];
+  /** `weekendMode` is the raw column; normalised per selection below. */
+  listings: { id: string; name: string; weekendMode: string }[];
   selectedId: string;
   entries: AvailabilityEntry[];
 }) {
@@ -59,7 +67,12 @@ export function AvailabilityEditor({
 
   // Both statuses render as unavailable in the visitor's calendar.
   const unavailable = new Set(optimistic.keys());
-  const cells = buildMonthGrid(view.year, view.month, unavailable, today, locale);
+  // The selected rest house's own weekend, so the shading here matches what the
+  // guest sees on that listing's page and what its quote actually charges.
+  const weekendMode = toWeekendMode(
+    listings.find((l) => l.id === selectedId)?.weekendMode,
+  );
+  const cells = buildMonthGrid(view.year, view.month, unavailable, today, locale, weekendMode);
 
   const blockedCount = [...optimistic.values()].filter((s) => s === "BLOCKED").length;
   const bookedCount = [...optimistic.values()].filter((s) => s === "BOOKED").length;

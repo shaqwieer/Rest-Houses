@@ -9,7 +9,8 @@ import { getSettings } from "@/lib/settings";
 import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
-import { arDayMonth, isISODate, todayISO } from "@/lib/dates";
+import { arDayMonth, isISODate, todayISO, toWeekendMode } from "@/lib/dates";
+import { resolveFreeCancelHours } from "@/lib/policies";
 import { getI18n } from "@/lib/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -101,6 +102,9 @@ export default async function BookPage({
     checkOut: to!,
     pricePerNight: listing.pricePerNight,
     weekendPrice: listing.weekendPrice,
+    // The listing's own weekend — the same value the server action re-reads
+    // when it recomputes this total for real.
+    weekendMode: toWeekendMode(listing.weekendMode),
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
     dayUse,
@@ -144,7 +148,12 @@ export default async function BookPage({
             dayUseCheckOutTime={l.dayUseCheckOutTime}
             guests={guests}
             capacity={listing.capacity}
-            freeCancelHours={settings.freeCancelHours}
+            // This rest house's own cancellation window, not the platform's —
+            // the policy paragraph under the form is a promise the OWNER keeps.
+            freeCancelHours={resolveFreeCancelHours(
+              listing.freeCancelHours,
+              settings.freeCancelHours,
+            )}
             depositPercent={depositPercent}
           />
 

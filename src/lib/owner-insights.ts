@@ -1,11 +1,13 @@
 import { prisma } from "./prisma";
 import {
   addDays,
+  DEFAULT_WEEKEND_MODE,
   isWeekend,
   nightsBetween,
   nightsInRange,
   toGulfISODate,
   todayISO,
+  toWeekendMode,
 } from "./dates";
 import { normalizeWhatsapp } from "./whatsapp";
 
@@ -224,6 +226,10 @@ export async function getOwnerInsights(ownerId: string): Promise<OwnerInsights> 
         reviewsCount: true,
         pricePerNight: true,
         weekendPrice: true,
+        // Needed to count weekend nights per listing below — an owner with one
+        // rest house in Sharjah and one in Dubai has two different weekends,
+        // and a single national constant would misreport both.
+        weekendMode: true,
         createdAt: true,
         _count: { select: { images: true } },
       },
@@ -333,12 +339,20 @@ export async function getOwnerInsights(ownerId: string): Promise<OwnerInsights> 
     ),
   );
 
+  // Each booking's nights are judged against ITS OWN listing's weekend, not one
+  // shared answer: this owner may run a Sharjah rest house whose weekend is
+  // three days long alongside a Dubai one whose weekend is two. A booking whose
+  // listing has since been deleted falls back to the platform default rather
+  // than being dropped — the night still happened.
+  const weekendByListing = new Map(listings.map((l) => [l.id, toWeekendMode(l.weekendMode)]));
+
   let weekendNights = 0;
   let totalNights = 0;
   for (const r of confirmedInWindowRows) {
+    const mode = weekendByListing.get(r.listingId) ?? DEFAULT_WEEKEND_MODE;
     for (const night of nightsInRange(r.checkIn, r.checkOut)) {
       totalNights += 1;
-      if (isWeekend(night)) weekendNights += 1;
+      if (isWeekend(night, mode)) weekendNights += 1;
     }
   }
   const weekendSharePct = totalNights > 0 ? Math.round((weekendNights / totalNights) * 100) : null;

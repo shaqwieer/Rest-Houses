@@ -146,10 +146,81 @@ export function dayOfWeek(iso: ISODate): number {
   return parseISODate(iso).getUTCDay();
 }
 
-/** UAE weekend: Friday (5) and Saturday (6) carry the weekend rate. */
-export function isWeekend(iso: ISODate): boolean {
-  const dow = dayOfWeek(iso);
-  return dow === 5 || dow === 6;
+/* --------------------------------------------------------------------------
+ * Which days carry the weekend rate — a per-listing decision, not a national
+ * constant.
+ *
+ * The UAE weekend is Saturday and Sunday. Sharjah is not: the emirate runs a
+ * four-day working week, so Friday is a day off there too and a Sharjah rest
+ * house is full on Friday night while a Dubai one is not. Owners asked for the
+ * choice explicitly, and it is a commercial term of the individual venue —
+ * there is no single answer to hard-code and no platform-wide setting to hang
+ * it on.
+ *
+ *   "short" — Saturday, Sunday.            The UAE default.
+ *   "long"  — Friday, Saturday, Sunday.    Sharjah's three-day weekend.
+ *
+ * ─── Nights, not days ────────────────────────────────────────────────────────
+ * Pricing walks *nights*, and a night is named by the day it begins on (see
+ * `nightsInRange`). So "Saturday is a weekend day" means the night that STARTS
+ * on Saturday carries the weekend rate. A guest arriving Friday and leaving
+ * Sunday on a short-weekend listing pays the weekday rate for Friday night and
+ * the weekend rate for Saturday night.
+ *
+ * ─── Stored as a string, normalised on read ──────────────────────────────────
+ * `Listing.weekendMode` is a plain `String` column, matching how every other id
+ * in this schema is stored (see the portability note in prisma/schema.prisma).
+ * Nothing at the database level stops a stray value getting in, so every read
+ * goes through `toWeekendMode`, which falls back to "short" rather than
+ * throwing mid-quote or — far worse — returning `undefined` days and pricing a
+ * whole stay at the weekday rate.
+ * -------------------------------------------------------------------------- */
+
+export type WeekendMode = "short" | "long";
+
+/** For the `<select>` in the listing editor and the server-side enum. */
+export const WEEKEND_MODES = ["short", "long"] as const satisfies readonly WeekendMode[];
+
+/**
+ * What a listing gets when nobody has chosen: the UAE weekend.
+ *
+ * Also what every listing that predates this feature resolves to, which is the
+ * one behaviour change this shipped with — see the migration note.
+ */
+export const DEFAULT_WEEKEND_MODE: WeekendMode = "short";
+
+/** 0 = Sunday … 6 = Saturday, matching `dayOfWeek`. */
+const WEEKEND_DAYS: Record<WeekendMode, readonly number[]> = {
+  short: [6, 0], // Saturday, Sunday
+  long: [5, 6, 0], // Friday, Saturday, Sunday
+};
+
+export function isWeekendMode(value: unknown): value is WeekendMode {
+  return value === "short" || value === "long";
+}
+
+/** Any stored value → a mode that is safe to price with. */
+export function toWeekendMode(value: unknown): WeekendMode {
+  return isWeekendMode(value) ? value : DEFAULT_WEEKEND_MODE;
+}
+
+/** The weekday numbers this mode charges the weekend rate on. */
+export function weekendDays(mode: WeekendMode): readonly number[] {
+  return WEEKEND_DAYS[toWeekendMode(mode)];
+}
+
+/**
+ * Does this day carry the weekend rate for a listing on `mode`?
+ *
+ * `mode` is deliberately REQUIRED rather than defaulted. Every caller is either
+ * pricing a stay, shading a calendar cell or counting weekend demand, and each
+ * of those has a listing in hand; a default would let a call site quietly
+ * price a Sharjah listing on Dubai's weekend, which is precisely the bug this
+ * whole mechanism exists to prevent. The compiler asking the question at each
+ * of the five call sites is the point.
+ */
+export function isWeekend(iso: ISODate, mode: WeekendMode): boolean {
+  return weekendDays(mode).includes(dayOfWeek(iso));
 }
 
 /**
@@ -301,6 +372,13 @@ export function buildMonthGrid(
   unavailable: ReadonlySet<ISODate>,
   today: ISODate = todayISO(),
   locale: Locale = DEFAULT_LOCALE,
+  /**
+   * The listing's weekend, so the shaded cells are the ones actually charged at
+   * the weekend rate. Both call sites pass it; a Sharjah calendar that left
+   * Friday unshaded while the quote charged it the weekend price would be the
+   * page arguing with itself.
+   */
+  weekendMode: WeekendMode = DEFAULT_WEEKEND_MODE,
 ): CalendarCell[] {
   const firstDow = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
@@ -319,7 +397,7 @@ export function buildMonthGrid(
       label: arNum(day, locale),
       hijri: hijriDay(iso, locale),
       isPast,
-      isWeekend: isWeekend(iso),
+      isWeekend: isWeekend(iso, weekendMode),
       // A past date is already unselectable; don't also paint it "booked".
       isUnavailable: !isPast && unavailable.has(iso),
     });

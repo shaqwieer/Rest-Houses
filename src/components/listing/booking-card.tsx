@@ -28,8 +28,15 @@ export function CalendarSection({
    */
   datesTaken?: boolean;
 }) {
-  const { range, setRange, unavailableDates, stayType, setStayType, dayUseAvailable } =
-    useBooking();
+  const {
+    range,
+    setRange,
+    unavailableDates,
+    stayType,
+    setStayType,
+    dayUseAvailable,
+    weekendMode,
+  } = useBooking();
   const { t } = useLocale();
   const isDayUse = stayType === "dayUse";
 
@@ -118,6 +125,7 @@ export function CalendarSection({
         onChange={chooseRange}
         months={2}
         singleDay={isDayUse}
+        weekendMode={weekendMode}
       />
     </section>
   );
@@ -347,9 +355,16 @@ export function BookingCard({
           <span className="block text-[14px] font-bold text-ink">
             {t.listing.ownerLabel(ownerName)}
           </span>
-          <span className="block text-[12px] font-semibold text-ok">
-            {t.listing.freeCancel(arNum(freeCancelHours, locale))}
-          </span>
+          {/* An owner who allows no free cancellation stores 0, and this line
+              is the reassuring green one — printing "إلغاء مجاني خلال ٠ ساعة"
+              there would promise the opposite of what they set. It drops out
+              entirely rather than turning into a warning: the terms are stated
+              in full in the key-facts row above. */}
+          {freeCancelHours > 0 && (
+            <span className="block text-[12px] font-semibold text-ok">
+              {t.listing.freeCancel(arNum(freeCancelHours, locale))}
+            </span>
+          )}
         </span>
         <Icon name="verified" size={20} className="text-ok" />
       </div>

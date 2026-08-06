@@ -584,7 +584,17 @@ export function SettingsForm({
                 className="font-bold"
               />
             </Field>
-            <Field label={t.admin.fieldFreeCancel} error={errors.freeCancelHours}>
+            {/* These three are now the FALLBACK, not the answer. Each rest
+                house can state its own arrival hour, departure hour and
+                cancellation window in its listing editor; what is set here is
+                what a listing that has stated none of its own shows. Said in
+                the hints, because otherwise an operator edits this and wonders
+                why one listing's page did not change. */}
+            <Field
+              label={t.admin.fieldFreeCancel}
+              hint={t.admin.platformFallbackHint}
+              error={errors.freeCancelHours}
+            >
               <TextInput
                 name="freeCancelHours"
                 type="number"
@@ -595,10 +605,10 @@ export function SettingsForm({
               />
             </Field>
             <div className="grid gap-3">
-              <Field label={t.admin.fieldCheckIn}>
+              <Field label={t.admin.fieldCheckIn} hint={t.admin.platformFallbackHint}>
                 <TextInput name="checkInTime" defaultValue={values.checkInTime} />
               </Field>
-              <Field label={t.admin.fieldCheckOut}>
+              <Field label={t.admin.fieldCheckOut} hint={t.admin.platformFallbackHint}>
                 <TextInput name="checkOutTime" defaultValue={values.checkOutTime} />
               </Field>
             </div>

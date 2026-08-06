@@ -55,13 +55,27 @@ export async function resetDatabase(): Promise<void> {
 
 /** The settings row most tests assume exists. */
 export async function seedSettings(
-  overrides: Partial<{ serviceFeePercent: number; depositPercent: number }> = {},
+  overrides: Partial<{
+    serviceFeePercent: number;
+    depositPercent: number;
+    /** The platform fallback a listing inherits when it sets none of its own. */
+    freeCancelHours: number;
+    checkInTime: string;
+    checkOutTime: string;
+  }> = {},
 ) {
   return prisma.siteSettings.create({
     data: {
       id: 1,
       serviceFeePercent: overrides.serviceFeePercent ?? 5,
       depositPercent: overrides.depositPercent ?? 30,
+      ...(overrides.freeCancelHours === undefined
+        ? {}
+        : { freeCancelHours: overrides.freeCancelHours }),
+      ...(overrides.checkInTime === undefined ? {} : { checkInTime: overrides.checkInTime }),
+      ...(overrides.checkOutTime === undefined
+        ? {}
+        : { checkOutTime: overrides.checkOutTime }),
     },
   });
 }
@@ -142,6 +156,13 @@ export async function createListing(
     /** 0 (the default) means this listing does not offer day bookings. */
     dayUsePrice?: number;
     dayUseWeekendPrice?: number;
+    weekendPrice?: number;
+    /** "short" (Sat+Sun, the default) or "long" (Fri+Sat+Sun, Sharjah's). */
+    weekendMode?: "short" | "long";
+    /** null (the default) inherits the platform's window; 0 means none at all. */
+    freeCancelHours?: number | null;
+    checkInTime?: string;
+    checkOutTime?: string;
   } = {},
 ) {
   listingCounter += 1;
@@ -161,6 +182,15 @@ export async function createListing(
       // describing an overnight-only rest house, which is what they all were.
       dayUsePrice: opts.dayUsePrice ?? 0,
       dayUseWeekendPrice: opts.dayUseWeekendPrice ?? 0,
+      weekendPrice: opts.weekendPrice ?? 0,
+      // The UAE weekend unless a fixture asks for Sharjah's, matching the
+      // column default every existing row carries.
+      weekendMode: opts.weekendMode ?? "short",
+      // null, not 0 — 0 would make every fixture a listing that refuses free
+      // cancellation, which is the exact confusion the column exists to avoid.
+      freeCancelHours: opts.freeCancelHours ?? null,
+      checkInTime: opts.checkInTime ?? "",
+      checkOutTime: opts.checkOutTime ?? "",
       categories: JSON.stringify(["family"]),
       amenities: JSON.stringify(["pool"]),
     },

@@ -2,6 +2,8 @@ import { ListingEditor } from "@/components/admin/listing-editor";
 import { getSettings } from "@/lib/settings";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { formatWhatsappDisplay } from "@/lib/whatsapp";
+import { platformPolicyFor } from "@/lib/policies";
+import { getI18n } from "@/lib/i18n/server";
 
 /**
  * An owner creating a new rest house.
@@ -17,12 +19,13 @@ export default async function NewOwnerListingPage() {
   const session = await getActiveOwnerSession();
   if (!session) return null;
   const { owner } = session;
-  const settings = await getSettings();
+  const [settings, { locale }] = await Promise.all([getSettings(), getI18n()]);
 
   return (
     <ListingEditor
       scope="owner"
       platformDepositPercent={settings.depositPercent}
+      platformPolicy={platformPolicyFor(settings, locale)}
       ownerWhatsapp={formatWhatsappDisplay(owner.whatsapp)}
       draft={{
         id: null,
@@ -35,6 +38,19 @@ export default async function NewOwnerListingPage() {
         area: "",
         pricePerNight: 1200,
         weekendPrice: 0,
+        // Pre-selected from the owner's own emirate, because Sharjah is the
+        // whole reason this option exists: its working week is four days, so a
+        // Sharjah rest house is full on Friday night. It is a `<select>` the
+        // owner can change on the same screen — a default, not a decision.
+        weekendMode: owner.city === "sharjah" ? "long" : "short",
+        // Blank inherits the platform's times and cancellation window, which is
+        // exactly the page a new listing has today. An owner who wants their
+        // own hours types them here.
+        checkInTime: "",
+        checkInTimeEn: "",
+        checkOutTime: "",
+        checkOutTimeEn: "",
+        freeCancelHours: null,
         dayUsePrice: 0,
         dayUseWeekendPrice: 0,
         dayUseCheckOutTime: "",

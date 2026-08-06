@@ -575,6 +575,11 @@ async function main() {
       lng: item.lng,
       pricePerNight: item.pricePerNight,
       weekendPrice: item.weekendPrice,
+      // Sharjah works a four-day week, so a rest house there is full on Friday
+      // night and prices three weekend nights rather than two. Seeded from the
+      // emirate so the sample catalogue demonstrates both settings — a Sharjah
+      // listing whose Friday priced as a weekday would be the wrong example.
+      weekendMode: item.city === "sharjah" ? "long" : "short",
       capacity: item.capacity,
       amenities: JSON.stringify(item.amenities),
       categories: JSON.stringify(item.categories),

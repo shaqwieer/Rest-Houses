@@ -16,6 +16,7 @@ import {
   DEPOSIT_PERCENT_MAX,
   DEPOSIT_PERCENT_MIN,
 } from "@/lib/constants";
+import { DEFAULT_WEEKEND_MODE, WEEKEND_MODES } from "@/lib/dates";
 import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
 import { getI18n } from "@/lib/i18n/server";
 import { normalizeDigits } from "@/lib/format";
@@ -95,6 +96,46 @@ function listingSchema(t: Dictionary) {
       .min(1, t.validation.priceRequired)
       .max(1_000_000),
     weekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    /**
+     * Which days that weekend rate covers — "short" (Sat+Sun, the UAE weekend)
+     * or "long" (Fri+Sat+Sun, Sharjah's).
+     *
+     * `.catch()` rather than a bare enum: this is a `<select>` with two fixed
+     * options, so anything else is a crafted post or a stale tab, and neither
+     * deserves to fail the whole save of an otherwise valid listing. It falls
+     * back to the same default the column has. See `toWeekendMode()` in
+     * src/lib/dates.ts, which does the same thing on the read side.
+     */
+    weekendMode: z.enum(WEEKEND_MODES).catch(DEFAULT_WEEKEND_MODE),
+    /**
+     * The rest house's own arrival, departure and free-cancellation policy.
+     *
+     * Blank times mean "show the platform's" — the same "" -as-inherit rule
+     * `dayUseCheckOutTime` above uses. `freeCancelHours` gets the `preprocess`
+     * treatment instead, for exactly the reason `depositPercent` does at the
+     * bottom of this schema: `Number("")` is 0, and 0 here means "no free
+     * cancellation at all". Without this, every owner who left the box empty
+     * would be published as refusing free cancellation.
+     */
+    checkInTime: z.string().trim().max(40).default(""),
+    checkInTimeEn: blankToNull(40),
+    checkOutTime: z.string().trim().max(40).default(""),
+    checkOutTimeEn: blankToNull(40),
+    freeCancelHours: z.preprocess(
+      (v) => {
+        if (v === null || v === undefined) return null;
+        const s = normalizeDigits(String(v)).trim();
+        if (s === "") return null;
+        const n = Number(s);
+        return Number.isNaN(n) ? s : n;
+      },
+      z
+        .number({ message: t.validation.freeCancelRange })
+        .int(t.validation.freeCancelRange)
+        .min(0, t.validation.freeCancelRange)
+        .max(720, t.validation.freeCancelRange)
+        .nullable(),
+    ),
     /**
      * Day-use (no overnight stay) rates and the hour the guest must leave by.
      *
@@ -181,6 +222,12 @@ function readListingForm(formData: FormData, t: Dictionary) {
     areaEn: formData.get("areaEn") ?? "",
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
+    weekendMode: formData.get("weekendMode") ?? DEFAULT_WEEKEND_MODE,
+    checkInTime: formData.get("checkInTime") ?? "",
+    checkInTimeEn: formData.get("checkInTimeEn") ?? "",
+    checkOutTime: formData.get("checkOutTime") ?? "",
+    checkOutTimeEn: formData.get("checkOutTimeEn") ?? "",
+    freeCancelHours: formData.get("freeCancelHours"),
     dayUsePrice: formData.get("dayUsePrice") ?? 0,
     dayUseWeekendPrice: formData.get("dayUseWeekendPrice") ?? 0,
     dayUseCheckOutTime: formData.get("dayUseCheckOutTime") ?? "",
@@ -300,6 +347,19 @@ function listingColumns(
     areaEn: data.areaEn,
     pricePerNight: data.pricePerNight,
     weekendPrice: data.weekendPrice,
+    // Which days that weekend rate covers, and the rest house's own arrival,
+    // departure and free-cancellation policy. All in `common`: an owner in
+    // Sharjah is the only person who knows their weekend is three days long,
+    // and the hour they hand over the keys is theirs to state. Everything here
+    // is recomputed server-side at booking time (`createBookingRequest` re-reads
+    // `weekendMode` from the row), so nothing the browser posts is trusted for
+    // money either way.
+    weekendMode: data.weekendMode,
+    checkInTime: data.checkInTime,
+    checkInTimeEn: data.checkInTimeEn,
+    checkOutTime: data.checkOutTime,
+    checkOutTimeEn: data.checkOutTimeEn,
+    freeCancelHours: data.freeCancelHours,
     // Day-use rates, the leave-by time and the refundable security deposit are
     // commercial terms of the rest house, exactly like the nightly price — so
     // they sit in `common` and an owner sets their own. Nothing editorial about

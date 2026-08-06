@@ -12,6 +12,8 @@ import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { cityLabel, label as pickLabel } from "@/lib/constants";
 import { arNum, arRating, arTimeAgo } from "@/lib/format";
 import { resolveDepositPercent } from "@/lib/pricing";
+import { resolveListingPolicy } from "@/lib/policies";
+import { toWeekendMode } from "@/lib/dates";
 import { resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
 import { getI18n } from "@/lib/i18n/server";
 import { ogLocale } from "@/lib/i18n/config";
@@ -118,9 +120,13 @@ export default async function ListingDetailPage({
     getI18n(),
   ]);
 
-  const s = localizeSettings(settings, locale);
   // The name, description and area an English visitor reads. Every use below
   // goes through `l`, never through the raw Arabic column.
+  //
+  // No `localizeSettings` here any more: the only settings this page printed
+  // were the check-in and check-out times, and those are now the rest house's
+  // own — resolved through `policy` below, which falls back to the platform's
+  // and localises them on the way.
   const l = localizeListing(listing, locale);
   const where = l.area;
 
@@ -132,6 +138,17 @@ export default async function ListingDetailPage({
     listing.depositPercent,
     settings.depositPercent,
   );
+
+  // The rest house's own arrival, departure and free-cancellation terms, each
+  // falling back to the platform's only where the owner left it unset. These
+  // used to be the platform's figures on every page, which told a guest an
+  // arrival hour that was simply not this venue's.
+  const policy = resolveListingPolicy(listing, settings, locale);
+
+  // The weekend this listing prices on — Sharjah's is three days long. Read off
+  // the row and handed to the calendar and the quote alike, so the shaded cells
+  // and the charged nights are the same set of days.
+  const weekendMode = toWeekendMode(listing.weekendMode);
 
   // Day-use is offered when either rate carries a figure. A leave-by time on
   // its own is not enough — a time with no price is an incomplete entry, and
@@ -199,6 +216,10 @@ export default async function ListingDetailPage({
       unavailableDates={[...unavailable]}
       pricePerNight={listing.pricePerNight}
       weekendPrice={listing.weekendPrice}
+      // Which nights that weekend rate lands on. The provider quotes with it and
+      // the calendar shades with it, so the preview in the sidebar matches the
+      // total the server recomputes on submit.
+      weekendMode={weekendMode}
       // The day rates decide whether the "no overnight" option is offered at
       // all: 0 means the owner does not do day bookings. See the note on
       // `Listing.dayUsePrice` in prisma/schema.prisma.
@@ -318,7 +339,7 @@ export default async function ListingDetailPage({
                 <Fact
                   icon="schedule"
                   label={t.listing.checkInOutLabel}
-                  value={`${s.checkInTime} / ${s.checkOutTime}`}
+                  value={`${policy.checkInTime} / ${policy.checkOutTime}`}
                 />
                 {/* The deposit is stated on the page *before* a guest sends a
                     request, which is the promise the trust section makes. A 0%
@@ -332,10 +353,18 @@ export default async function ListingDetailPage({
                       : t.booking.noDepositRequired
                   }
                 />
+                {/* 0 hours is a real answer — "this owner allows no free
+                    cancellation" — and it has to read as one. "حتى ٠ ساعة"
+                    would look like a bug, and the guest would assume the
+                    platform's 48 hours still applied. */}
                 <Fact
                   icon="event_repeat"
                   label={t.listing.freeCancelLabel}
-                  value={t.listing.upToHours(arNum(settings.freeCancelHours, locale))}
+                  value={
+                    policy.freeCancelHours > 0
+                      ? t.listing.upToHours(arNum(policy.freeCancelHours, locale))
+                      : t.listing.noFreeCancel
+                  }
                 />
               </div>
             </section>
@@ -434,8 +463,8 @@ export default async function ListingDetailPage({
 
             {/* availability calendar (shares state with the sidebar card) */}
             <CalendarSection
-              checkIn={s.checkInTime}
-              checkOut={s.checkOutTime}
+              checkIn={policy.checkInTime}
+              checkOut={policy.checkOutTime}
               dayUseCheckOutTime={l.dayUseCheckOutTime}
               datesTaken={datesTaken}
             />
@@ -531,7 +560,7 @@ export default async function ListingDetailPage({
             depositPercent={depositPercent}
             // Shown beside the total as a refundable extra, never added to it.
             securityDeposit={listing.securityDeposit}
-            freeCancelHours={settings.freeCancelHours}
+            freeCancelHours={policy.freeCancelHours}
             // "" when the listing has no usable number, which hides the button
             // rather than pointing it at a bare wa.me/.
             ownerWhatsappHref={contactHref}

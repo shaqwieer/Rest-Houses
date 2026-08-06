@@ -4,6 +4,9 @@ import { getOwnerListingById } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { formatWhatsappDisplay } from "@/lib/whatsapp";
+import { platformPolicyFor } from "@/lib/policies";
+import { toWeekendMode } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
 
 /**
  * An owner editing one of their own rest houses.
@@ -25,9 +28,10 @@ export default async function EditOwnerListingPage({
   const { owner } = session;
   const { id } = await params;
 
-  const [listing, settings] = await Promise.all([
+  const [listing, settings, { locale }] = await Promise.all([
     getOwnerListingById(id, owner.id),
     getSettings(),
+    getI18n(),
   ]);
   if (!listing) notFound();
 
@@ -35,6 +39,7 @@ export default async function EditOwnerListingPage({
     <ListingEditor
       scope="owner"
       platformDepositPercent={settings.depositPercent}
+      platformPolicy={platformPolicyFor(settings, locale)}
       ownerWhatsapp={formatWhatsappDisplay(owner.whatsapp)}
       draft={{
         id: listing.id,
@@ -47,6 +52,12 @@ export default async function EditOwnerListingPage({
         areaEn: listing.areaEn ?? "",
         pricePerNight: listing.pricePerNight,
         weekendPrice: listing.weekendPrice,
+        weekendMode: toWeekendMode(listing.weekendMode),
+        checkInTime: listing.checkInTime,
+        checkInTimeEn: listing.checkInTimeEn ?? "",
+        checkOutTime: listing.checkOutTime,
+        checkOutTimeEn: listing.checkOutTimeEn ?? "",
+        freeCancelHours: listing.freeCancelHours,
         dayUsePrice: listing.dayUsePrice,
         dayUseWeekendPrice: listing.dayUseWeekendPrice,
         dayUseCheckOutTime: listing.dayUseCheckOutTime,

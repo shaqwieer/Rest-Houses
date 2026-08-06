@@ -360,6 +360,8 @@ export const ar = {
     depositOnConfirm: (pct: string) => `${pct}٪ عند التأكيد`,
     freeCancelLabel: "الإلغاء المجاني",
     upToHours: (h: string) => `حتى ${h} ساعة`,
+    /** ٠ ساعة إجابة حقيقية من المالك — لا تُعرض كرقم بل كجملة. */
+    noFreeCancel: "غير متاح لهذه الاستراحة",
     locationNote: (where: string) =>
       `${where} — يُرسل الموقع الدقيق على الخريطة بعد تأكيد الحجز.`,
     ratingOutOf: (rating: string, count: string) => `${rating} من ${count} تقييم`,
@@ -403,6 +405,12 @@ export const ar = {
       `. الإلغاء مجاني حتى ${hours} ساعة قبل موعد الوصول، ويُستحق عربون ${pct}٪ عند تأكيد المالك.`,
     policyDetailNoDeposit: (hours: string) =>
       `. الإلغاء مجاني حتى ${hours} ساعة قبل موعد الوصول، ولا يُطلب عربون لهذه الاستراحة.`,
+    // المالك قد يختار ألا يمنح إلغاءً مجانيًا إطلاقًا (٠ ساعة). عرض الرقم كما هو
+    // يقرأ كخلل، والأسوأ أنه يوحي بأن مهلة المنصة ما زالت سارية.
+    policyDetailNoCancel: (pct: string) =>
+      `. لا يوجد إلغاء مجاني لهذه الاستراحة، ويُستحق عربون ${pct}٪ عند تأكيد المالك.`,
+    policyDetailNoCancelNoDeposit:
+      ". لا يوجد إلغاء مجاني لهذه الاستراحة، ولا يُطلب عربون.",
     submit: "إرسال الطلب عبر الواتساب",
     submitting: "جارٍ إرسال الطلب…",
     noPaymentOnline: "لا يُطلب أي دفع عبر الموقع — يتواصل معك المالك للتأكيد.",
@@ -826,6 +834,28 @@ export const ar = {
     pricePerNightLabel: "سعر الليلة (د.إ)",
     weekendPriceLabel: "سعر نهاية الأسبوع",
     weekendPriceHint: "اتركه صفرًا ليساوي السعر العادي",
+    // ---- أيام نهاية الأسبوع: الشارقة عطلتها ثلاثة أيام، وبقية الإمارات يومان
+    platformFallbackHint: "يُستخدم للاستراحات التي لم يحدّد مالكها قيمة خاصة",
+    weekendModeLabel: "أيام نهاية الأسبوع",
+    weekendModeHint: "الأيام التي يُطبَّق عليها سعر نهاية الأسبوع",
+    weekendModeShort: "ويكند قصير — السبت والأحد",
+    weekendModeLong: "ويكند طويل — الجمعة والسبت والأحد",
+    weekendModeCardTitle: "نهاية الأسبوع وسياسة الاستراحة",
+    weekendModeCardHint:
+      "لكل استراحة عطلتها وسياستها. اختر «ويكند طويل» إن كانت استراحتك في الشارقة — عندها يُطبَّق سعر نهاية الأسبوع على ثلاث ليالٍ بدل ليلتين.",
+    // ---- سياسة الدخول والخروج والإلغاء، خاصة بكل استراحة
+    listingCheckInLabel: "وقت الدخول",
+    listingCheckOutLabel: "وقت الخروج",
+    listingCheckTimeHint: "اتركه فارغًا لاستخدام وقت المنصة",
+    listingCheckInPlaceholder: "مثال: ٤ عصرًا",
+    listingCheckOutPlaceholder: "مثال: ١٢ ظهرًا",
+    listingCheckInEnLabel: "وقت الدخول بالإنجليزية",
+    listingCheckOutEnLabel: "وقت الخروج بالإنجليزية",
+    listingCheckInEnPlaceholder: "e.g. 4 PM",
+    listingCheckOutEnPlaceholder: "e.g. 12 noon",
+    listingFreeCancelLabel: "الإلغاء المجاني (ساعة)",
+    listingFreeCancelHint: "اتركه فارغًا لاستخدام مهلة المنصة، أو اكتب ٠ لمنع الإلغاء المجاني",
+    usingPlatformTime: (value: string) => `المنصة الآن: ${value}`,
     // ---- day-use card in the listing editor
     dayUseCardTitle: "الحجز بدون مبيت (اختياري)",
     dayUseCardHint:
@@ -1054,6 +1084,7 @@ export const ar = {
     weekendBelowWeekday: "سعر نهاية الأسبوع لا يمكن أن يكون أقل من سعر الليلة العادية",
     weekendBelowWeekdayShort: "أقل من السعر العادي",
     depositRange: "نسبة العربون يجب أن تكون بين ٠ و ١٠٠",
+    freeCancelRange: "مهلة الإلغاء المجاني يجب أن تكون بين ٠ و ٧٢٠ ساعة",
     invalidCheckIn: "تاريخ وصول غير صالح",
     invalidCheckOut: "تاريخ مغادرة غير صالح",
     checkOutBeforeCheckIn: "يجب أن يكون تاريخ المغادرة بعد تاريخ الوصول",

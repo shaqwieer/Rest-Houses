@@ -2,6 +2,9 @@ import { ListingEditor } from "@/components/admin/listing-editor";
 import { getSettings } from "@/lib/settings";
 import { requireAdminPage } from "@/lib/auth";
 import { listOwnerOptions } from "@/lib/admin-queries";
+import { platformPolicyFor } from "@/lib/policies";
+import { DEFAULT_WEEKEND_MODE } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
 
 /** New-listing form. Sensible defaults so the operator types as little as
  *  possible: the map starts at the site's own coordinates and a handful of
@@ -9,12 +12,17 @@ import { listOwnerOptions } from "@/lib/admin-queries";
 export default async function NewListingPage() {
   await requireAdminPage();
 
-  const [settings, owners] = await Promise.all([getSettings(), listOwnerOptions()]);
+  const [settings, owners, { locale }] = await Promise.all([
+    getSettings(),
+    listOwnerOptions(),
+    getI18n(),
+  ]);
 
   return (
     <ListingEditor
       scope="admin"
       platformDepositPercent={settings.depositPercent}
+      platformPolicy={platformPolicyFor(settings, locale)}
       owners={owners}
       draft={{
         id: null,
@@ -27,6 +35,19 @@ export default async function NewListingPage() {
         area: "",
         pricePerNight: 1200,
         weekendPrice: 0,
+        // The UAE weekend. An admin creating a Sharjah listing switches it to
+        // "long" on the same screen — unlike the owner form there is no emirate
+        // chosen yet to infer it from.
+        weekendMode: DEFAULT_WEEKEND_MODE,
+        // Blank / null = inherit the platform's stay policy, which is the page
+        // every listing shows today. Same reasoning as `depositPercent` below:
+        // an unset field tracks the platform if the operator changes it later,
+        // rather than freezing today's value into the row.
+        checkInTime: "",
+        checkInTimeEn: "",
+        checkOutTime: "",
+        checkOutTimeEn: "",
+        freeCancelHours: null,
         // 0 / "" = not offered. A new listing does not advertise day bookings
         // or ask for a security deposit until someone deliberately fills these
         // in, which is the "اختياري" the requirement asks for.

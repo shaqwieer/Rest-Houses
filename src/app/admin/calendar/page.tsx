@@ -16,8 +16,11 @@ export default async function AdminCalendarPage({
 
   const [sp, { t }] = await Promise.all([searchParams, getI18n()]);
 
+  // `weekendMode` comes along so the editor shades the same days this listing
+  // charges the weekend rate for — an admin looking at a Sharjah calendar sees
+  // Friday marked as the weekend night it is priced as.
   const listings = await prisma.listing.findMany({
-    select: { id: true, name: true },
+    select: { id: true, name: true, weekendMode: true },
     orderBy: { createdAt: "asc" },
   });
 

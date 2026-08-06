@@ -299,6 +299,8 @@ export const en: Dictionary = {
     depositOnConfirm: (pct) => `${pct}% on confirmation`,
     freeCancelLabel: "Free cancellation",
     upToHours: (h) => `Up to ${h} hours before`,
+    /** 0 hours is a real answer from the owner — say it in words, not as "0". */
+    noFreeCancel: "Not offered for this rest house",
     locationNote: (where) =>
       `${where} — the exact location is sent on the map once your booking is confirmed.`,
     ratingOutOf: (rating, count) => `${rating} from ${count} reviews`,
@@ -343,6 +345,10 @@ export const en: Dictionary = {
       `. Cancellation is free up to ${hours} hours before check-in, and a ${pct}% deposit is due once the owner confirms.`,
     policyDetailNoDeposit: (hours) =>
       `. Cancellation is free up to ${hours} hours before check-in, and no deposit is required for this rest house.`,
+    policyDetailNoCancel: (pct) =>
+      `. This rest house offers no free cancellation, and a ${pct}% deposit is due once the owner confirms.`,
+    policyDetailNoCancelNoDeposit:
+      ". This rest house offers no free cancellation, and no deposit is required.",
     submit: "Send request on WhatsApp",
     submitting: "Sending your request…",
     noPaymentOnline:
@@ -743,6 +749,26 @@ export const en: Dictionary = {
     pricePerNightLabel: "Price per night (AED)",
     weekendPriceLabel: "Weekend price",
     weekendPriceHint: "Leave at zero to match the weekday rate",
+    platformFallbackHint: "Used for rest houses whose owner has not set their own",
+    weekendModeLabel: "Weekend days",
+    weekendModeHint: "The days the weekend price applies to",
+    weekendModeShort: "Short weekend — Saturday & Sunday",
+    weekendModeLong: "Long weekend — Friday, Saturday & Sunday",
+    weekendModeCardTitle: "Weekend & this rest house's policy",
+    weekendModeCardHint:
+      "Every rest house has its own weekend and its own policy. Choose the long weekend if yours is in Sharjah — the weekend rate then covers three nights instead of two.",
+    listingCheckInLabel: "Check-in time",
+    listingCheckOutLabel: "Check-out time",
+    listingCheckTimeHint: "Leave blank to use the platform's time",
+    listingCheckInPlaceholder: "e.g. ٤ عصرًا",
+    listingCheckOutPlaceholder: "e.g. ١٢ ظهرًا",
+    listingCheckInEnLabel: "Check-in time (English)",
+    listingCheckOutEnLabel: "Check-out time (English)",
+    listingCheckInEnPlaceholder: "e.g. 4 PM",
+    listingCheckOutEnPlaceholder: "e.g. 12 noon",
+    listingFreeCancelLabel: "Free cancellation (hours)",
+    listingFreeCancelHint: "Leave blank for the platform's window, or enter 0 to allow none",
+    usingPlatformTime: (value) => `Platform default: ${value}`,
     dayUseCardTitle: "Day booking, no overnight stay (optional)",
     dayUseCardHint:
       "Rates for arriving and leaving on the same day. Leave at zero if you don't offer this — none of it then appears on the rest house's page.",
@@ -967,6 +993,7 @@ export const en: Dictionary = {
     weekendBelowWeekday: "The weekend rate can't be lower than the weekday rate",
     weekendBelowWeekdayShort: "Lower than the weekday rate",
     depositRange: "The deposit percentage must be between 0 and 100",
+    freeCancelRange: "The free-cancellation window must be between 0 and 720 hours",
     invalidCheckIn: "That check-in date isn't valid",
     invalidCheckOut: "That check-out date isn't valid",
     checkOutBeforeCheckIn: "The check-out date must be after the check-in date",

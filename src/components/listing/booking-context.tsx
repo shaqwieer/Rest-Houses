@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { DateRange } from "./availability-calendar";
 import { quote, type Quote } from "@/lib/pricing";
-import type { ISODate } from "@/lib/dates";
+import type { ISODate, WeekendMode } from "@/lib/dates";
 
 /**
  * Shared booking selection for the listing detail page.
@@ -57,6 +57,13 @@ type BookingContextValue = {
   bookingQuery: string;
   /** True once the selection is enough to send a request. */
   ready: boolean;
+  /**
+   * The listing's weekend, passed down so the calendar shades the same days the
+   * quote charges the weekend rate for. Held here rather than threaded through
+   * `BookingCard` into `AvailabilityCalendar` by hand, because the calendar is
+   * two components below the only place that knows it.
+   */
+  weekendMode: WeekendMode;
 };
 
 const BookingContext = createContext<BookingContextValue | null>(null);
@@ -65,6 +72,7 @@ export function BookingProvider({
   unavailableDates,
   pricePerNight,
   weekendPrice,
+  weekendMode,
   dayUsePrice,
   dayUseWeekendPrice,
   serviceFeePercent,
@@ -75,6 +83,7 @@ export function BookingProvider({
   unavailableDates: ISODate[];
   pricePerNight: number;
   weekendPrice: number;
+  weekendMode: WeekendMode;
   dayUsePrice: number;
   dayUseWeekendPrice: number;
   serviceFeePercent: number;
@@ -132,6 +141,7 @@ export function BookingProvider({
       checkOut: isDayUse ? range.checkIn : range.checkOut!,
       pricePerNight,
       weekendPrice,
+      weekendMode,
       serviceFeePercent,
       depositPercent,
       dayUse: isDayUse,
@@ -143,6 +153,7 @@ export function BookingProvider({
     isDayUse,
     pricePerNight,
     weekendPrice,
+    weekendMode,
     dayUsePrice,
     dayUseWeekendPrice,
     serviceFeePercent,
@@ -175,6 +186,7 @@ export function BookingProvider({
       unavailableDates,
       bookingQuery,
       ready,
+      weekendMode,
     }),
     [
       range,
@@ -188,6 +200,7 @@ export function BookingProvider({
       bookingQuery,
       ready,
       capacity,
+      weekendMode,
     ],
   );
 

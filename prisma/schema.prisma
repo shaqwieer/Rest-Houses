@@ -391,6 +391,26 @@ model Listing {
   capacity      Int @default(20)
 
   // ---------------------------------------------------------------------
+  // Which days `weekendPrice` applies to. "short" | "long" — see the block
+  // comment above `isWeekend` in src/lib/dates.ts for the full reasoning.
+  //
+  //   "short" — Saturday + Sunday.            The UAE weekend.
+  //   "long"  — Friday + Saturday + Sunday.   Sharjah's four-day working week
+  //             means Friday is a day off there, and a Sharjah rest house is
+  //             full on Friday night while a Dubai one is not.
+  //
+  // A per-listing column and not a platform setting: an operator serving both
+  // emirates needs both answers at once, and it is a commercial term of the
+  // individual venue exactly like the nightly price. Owners in Sharjah asked
+  // for it by name.
+  //
+  // A String rather than an enum, matching how every other id in this schema is
+  // stored (see the portability note at the top) — reads normalise through
+  // `toWeekendMode()`, which falls back to "short" rather than pricing a stay
+  // with an undefined day set.
+  weekendMode String @default("short")
+
+  // ---------------------------------------------------------------------
   // Day-use (حجز بدون مبيت) — the guest arrives and leaves the same day.
   //
   // Informational, not bookable. The calendar, the quote and every stored
@@ -455,6 +475,34 @@ model Listing {
   rating       Float @default(0)
   reviewsCount Int   @default(0)
   bookingsCount Int  @default(0)
+
+  // ---------------------------------------------------------------------
+  // The rest house's own stay policy — arrival, departure, free cancellation.
+  //
+  // These three used to exist ONLY on SiteSettings, which made them one
+  // platform-wide answer printed on every listing page. They are not: an owner
+  // who hands over the keys at 3pm and another who does it at 5pm were both
+  // being advertised as "٤ عصرًا", and the guest arrives to a locked gate. Each
+  // rest house has its own policy, so each listing stores its own.
+  //
+  // ─── Blank / null means "inherit", and null is not 0 ──────────────────
+  // The times follow `dayUseCheckOutTime` above: free text, "" meaning the
+  // owner has not set one and the platform default should show. Free text
+  // because owners write these in their own words ("٤ عصرًا", "بعد العصر"),
+  // and the `En` siblings follow the same blank-means-fall-back-to-Arabic rule
+  // as `nameEn`.
+  //
+  // `freeCancelHours` follows `depositPercent` instead, and for the same
+  // reason: null and 0 are genuinely different answers. null = "use the
+  // platform's 48 hours", 0 = "I allow no free cancellation at all". Resolve
+  // it with `resolveFreeCancelHours()` in src/lib/policies.ts — a truthiness
+  // check would turn every no-free-cancellation listing back into a 48-hour
+  // one, which is a promise the platform would be making on the owner's behalf.
+  checkInTime    String  @default("")
+  checkInTimeEn  String?
+  checkOutTime   String  @default("")
+  checkOutTimeEn String?
+  freeCancelHours Int?
 
   // Deposit the owner asks for, as a whole percentage of the booking total.
   //

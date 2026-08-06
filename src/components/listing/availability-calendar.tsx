@@ -9,11 +9,13 @@ import {
   addDays,
   arMonthLabel,
   buildMonthGrid,
+  DEFAULT_WEEKEND_MODE,
   nightsInRange,
   parseISODate,
   shiftMonth,
   todayISO,
   type ISODate,
+  type WeekendMode,
 } from "@/lib/dates";
 
 /**
@@ -49,12 +51,20 @@ export function AvailabilityCalendar({
    * never coming.
    */
   singleDay = false,
+  /**
+   * The listing's weekend, so the shaded cells are the days it actually charges
+   * the weekend rate for. A Sharjah listing prices Friday as a weekend night;
+   * leaving Friday plain here while the sidebar quotes the weekend rate for it
+   * is the page contradicting itself in front of the guest.
+   */
+  weekendMode = DEFAULT_WEEKEND_MODE,
 }: {
   unavailableDates: ISODate[];
   value: DateRange;
   onChange: (next: DateRange) => void;
   months?: number;
   singleDay?: boolean;
+  weekendMode?: WeekendMode;
 }) {
   const today = todayISO();
   const unavailable = useMemo(() => new Set(unavailableDates), [unavailableDates]);
@@ -69,9 +79,13 @@ export function AvailabilityCalendar({
     () =>
       Array.from({ length: months }, (_, i) => {
         const { year, month } = shiftMonth(view.year, view.month, i);
-        return { year, month, cells: buildMonthGrid(year, month, unavailable, today, locale) };
+        return {
+          year,
+          month,
+          cells: buildMonthGrid(year, month, unavailable, today, locale, weekendMode),
+        };
       }),
-    [view, months, unavailable, today],
+    [view, months, unavailable, today, locale, weekendMode],
   );
 
   /** True if any night in [start, end) is blocked. */

@@ -1,4 +1,4 @@
-import { isWeekend, nightsInRange, type ISODate } from "./dates";
+import { isWeekend, nightsInRange, type ISODate, type WeekendMode } from "./dates";
 import { DEPOSIT_PERCENT_MAX, DEPOSIT_PERCENT_MIN } from "./constants";
 
 /**
@@ -21,8 +21,18 @@ export type QuoteInput = {
   checkIn: ISODate;
   checkOut: ISODate;
   pricePerNight: number;
-  /** Friday/Saturday rate. 0 or missing → same as pricePerNight. */
+  /** Weekend rate. 0 or missing → same as pricePerNight. */
   weekendPrice?: number | null;
+  /**
+   * Which days that weekend rate applies to — the listing's own `weekendMode`.
+   *
+   * Required, not optional with a default. Four places quote a stay (the
+   * sidebar, the booking page, the server action that stores the total, and
+   * `verify.ts`), and only the third one's number is real money; an optional
+   * field would let it be forgotten there and silently undercharge every
+   * Friday on a Sharjah listing. See `isWeekend` in src/lib/dates.ts.
+   */
+  weekendMode: WeekendMode;
   serviceFeePercent: number;
   /** Already resolved through `resolveDepositPercent` — 0..100. */
   depositPercent: number;
@@ -37,7 +47,7 @@ export type QuoteInput = {
   dayUse?: boolean;
   /** Weekday day-use rate. 0 means the listing does not offer day use. */
   dayUsePrice?: number | null;
-  /** Friday/Saturday day-use rate. 0 or missing → same as dayUsePrice. */
+  /** Weekend day-use rate. 0 or missing → same as dayUsePrice. */
   dayUseWeekendPrice?: number | null;
 };
 
@@ -72,14 +82,19 @@ export type Quote = {
  * way the pricing does or the two can disagree about whether a booking is free.
  */
 export function dayUseRate(
-  listing: { dayUsePrice?: number | null; dayUseWeekendPrice?: number | null },
+  listing: {
+    dayUsePrice?: number | null;
+    dayUseWeekendPrice?: number | null;
+    /** The listing's own weekend — Sharjah's Friday is a weekend day. */
+    weekendMode: WeekendMode;
+  },
   date: ISODate,
 ): number {
   const base = listing.dayUsePrice ?? 0;
   if (base <= 0) return 0; // not offered — see Listing.dayUsePrice in the schema
 
   const weekendRate = listing.dayUseWeekendPrice ?? 0;
-  return isWeekend(date) && weekendRate > 0 ? weekendRate : base;
+  return isWeekend(date, listing.weekendMode) && weekendRate > 0 ? weekendRate : base;
 }
 
 /**
@@ -133,6 +148,7 @@ export function quote(input: QuoteInput): Quote {
     checkOut,
     pricePerNight,
     weekendPrice,
+    weekendMode,
     serviceFeePercent,
     depositPercent,
   } = input;
@@ -157,18 +173,19 @@ export function quote(input: QuoteInput): Quote {
     ? [
         {
           date: checkIn,
-          weekend: isWeekend(checkIn),
+          weekend: isWeekend(checkIn, weekendMode),
           amount: dayUseRate(
             {
               dayUsePrice: input.dayUsePrice,
               dayUseWeekendPrice: input.dayUseWeekendPrice,
+              weekendMode,
             },
             checkIn,
           ),
         },
       ]
     : nightsInRange(checkIn, checkOut).map((date) => {
-        const weekend = isWeekend(date);
+        const weekend = isWeekend(date, weekendMode);
         return { date, weekend, amount: weekend ? weekendRate : pricePerNight };
       });
 

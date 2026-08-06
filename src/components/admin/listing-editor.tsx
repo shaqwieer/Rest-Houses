@@ -20,6 +20,7 @@ import {
 import { AMENITIES, CATEGORIES, CITIES, label } from "@/lib/constants";
 import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
+import type { WeekendMode } from "@/lib/dates";
 
 /**
  * Listing create/edit form — mobile-first, single column, thumb-sized controls.
@@ -56,6 +57,19 @@ export type ListingDraft = {
   areaEn: string;
   pricePerNight: number;
   weekendPrice: number;
+  /** Which days `weekendPrice` covers — "short" (Sat+Sun) or "long" (+Friday). */
+  weekendMode: WeekendMode;
+  /**
+   * This rest house's own stay policy. "" on the times and null on the hours
+   * mean "inherit the platform's", which is what a listing nobody has touched
+   * carries — and null is NOT 0 on the hours: 0 is an owner saying they allow
+   * no free cancellation. See `resolveFreeCancelHours` in src/lib/policies.ts.
+   */
+  checkInTime: string;
+  checkInTimeEn: string;
+  checkOutTime: string;
+  checkOutTimeEn: string;
+  freeCancelHours: number | null;
   /**
    * Day-use (بدون مبيت) rates, the hour the guest leaves by, and the refundable
    * security deposit. 0 / "" everywhere means "not offered", and a listing left
@@ -91,6 +105,7 @@ export function ListingEditor({
   draft,
   scope = "admin",
   platformDepositPercent,
+  platformPolicy,
   owners = [],
   ownerWhatsapp,
 }: {
@@ -98,6 +113,13 @@ export function ListingEditor({
   scope?: "admin" | "owner";
   /** Shown as the fallback hint next to the deposit field. */
   platformDepositPercent: number;
+  /**
+   * What a blank policy field resolves to, shown as the placeholder in each
+   * box. Without it "leave blank for the default" asks the owner to trust a
+   * default they cannot see — and the times are free text, so there is no way
+   * for them to guess it.
+   */
+  platformPolicy: { checkInTime: string; checkOutTime: string; freeCancelHours: number };
   /** Admin only: the owners a listing can be assigned to. */
   owners?: OwnerOption[];
   /** Owner only: the number their listings will use, shown read-only. */
@@ -381,6 +403,111 @@ export function ListingEditor({
               className="font-bold"
             />
           </Field>
+        </div>
+
+        {/* ---- weekend days + this rest house's own stay policy ----
+            Two things that used to have one platform-wide answer and never
+            should have. The weekend is three days in Sharjah and two elsewhere,
+            so a single national constant charged Sharjah owners the weekday
+            rate on their busiest night. The arrival hour and the cancellation
+            window are the individual owner's terms, and printing the
+            platform's on their page told guests something that was simply not
+            true of that venue.
+
+            Blank inherits, everywhere, and the placeholders show what blank
+            resolves to right now — an owner who does not care scrolls past and
+            keeps exactly the page they have today. */}
+        <div className="rounded-[20px] border border-dashed border-sand-300 bg-sand-50 p-3.5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Icon name="event_repeat" size={18} className="text-bronze" />
+            <span className="text-[12.5px] font-bold text-bronze">
+              {t.admin.weekendModeCardTitle}
+            </span>
+          </div>
+          <p className="m-0 mb-3 text-[11.5px] leading-relaxed text-muted">
+            {t.admin.weekendModeCardHint}
+          </p>
+
+          <Field label={t.admin.weekendModeLabel} hint={t.admin.weekendModeHint}>
+            <Select name="weekendMode" defaultValue={draft.weekendMode}>
+              <option value="short">{t.admin.weekendModeShort}</option>
+              <option value="long">{t.admin.weekendModeLong}</option>
+            </Select>
+          </Field>
+
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <Field
+              label={t.admin.listingCheckInLabel}
+              hint={t.admin.usingPlatformTime(platformPolicy.checkInTime)}
+              error={errors.checkInTime}
+            >
+              <TextInput
+                name="checkInTime"
+                defaultValue={draft.checkInTime}
+                placeholder={platformPolicy.checkInTime}
+              />
+            </Field>
+
+            <Field
+              label={t.admin.listingCheckOutLabel}
+              hint={t.admin.usingPlatformTime(platformPolicy.checkOutTime)}
+              error={errors.checkOutTime}
+            >
+              <TextInput
+                name="checkOutTime"
+                defaultValue={draft.checkOutTime}
+                placeholder={platformPolicy.checkOutTime}
+              />
+            </Field>
+
+            {/* Blank ≠ 0 here, and the hint says so. Blank means "whatever the
+                platform allows"; a typed 0 means this owner allows no free
+                cancellation at all, and the listing page then says so in
+                words. `defaultValue` is "" for null rather than 0 — rendering
+                null as 0 would silently convert every inheriting listing into
+                a no-cancellation one the first time it was saved. */}
+            <Field
+              label={t.admin.listingFreeCancelLabel}
+              hint={
+                errors.freeCancelHours ? undefined : t.admin.listingFreeCancelHint
+              }
+              error={errors.freeCancelHours}
+            >
+              <TextInput
+                name="freeCancelHours"
+                type="number"
+                min={0}
+                max={720}
+                defaultValue={draft.freeCancelHours ?? ""}
+                placeholder={String(platformPolicy.freeCancelHours)}
+                invalid={Boolean(errors.freeCancelHours)}
+                className="font-bold"
+              />
+            </Field>
+          </div>
+
+          {/* The two times are free text, so they need the English siblings
+              every other stored string on a listing has. Blank falls back to
+              the Arabic, which is at least this venue's real hour — never to
+              the platform's, which would not be. */}
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <Field label={t.admin.listingCheckInEnLabel} error={errors.checkInTimeEn}>
+              <TextInput
+                name="checkInTimeEn"
+                dir="ltr"
+                defaultValue={draft.checkInTimeEn}
+                placeholder={t.admin.listingCheckInEnPlaceholder}
+              />
+            </Field>
+            <Field label={t.admin.listingCheckOutEnLabel} error={errors.checkOutTimeEn}>
+              <TextInput
+                name="checkOutTimeEn"
+                dir="ltr"
+                defaultValue={draft.checkOutTimeEn}
+                placeholder={t.admin.listingCheckOutEnPlaceholder}
+              />
+            </Field>
+          </div>
         </div>
 
         {/* ---- day use (بدون مبيت) ----

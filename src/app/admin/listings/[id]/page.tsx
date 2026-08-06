@@ -4,6 +4,9 @@ import { getListingById } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { requireAdminPage } from "@/lib/auth";
 import { listOwnerOptions } from "@/lib/admin-queries";
+import { platformPolicyFor } from "@/lib/policies";
+import { toWeekendMode } from "@/lib/dates";
+import { getI18n } from "@/lib/i18n/server";
 
 /** Edit an existing listing. Unlike the public route this looks up by id, so
  *  unpublished drafts are reachable. */
@@ -15,10 +18,11 @@ export default async function EditListingPage({
   await requireAdminPage();
 
   const { id } = await params;
-  const [listing, settings, owners] = await Promise.all([
+  const [listing, settings, owners, { locale }] = await Promise.all([
     getListingById(id),
     getSettings(),
     listOwnerOptions(),
+    getI18n(),
   ]);
   if (!listing) notFound();
 
@@ -26,6 +30,7 @@ export default async function EditListingPage({
     <ListingEditor
       scope="admin"
       platformDepositPercent={settings.depositPercent}
+      platformPolicy={platformPolicyFor(settings, locale)}
       owners={owners}
       draft={{
         id: listing.id,
@@ -38,6 +43,12 @@ export default async function EditListingPage({
         areaEn: listing.areaEn ?? "",
         pricePerNight: listing.pricePerNight,
         weekendPrice: listing.weekendPrice,
+        weekendMode: toWeekendMode(listing.weekendMode),
+        checkInTime: listing.checkInTime,
+        checkInTimeEn: listing.checkInTimeEn ?? "",
+        checkOutTime: listing.checkOutTime,
+        checkOutTimeEn: listing.checkOutTimeEn ?? "",
+        freeCancelHours: listing.freeCancelHours,
         dayUsePrice: listing.dayUsePrice,
         dayUseWeekendPrice: listing.dayUseWeekendPrice,
         dayUseCheckOutTime: listing.dayUseCheckOutTime,

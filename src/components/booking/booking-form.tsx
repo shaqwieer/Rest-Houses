@@ -242,14 +242,21 @@ export function BookingForm({
           <Link href="/policies" className="text-bronze">
             {t.booking.policyLink}
           </Link>
-          {/* A 0% deposit gets its own sentence rather than "a 0% deposit is
-              due", which reads as a bug to a customer. */}
-          {depositPercent > 0
-            ? t.booking.policyDetail(
-                arNum(freeCancelHours, locale),
-                arNum(depositPercent, locale),
-              )
-            : t.booking.policyDetailNoDeposit(arNum(freeCancelHours, locale))}
+          {/* Four sentences, not one with two numbers in it. A 0% deposit and a
+              0-hour cancellation window are both real answers an owner can give
+              — "a 0% deposit is due" and "free up to 0 hours before" each read
+              as a bug to a customer, and the second is worse than a bug: it
+              implies a window that this rest house does not offer. */}
+          {freeCancelHours > 0
+            ? depositPercent > 0
+              ? t.booking.policyDetail(
+                  arNum(freeCancelHours, locale),
+                  arNum(depositPercent, locale),
+                )
+              : t.booking.policyDetailNoDeposit(arNum(freeCancelHours, locale))
+            : depositPercent > 0
+              ? t.booking.policyDetailNoCancel(arNum(depositPercent, locale))
+              : t.booking.policyDetailNoCancelNoDeposit}
         </p>
       </div>
 

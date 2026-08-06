@@ -10,7 +10,7 @@ import {
   quote,
   resolveDepositPercent,
 } from "@/lib/pricing";
-import { isISODate, nightsBetween, todayISO } from "@/lib/dates";
+import { isISODate, nightsBetween, todayISO, toWeekendMode } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { guardSubmission } from "@/lib/security";
@@ -182,6 +182,11 @@ export async function createBookingRequest(
       capacity: true,
       pricePerNight: true,
       weekendPrice: true,
+      // Which days that weekend rate covers. Selected here because this is the
+      // total that gets STORED — the browser's preview is advisory, this one is
+      // the invoice. Omit it and a Sharjah listing charges every Friday at the
+      // weekday rate no matter what its owner chose.
+      weekendMode: true,
       dayUsePrice: true,
       dayUseWeekendPrice: true,
       depositPercent: true,
@@ -205,7 +210,14 @@ export async function createBookingRequest(
   // Asked through `dayUseRate` rather than by reading the column, so the guard
   // and the pricing can never disagree about whether a rate exists: the weekend
   // rate is part of that answer.
-  if (data.dayUse && dayUseRate(listing, data.checkIn) <= 0) {
+  //
+  // `weekendMode` is normalised once, here, and the same value feeds both this
+  // guard and the quote below — the column is a plain String, and a row holding
+  // something unexpected must resolve to one weekend, not to a different one in
+  // each of the two places that ask.
+  const weekendMode = toWeekendMode(listing.weekendMode);
+
+  if (data.dayUse && dayUseRate({ ...listing, weekendMode }, data.checkIn) <= 0) {
     return { ok: false, error: t.validation.dayUseUnavailable };
   }
 
@@ -274,6 +286,7 @@ export async function createBookingRequest(
     checkOut: data.checkOut,
     pricePerNight: listing.pricePerNight,
     weekendPrice: listing.weekendPrice,
+    weekendMode,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
     // The rates come from the row just read, never from the form — the same

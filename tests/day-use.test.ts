@@ -88,18 +88,30 @@ beforeEach(async () => {
   sessionUser.current = { id: admin.id };
 });
 
-/** A weekday at least a week out, so it is future-dated and not Fri/Sat. */
+/**
+ * A weekday at least a week out — on EITHER weekend, so the same date is a
+ * plain weekday for a short-weekend listing and for a long-weekend one alike.
+ * Fri(5), Sat(6) and Sun(0) are all excluded; see `isWeekend` in src/lib/dates.
+ */
 function futureWeekday(): string {
   let day = addDays(todayISO(), 7);
-  // 5 = Friday, 6 = Saturday carry the weekend rate — see `isWeekend`.
-  while (dayOfWeek(day) === 5 || dayOfWeek(day) === 6) day = addDays(day, 1);
+  while (dayOfWeek(day) === 5 || dayOfWeek(day) === 6 || dayOfWeek(day) === 0) {
+    day = addDays(day, 1);
+  }
   return day;
 }
 
-/** The next Friday at least a week out. */
+/** The next Friday at least a week out — a weekend day only on "long". */
 function futureFriday(): string {
   let day = addDays(todayISO(), 7);
   while (dayOfWeek(day) !== 5) day = addDays(day, 1);
+  return day;
+}
+
+/** The next Saturday at least a week out — a weekend day on both modes. */
+function futureSaturday(): string {
+  let day = addDays(todayISO(), 7);
+  while (dayOfWeek(day) !== 6) day = addDays(day, 1);
   return day;
 }
 
@@ -158,33 +170,68 @@ describe("occupiedDays", () => {
 
 describe("dayUseRate", () => {
   it("is 0 when the listing does not offer day use", () => {
-    expect(dayUseRate({ dayUsePrice: 0, dayUseWeekendPrice: 0 }, "2026-09-10")).toBe(0);
+    expect(
+      dayUseRate({ dayUsePrice: 0, dayUseWeekendPrice: 0, weekendMode: "short" }, "2026-09-10"),
+    ).toBe(0);
   });
 
   /** A weekend rate alone does not make day use available — the base is the switch. */
   it("is 0 when only a weekend rate is set", () => {
-    expect(dayUseRate({ dayUsePrice: 0, dayUseWeekendPrice: 900 }, futureFriday())).toBe(0);
+    expect(
+      dayUseRate(
+        { dayUsePrice: 0, dayUseWeekendPrice: 900, weekendMode: "short" },
+        futureSaturday(),
+      ),
+    ).toBe(0);
   });
 
-  it("uses the weekend rate on Friday and Saturday", () => {
+  it("uses the weekend rate on a Saturday", () => {
     const rate = dayUseRate(
-      { dayUsePrice: 600, dayUseWeekendPrice: 900 },
-      futureFriday(),
+      { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "short" },
+      futureSaturday(),
     );
     expect(rate).toBe(900);
   });
 
   it("uses the weekday rate otherwise", () => {
     const rate = dayUseRate(
-      { dayUsePrice: 600, dayUseWeekendPrice: 900 },
+      { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "short" },
       futureWeekday(),
     );
     expect(rate).toBe(600);
   });
 
+  /**
+   * Friday is the day the two modes disagree about, and a day-use booking is
+   * where an owner notices it first: the same Friday is a weekday rate in Dubai
+   * and a weekend rate in Sharjah.
+   */
+  it("charges Friday at the weekday rate on a short weekend", () => {
+    expect(
+      dayUseRate(
+        { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "short" },
+        futureFriday(),
+      ),
+    ).toBe(600);
+  });
+
+  it("charges the same Friday at the weekend rate on a long weekend", () => {
+    expect(
+      dayUseRate(
+        { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "long" },
+        futureFriday(),
+      ),
+    ).toBe(900);
+  });
+
   /** A blank weekend rate falls back to the weekday one rather than to 0. */
   it("falls back to the weekday rate when no weekend rate is set", () => {
-    expect(dayUseRate({ dayUsePrice: 600, dayUseWeekendPrice: 0 }, futureFriday())).toBe(600);
+    expect(
+      dayUseRate(
+        { dayUsePrice: 600, dayUseWeekendPrice: 0, weekendMode: "short" },
+        futureSaturday(),
+      ),
+    ).toBe(600);
   });
 });
 
@@ -196,6 +243,7 @@ describe("quote (day use)", () => {
       checkOut: day,
       pricePerNight: 2000,
       weekendPrice: 2500,
+      weekendMode: "short",
       serviceFeePercent: 0,
       depositPercent: 30,
       dayUse: true,
@@ -222,6 +270,7 @@ describe("quote (day use)", () => {
       checkIn: day,
       checkOut: day,
       pricePerNight: 2000,
+      weekendMode: "short",
       serviceFeePercent: 0,
       depositPercent: 30,
     });
@@ -231,12 +280,13 @@ describe("quote (day use)", () => {
     expect(q.dayUse).toBe(false);
   });
 
-  it("applies the weekend day rate on a Friday", () => {
-    const friday = futureFriday();
+  it("applies the weekend day rate on a Saturday", () => {
+    const saturday = futureSaturday();
     const q = quote({
-      checkIn: friday,
-      checkOut: friday,
+      checkIn: saturday,
+      checkOut: saturday,
       pricePerNight: 2000,
+      weekendMode: "short",
       serviceFeePercent: 0,
       depositPercent: 30,
       dayUse: true,
@@ -247,12 +297,30 @@ describe("quote (day use)", () => {
     expect(q.subtotal).toBe(900);
   });
 
+  /** The same Friday, the same rates, two different totals — per listing. */
+  it("prices a Friday day booking by the listing's own weekend", () => {
+    const friday = futureFriday();
+    const rates = {
+      checkOut: friday,
+      pricePerNight: 2000,
+      serviceFeePercent: 0,
+      depositPercent: 30,
+      dayUse: true,
+      dayUsePrice: 600,
+      dayUseWeekendPrice: 900,
+    } as const;
+
+    expect(quote({ checkIn: friday, weekendMode: "short", ...rates }).subtotal).toBe(600);
+    expect(quote({ checkIn: friday, weekendMode: "long", ...rates }).subtotal).toBe(900);
+  });
+
   it("still takes a deposit, computed on the day total", () => {
     const day = futureWeekday();
     const q = quote({
       checkIn: day,
       checkOut: day,
       pricePerNight: 2000,
+      weekendMode: "short",
       serviceFeePercent: 0,
       depositPercent: 50,
       dayUse: true,
@@ -269,6 +337,7 @@ describe("quote (day use)", () => {
       checkIn,
       checkOut: addDays(checkIn, 2),
       pricePerNight: 1000,
+      weekendMode: "short",
       serviceFeePercent: 0,
       depositPercent: 30,
       // Present but false — a listing that offers day use must still be

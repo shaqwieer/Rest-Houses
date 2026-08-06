@@ -20,6 +20,7 @@ import {
   nightsBetween,
   nightsInRange,
   todayISO,
+  toWeekendMode,
 } from "../src/lib/dates";
 import { quote } from "../src/lib/pricing";
 import { bookingRequestMessage, whatsappLink } from "../src/lib/whatsapp";
@@ -68,10 +69,24 @@ async function main() {
   check("same-day range is zero nights", nightsBetween("2026-07-28", "2026-07-28"), 0);
   check("addDays over month end", addDays("2026-07-31", 1), "2026-08-01");
 
-  // UAE weekend is Friday + Saturday. 2026-07-31 is a Friday, 08-01 a Saturday.
-  check("Friday is weekend", isWeekend("2026-07-31"), true);
-  check("Saturday is weekend", isWeekend("2026-08-01"), true);
-  check("Sunday is not weekend", isWeekend("2026-08-02"), false);
+  // The weekend is per listing. 2026-07-31 is a Friday, 08-01 a Saturday and
+  // 08-02 a Sunday.
+  //
+  //   short — Sat + Sun. The UAE weekend, and what every listing gets by default.
+  //   long  — Fri + Sat + Sun. Sharjah's four-day working week.
+  check("short weekend: Friday is a weekday", isWeekend("2026-07-31", "short"), false);
+  check("short weekend: Saturday counts", isWeekend("2026-08-01", "short"), true);
+  check("short weekend: Sunday counts", isWeekend("2026-08-02", "short"), true);
+  check("long weekend: Friday counts", isWeekend("2026-07-31", "long"), true);
+  check("long weekend: Saturday counts", isWeekend("2026-08-01", "long"), true);
+  check("long weekend: Sunday counts", isWeekend("2026-08-02", "long"), true);
+  check("neither mode counts a Monday", isWeekend("2026-08-03", "long"), false);
+
+  // A stored value that is neither must resolve to a weekend, not to none — a
+  // mode of `undefined` would silently price every night at the weekday rate.
+  check("an unknown stored mode falls back to short", toWeekendMode("saturday"), "short");
+  check("null falls back to short", toWeekendMode(null), "short");
+  check("a known mode is kept", toWeekendMode("long"), "long");
 
   check("rejects an impossible date", isISODate("2026-02-31"), false);
   check("rejects a non-date string", isISODate("28-07-2026"), false);
@@ -99,6 +114,7 @@ async function main() {
     checkOut: "2026-07-29",
     pricePerNight: 1800,
     weekendPrice: 2300,
+    weekendMode: "short",
     serviceFeePercent: 5,
     depositPercent: 30,
   });
@@ -108,28 +124,48 @@ async function main() {
   check("total", weekdayQuote.total, 3780);
   check("deposit 30% of total", weekdayQuote.depositDue, 1134);
 
-  // Thu→Sun: Thu(30) weekday + Fri(31) + Sat(01) weekend = 1800 + 2300 + 2300.
+  // Thu→Sun on the UAE weekend: Thu(30) and Fri(31) are weekdays, Sat(01) is
+  // not = 1800 + 1800 + 2300.
   const weekendQuote = quote({
     checkIn: "2026-07-30",
     checkOut: "2026-08-02",
     pricePerNight: 1800,
     weekendPrice: 2300,
+    weekendMode: "short",
     serviceFeePercent: 5,
     depositPercent: 30,
   });
   check("weekend-spanning nights", weekendQuote.nights, 3);
-  check("weekend rate applied per-night", weekendQuote.subtotal, 1800 + 2300 + 2300);
+  check("weekend rate applied per-night", weekendQuote.subtotal, 1800 + 1800 + 2300);
   ok(
     "weekend nights flagged correctly",
-    weekendQuote.breakdown.filter((n) => n.weekend).length === 2,
+    weekendQuote.breakdown.filter((n) => n.weekend).length === 1,
+  );
+
+  // The same three nights on a Sharjah listing: Friday is a weekend night there,
+  // so the identical stay costs one uplift more. This is the whole feature.
+  const longWeekendQuote = quote({
+    checkIn: "2026-07-30",
+    checkOut: "2026-08-02",
+    pricePerNight: 1800,
+    weekendPrice: 2300,
+    weekendMode: "long",
+    serviceFeePercent: 5,
+    depositPercent: 30,
+  });
+  check("long weekend prices Friday at the weekend rate", longWeekendQuote.subtotal, 1800 + 2300 + 2300);
+  ok(
+    "long weekend flags two of the three nights",
+    longWeekendQuote.breakdown.filter((n) => n.weekend).length === 2,
   );
 
   // weekendPrice 0 must fall back to the weekday rate, not price at zero.
   const noWeekendRate = quote({
-    checkIn: "2026-07-31",
-    checkOut: "2026-08-01",
+    checkIn: "2026-08-01",
+    checkOut: "2026-08-02",
     pricePerNight: 1000,
     weekendPrice: 0,
+    weekendMode: "short",
     serviceFeePercent: 5,
     depositPercent: 30,
   });
@@ -265,6 +301,7 @@ async function main() {
     checkOut: addDays(freeStart, 2),
     pricePerNight: listing.pricePerNight,
     weekendPrice: listing.weekendPrice,
+    weekendMode: toWeekendMode(listing.weekendMode),
     serviceFeePercent: 5,
     depositPercent: 30,
   });

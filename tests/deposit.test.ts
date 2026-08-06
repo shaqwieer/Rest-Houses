@@ -4,6 +4,7 @@ import {
   isValidDepositPercent,
   quote,
   resolveDepositPercent,
+  type QuoteInput,
 } from "@/lib/pricing";
 
 /**
@@ -70,8 +71,9 @@ describe("quote()", () => {
     checkOut: "2026-07-29",
     pricePerNight: 1800,
     weekendPrice: 2300,
+    weekendMode: "short",
     serviceFeePercent: 5,
-  };
+  } satisfies Partial<QuoteInput>;
 
   it("computes subtotal, fee and total", () => {
     const q = quote({ ...twoWeekdayNights, depositPercent: 30 });
@@ -126,6 +128,7 @@ describe("quote()", () => {
         checkOut: "2026-07-28",
         pricePerNight: 953,
         weekendPrice: 0,
+        weekendMode: "short",
         serviceFeePercent: 5,
         depositPercent: 50,
       });
@@ -143,6 +146,7 @@ describe("quote()", () => {
             checkOut: "2026-07-30",
             pricePerNight: price,
             weekendPrice: 0,
+            weekendMode: "short",
             serviceFeePercent: 5,
             depositPercent: pct,
           });
@@ -164,12 +168,35 @@ describe("quote()", () => {
 
   describe("interaction with existing pricing rules", () => {
     it("applies the weekend rate before the deposit is taken", () => {
-      // Thu 30 (weekday) + Fri 31 + Sat 01 (weekend) = 1800 + 2300 + 2300
+      // Thu 30 + Fri 31 (both weekdays on the UAE weekend) + Sat 01 (weekend)
+      // = 1800 + 1800 + 2300
       const q = quote({
         checkIn: "2026-07-30",
         checkOut: "2026-08-02",
         pricePerNight: 1800,
         weekendPrice: 2300,
+        weekendMode: "short",
+        serviceFeePercent: 5,
+        depositPercent: 30,
+      });
+      expect(q.subtotal).toBe(5900);
+      expect(q.serviceFee).toBe(295);
+      expect(q.total).toBe(6195);
+      expect(q.depositDue).toBe(1859); // 30% of 6195 = 1858.5, rounded up
+    });
+
+    /**
+     * The same three nights on a Sharjah listing. Friday is a day off there, so
+     * it carries the uplift and the deposit rises with it — the deposit is a
+     * share of the total, so the weekend setting reaches all the way through.
+     */
+    it("charges Friday at the weekend rate on a long-weekend listing", () => {
+      const q = quote({
+        checkIn: "2026-07-30",
+        checkOut: "2026-08-02",
+        pricePerNight: 1800,
+        weekendPrice: 2300,
+        weekendMode: "long",
         serviceFeePercent: 5,
         depositPercent: 30,
       });
@@ -188,10 +215,11 @@ describe("quote()", () => {
 
     it("treats a zero weekend price as 'same as weekday'", () => {
       const q = quote({
-        checkIn: "2026-07-31", // a Friday
-        checkOut: "2026-08-01",
+        checkIn: "2026-08-01", // a Saturday — a weekend night on both modes
+        checkOut: "2026-08-02",
         pricePerNight: 1000,
         weekendPrice: 0,
+        weekendMode: "short",
         serviceFeePercent: 5,
         depositPercent: 30,
       });
