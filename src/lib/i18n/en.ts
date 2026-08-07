@@ -756,7 +756,7 @@ export const en: Dictionary = {
     weekendModeLong: "Long weekend — Friday, Saturday & Sunday",
     weekendModeCardTitle: "Weekend & this rest house's policy",
     weekendModeCardHint:
-      "Every rest house has its own weekend and its own policy. Choose the long weekend if yours is in Sharjah — the weekend rate then covers three nights instead of two.",
+      "Every rest house has its own weekend and its own policy. Choose the long weekend — the weekend rate then covers three nights instead of two.",
     listingCheckInLabel: "Check-in time",
     listingCheckOutLabel: "Check-out time",
     listingCheckTimeHint: "Leave blank to use the platform's time",
