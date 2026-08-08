@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import {
   deleteListing,
@@ -185,39 +186,18 @@ export function AdminListingRow({
 
       {/* Deleting cascades to bookings and reviews, so it gets an explicit
           confirm step rather than a one-tap destructive action. */}
-      {confirmingDelete && (
-        <div className="fixed inset-0 z-300 grid place-items-center bg-night-900/60 p-4 backdrop-blur-sm">
-          <div className="animate-pop-in w-full max-w-95 rounded-[24px] border border-line bg-surface p-5 shadow-e2">
-            <div className="mx-auto mb-3.5 grid size-14 place-items-center rounded-full bg-busy-bg">
-              <Icon name="delete" size={28} className="text-busy" />
-            </div>
-            <h2 className="m-0 mb-2 text-center font-display text-[17px] font-extrabold text-ink">
-              {t.admin.confirmDeleteTitle(listing.name)}
-            </h2>
-            <p className="m-0 mb-4.5 text-center text-[13.5px] leading-relaxed text-muted">
-              {t.admin.confirmDeleteBody}
-            </p>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={pending}
-                className="flex-1 rounded-2xl bg-busy p-3.5 text-[14px] font-bold text-white disabled:opacity-60"
-              >
-                {pending ? t.admin.deleting : t.admin.confirmDeleteYes}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={pending}
-                className="rounded-2xl border border-line bg-surface px-5 py-3.5 text-[14px] font-bold text-ink"
-              >
-                {t.common.cancel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={onDelete}
+        pending={pending}
+        label={t.admin.confirmDeleteTitle(listing.name)}
+        icon={<Icon name="delete" size={28} className="text-busy" />}
+        title={t.admin.confirmDeleteTitle(listing.name)}
+        body={t.admin.confirmDeleteBody}
+        confirmLabel={pending ? t.admin.deleting : t.admin.confirmDeleteYes}
+        cancelLabel={t.common.cancel}
+      />
     </div>
   );
 }

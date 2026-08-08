@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import {
   deleteRequest,
@@ -286,36 +287,24 @@ export function RequestCard({
         )}
       </div>
 
-      {confirmingDelete && (
-        <div className="fixed inset-0 z-300 grid place-items-center bg-night-900/60 p-4 backdrop-blur-sm">
-          <div className="animate-pop-in w-full max-w-90 rounded-[24px] border border-line bg-surface p-5 shadow-e2">
-            <h2 className="m-0 mb-2 text-center font-display text-[16px] font-extrabold text-ink">
-              {t.admin.deleteRequest}{" "}
-              <span dir="ltr">{formatReference(request.reference, locale)}</span>
-            </h2>
-            <p className="m-0 mb-4 text-center text-[13px] text-muted">
-              {t.admin.cannotBeUndone}
-            </p>
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={onDelete}
-                disabled={pending}
-                className="flex-1 rounded-2xl bg-busy p-3.5 text-[14px] font-bold text-white disabled:opacity-60"
-              >
-                {t.common.delete}
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(false)}
-                className="rounded-2xl border border-line bg-surface px-5 py-3.5 text-[14px] font-bold text-ink"
-              >
-                {t.common.cancel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={confirmingDelete}
+        onClose={() => setConfirmingDelete(false)}
+        onConfirm={onDelete}
+        pending={pending}
+        label={`${t.admin.deleteRequest} ${request.reference}`}
+        title={
+          <>
+            {t.admin.deleteRequest}{" "}
+            {/* The reference is Latin-shaped ("RQ-2420") even in Arabic, so it
+                needs its own direction or the "RQ-" lands after the digits. */}
+            <span dir="ltr">{formatReference(request.reference, locale)}</span>
+          </>
+        }
+        body={t.admin.cannotBeUndone}
+        confirmLabel={t.common.delete}
+        cancelLabel={t.common.cancel}
+      />
     </div>
   );
 }

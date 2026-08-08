@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Icon } from "@/components/ui/icon";
+import { Dialog } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { phoneFieldProps } from "@/components/ui/phone-input";
 import {
@@ -172,8 +173,7 @@ export function OwnerActions({
       </button>
 
       {/* ---- reject, with an optional reason ---- */}
-      {rejecting && (
-        <Modal onClose={() => setRejecting(false)}>
+      <Dialog open={rejecting} onClose={() => setRejecting(false)} label={t.admin.reject}>
           <h2 className="m-0 mb-3 font-display text-[16px] font-extrabold text-ink">
             {t.admin.reject}
           </h2>
@@ -204,12 +204,10 @@ export function OwnerActions({
               {t.common.cancel}
             </button>
           </div>
-        </Modal>
-      )}
+      </Dialog>
 
       {/* ---- manage account: details + password ---- */}
-      {managing && (
-        <Modal onClose={() => setManaging(false)} wide>
+      <Dialog open={managing} onClose={() => setManaging(false)} label={t.admin.manageOwnerTitle} wide>
           <h2 className="m-0 mb-3 font-display text-[16px] font-extrabold text-ink">
             {t.admin.manageOwnerTitle}
           </h2>
@@ -422,12 +420,14 @@ export function OwnerActions({
               </div>
             </form>
           )}
-        </Modal>
-      )}
+      </Dialog>
 
       {/* ---- membership expiry ---- */}
-      {editingExpiry && (
-        <Modal onClose={() => setEditingExpiry(false)}>
+      <Dialog
+        open={editingExpiry}
+        onClose={() => setEditingExpiry(false)}
+        label={t.admin.setExpiry}
+      >
           <h2 className="m-0 mb-3 font-display text-[16px] font-extrabold text-ink">
             {t.admin.setExpiry}
           </h2>
@@ -459,8 +459,7 @@ export function OwnerActions({
               {t.common.cancel}
             </button>
           </div>
-        </Modal>
-      )}
+      </Dialog>
     </div>
   );
 }
@@ -518,43 +517,7 @@ function TabButton({
   );
 }
 
-function Modal({
-  children,
-  onClose,
-  wide,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-  /** The manage dialog is a full form and needs more than the 400px default. */
-  wide?: boolean;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-300 grid place-items-center overflow-y-auto bg-night-900/60 p-4 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className={`animate-pop-in w-full ${
-          // The tabbed dialog is anchored to the top instead of centred. Its
-          // two tabs are very different heights — seven fields against two —
-          // and centring re-positioned the whole dialog on every switch,
-          // moving the tab bar ~150px out from under the pointer. The second
-          // click then landed on the backdrop and closed the dialog,
-          // discarding whatever had been typed.
-          //
-          // `self-start` is what does the work: the parent is
-          // `place-items-center`, so a margin alone cannot top-anchor a grid
-          // item — align-self has to be overridden for the offset to mean
-          // anything. The short confirm dialogs keep the centred treatment.
-          wide ? "max-w-140 self-start my-8" : "max-w-100 my-auto"
-        } rounded-[24px] border border-line bg-surface p-5 text-start shadow-e2`}
-        // Stops a click inside the dialog from reaching the backdrop's handler
-        // and closing it — a half-typed rejection reason should survive a
-        // stray click on the textarea.
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
+/* The local `Modal` that used to live here is now `Dialog` in
+   src/components/ui/dialog.tsx — same markup, same `wide` behaviour, but drawn
+   through a portal so no ancestor's `transform` can capture it. Its reasoning
+   about `self-start` moved across with it. */
