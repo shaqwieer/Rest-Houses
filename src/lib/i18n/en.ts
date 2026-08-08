@@ -735,8 +735,8 @@ export const en: Dictionary = {
     returnToQueue: "Return to the queue",
     deleteRequest: "Delete request",
     cannotBeUndone: "This cannot be undone.",
-    historyCapped:
-      "Showing the 200 most recent closed requests. Use the filters above for a specific status.",
+    pagerLabel: "Archive pages",
+    pageOf: (page, total) => `Page ${page} of ${total}`,
 
     newListingTitle: "Add a new rest house",
     editListingTitle: "Edit rest house",

@@ -8,6 +8,7 @@ import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
 import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
+import { ARCHIVE_PAGE_SIZE, Pager, pageFromParam } from "@/components/admin/pager";
 import Link from "next/link";
 
 /**
@@ -15,9 +16,10 @@ import Link from "next/link";
  *
  * Every query is filtered by `listing: { ownerId }`, so an owner sees requests
  * for their own rest houses and nothing else. As on the admin page, pending
- * requests are fetched separately and uncapped — they are the work queue this
- * page exists to drain, and any single capped-and-ordered query would eventually
- * push the oldest unanswered ones off the end.
+ * requests are fetched separately and never paged — they are the work queue
+ * this page exists to drain, and any single capped-and-ordered query would
+ * eventually push the oldest unanswered ones off the end. Only the closed
+ * archive below them is paged; see the note in src/components/admin/pager.tsx.
  */
 export default async function OwnerBookingsPage({
   searchParams,
@@ -35,8 +37,33 @@ export default async function OwnerBookingsPage({
   const statusFilter = isBookingStatus(sp.status) ? sp.status : null;
   const mine = { listing: { ownerId: owner.id } };
 
-  const [pending, history, counts, settings] = await Promise.all([
-    statusFilter && statusFilter !== "NEW"
+  const [counts, settings] = await Promise.all([
+    prisma.bookingRequest.groupBy({
+      by: ["status"],
+      where: mine,
+      _count: { _all: true },
+    }),
+    getSettings(),
+  ]);
+
+  const countFor = (status: string) => counts.find((c) => c.status === status)?._count._all ?? 0;
+  const totalCount = counts.reduce((sum, c) => sum + c._count._all, 0);
+  const newCount = countFor("NEW");
+
+  // Derived from the counts already fetched, rather than a second COUNT.
+  const archiveTotal = statusFilter
+    ? statusFilter === "NEW"
+      ? 0
+      : countFor(statusFilter)
+    : totalCount - newCount;
+  const totalPages = Math.max(1, Math.ceil(archiveTotal / ARCHIVE_PAGE_SIZE));
+  // Clamped before the query, so `?page=99` lands on the last real page rather
+  // than skipping past the end into the "no bookings yet" empty state.
+  const page = pageFromParam(sp.page, totalPages);
+
+  const [pending, history] = await Promise.all([
+    // First page only — an owner reading their archive is not draining a queue.
+    (statusFilter && statusFilter !== "NEW") || page > 1
       ? Promise.resolve([])
       : prisma.bookingRequest.findMany({
           where: { status: "NEW", ...mine },
@@ -52,22 +79,22 @@ export default async function OwnerBookingsPage({
             : { status: { not: "NEW" }, ...mine },
           orderBy: { createdAt: "desc" },
           include: WORKFLOW_INCLUDE,
-          take: 200,
+          skip: (page - 1) * ARCHIVE_PAGE_SIZE,
+          take: ARCHIVE_PAGE_SIZE,
         }),
-    prisma.bookingRequest.groupBy({
-      by: ["status"],
-      where: mine,
-      _count: { _all: true },
-    }),
-    getSettings(),
   ]);
 
-  const countFor = (status: string) => counts.find((c) => c.status === status)?._count._all ?? 0;
-  const totalCount = counts.reduce((sum, c) => sum + c._count._all, 0);
-  const newCount = countFor("NEW");
-
   const ordered = [...pending, ...history];
-  const historyCapped = history.length === 200;
+
+  const hrefFor = (n: number) => {
+    const query = new URLSearchParams();
+    // The active filter survives a page change — otherwise page 2 of one status
+    // quietly becomes page 2 of all of them.
+    if (statusFilter) query.set("status", statusFilter);
+    if (n > 1) query.set("page", String(n));
+    const qs = query.toString();
+    return qs ? `/owner/bookings?${qs}` : "/owner/bookings";
+  };
 
   return (
     <div className="animate-fade-up">
@@ -151,12 +178,7 @@ export default async function OwnerBookingsPage({
         </div>
       )}
 
-      {historyCapped && (
-        <p className="mt-4 flex items-center gap-2 text-[12.5px] text-muted">
-          <Icon name="info" size={16} className="text-bronze" />
-          {t.admin.historyCapped}
-        </p>
-      )}
+      <Pager page={page} totalPages={totalPages} hrefFor={hrefFor} t={t} locale={locale} />
     </div>
   );
 }

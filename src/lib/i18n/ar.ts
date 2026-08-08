@@ -822,7 +822,10 @@ export const ar = {
     returnToQueue: "إعادة إلى الانتظار",
     deleteRequest: "حذف الطلب",
     cannotBeUndone: "لا يمكن التراجع عن هذه الخطوة.",
-    historyCapped: "يُعرض أحدث ٢٠٠ طلب مُغلق. استخدم الفلاتر أعلاه لعرض حالة محددة.",
+    // حلّ محل تنبيه «يُعرض أحدث ٢٠٠ طلب» — الترقيم يصل إلى كل طلب، فلم يعد
+    // هناك سقف صامت يحتاج اعتذارًا.
+    pagerLabel: "تنقّل بين صفحات الأرشيف",
+    pageOf: (page: string, total: string) => `صفحة ${page} من ${total}`,
 
     // listing editor
     newListingTitle: "إضافة استراحة جديدة",
