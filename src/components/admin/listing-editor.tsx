@@ -251,12 +251,17 @@ export function ListingEditor({
    * both cases the owner is looking at the answer they would keep, not a label
    * that merely says "default".
    */
-  const inheritedCancelLabel =
-    draft.freeCancelHours === null
-      ? t.listing.upToHours(arNum(platformPolicy.freeCancelHours, locale))
-      : draft.freeCancelHours > 0
-        ? t.listing.upToHours(arNum(draft.freeCancelHours, locale))
-        : t.listing.noFreeCancel;
+  const cancelWindowLabel = (hours: number) =>
+    // 0 goes through the same "in words" branch here as it does on the listing
+    // page and in the booking form. The platform's window can be 0 too — the
+    // settings field allows it — so guarding only the listing's own figure
+    // would print "حتى ٠ ساعة" in the menu of every listing that inherits from
+    // a platform allowing no free cancellation.
+    hours > 0 ? t.listing.upToHours(arNum(hours, locale)) : t.listing.noFreeCancel;
+
+  const inheritedCancelLabel = cancelWindowLabel(
+    draft.freeCancelHours === null ? platformPolicy.freeCancelHours : draft.freeCancelHours,
+  );
 
   return (
     <div className="animate-fade-up">

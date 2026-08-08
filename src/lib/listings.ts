@@ -86,6 +86,27 @@ const listingInclude = {
 
 type ListingRow = Prisma.ListingGetPayload<{ include: typeof listingInclude }>;
 
+/**
+ * The three columns that answer "when must a day guest leave?", as one unit.
+ *
+ * Every read that reaches `localizeListing` with an explicit `select` has to
+ * take all three or none, because `resolveDayUseCheckOut` reads the hour first
+ * and the free text only as a fallback. A caller that selects the text and
+ * forgets the hour gets "" for every listing that has been converted — the hour
+ * is set, but unseen, and `stayHourWrite` has already emptied the text it falls
+ * back to. No type error, no test failure, just a leave-by line that vanishes
+ * from the confirmation page and the owner's WhatsApp message.
+ *
+ * Spreading this constant is what makes that impossible to get half-right. Same
+ * device as `WORKFLOW_INCLUDE` in src/lib/booking-view.ts. Reads that use
+ * `listingInclude` need none of this — an `include` takes every scalar.
+ */
+export const DAY_USE_SELECT = {
+  dayUseCheckOutHour: true,
+  dayUseCheckOutTime: true,
+  dayUseCheckOutTimeEn: true,
+} as const satisfies Prisma.ListingSelect;
+
 export type ListingView = ReturnType<typeof toView>;
 
 function toView(row: ListingRow) {

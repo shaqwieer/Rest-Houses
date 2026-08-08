@@ -7,7 +7,7 @@ import { WhatsappAutoSend } from "@/components/booking/whatsapp-auto-send";
 import { prisma } from "@/lib/prisma";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
-import { localizeListing } from "@/lib/listings";
+import { DAY_USE_SELECT, localizeListing } from "@/lib/listings";
 import { publicOwnerFields } from "@/lib/owners";
 import { isDepositPaymentEnabled } from "@/lib/payments";
 import { arDayMonth } from "@/lib/dates";
@@ -66,8 +66,10 @@ export default async function BookingConfirmationPage({
           // leave-by hour. `localizeListing` returns "" for columns a caller
           // did not ask for, so omitting these would drop the line silently —
           // no error, just an owner who never learns when the guest leaves.
-          dayUseCheckOutTime: true,
-          dayUseCheckOutTimeEn: true,
+          // Spread as a unit: the hour and the two legacy text columns are one
+          // answer in three parts, and taking some of them is the silent-""
+          // failure again. See `DAY_USE_SELECT`.
+          ...DAY_USE_SELECT,
           ownerName: true,
           ownerWhatsapp: true,
           owner: { select: publicOwnerFields() },
