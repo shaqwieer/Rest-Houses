@@ -1,0 +1,33 @@
+-- ---------------------------------------------------------------------------
+-- The free-cancellation window becomes a named choice instead of a number.
+--
+-- One new column, defaulting to "" — "this listing predates the list". Nothing
+-- is dropped, and the same three-tier arrangement the stay-time migration set
+-- up applies here:
+--
+--     cancelPolicy set   -> that answer
+--     else freeCancelHours -> the number, resolved exactly as it is today
+--     else                 -> the platform's window
+--
+-- ─── Why a mode and not an integer ------------------------------------------
+-- Five of the six answers an owner can now give are counts of hours
+-- (0 / 24 / 48 / 72 / 120). The sixth, "اسأل المالك", is not a count of
+-- anything. Encoding it as -1 looks harmless until `clampHours` floors it to 0
+-- and the listing page starts announcing "no free cancellation" on behalf of an
+-- owner who said "talk to me" — a refusal they never made.
+--
+-- ─── Why the numbers are not backfilled --------------------------------------
+-- They could be, for the five that map exactly. They are not, because the
+-- rows that DON'T map are the reason to be careful: `freeCancelHours` accepted
+-- anything from 0 to 720, so the catalogue holds 36s and 100s. Converting the
+-- tidy ones and leaving the rest would split the catalogue across two
+-- representations for no gain — tier 2 already renders every one of them
+-- correctly and unchanged. Owners convert their own listing by picking from the
+-- list; `npm run policy-audit` says who is left.
+--
+-- NULL vs 0 survives all of this untouched: NULL still means "use the
+-- platform's window" and 0 still means "no free cancellation", which is why
+-- neither can be collapsed into the new column by a blanket UPDATE.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "Listing" ADD COLUMN "cancelPolicy" TEXT NOT NULL DEFAULT '';

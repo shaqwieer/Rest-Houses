@@ -303,6 +303,31 @@ model SiteSettings {
   serviceFeePercent Int     @default(0)
   depositPercent    Int     @default(30)
   freeCancelHours   Int     @default(48)
+
+  // ---------------------------------------------------------------------
+  // The platform's fallback arrival and departure hours, as numbers.
+  //
+  // 0–23, or null for "nobody has picked one yet". Everything a visitor reads
+  // is generated from these by `formatHour()` in src/lib/clock.ts, so one
+  // stored 16 prints "٤:٠٠ مساءً" and "4:00 PM" without an operator writing
+  // either of them.
+  //
+  // The four `*Time` / `*TimeEn` columns below them are what these replace.
+  // They are NOT dead: they are the middle tier of the fallback, kept because
+  // dropping them would have been a truthfulness regression. An operator who
+  // had typed "٣ عصرًا" — genuinely not the platform's four o'clock — would
+  // have had that answer replaced by the new column's default and started
+  // advertising an hour they never chose. So the hour wins where one is set,
+  // the old text answers where it isn't, and a row nobody migrates renders
+  // exactly as it does today. See `resolveStayTimes` in src/lib/policies.ts.
+  //
+  // Nullable rather than `@default(16)` for the same reason: a default would
+  // have silently overwritten every operator's existing text on deploy.
+  checkInHour  Int?
+  checkOutHour Int?
+
+  // Legacy free text — read only while the hour above is null. Emptied row by
+  // row as operators pick an hour; `npm run policy-audit` lists what is left.
   checkInTime       String  @default("٤ عصرًا")
   checkOutTime      String  @default("١٢ ظهرًا")
 
@@ -422,12 +447,20 @@ model Listing {
   // how the overnight flow ends anyway.
   //
   // 0 means "not offered" and renders nothing at all: an owner who leaves these
-  // blank sees exactly the page they have today. `dayUseCheckOutTime` is the
-  // hour the guest must be out by, free text ("١٠ مساءً") because owners write
-  // it in their own words; the `En` sibling follows the same blank-means-fall-
-  // back-to-Arabic rule as `nameEn` above.
+  // blank sees exactly the page they have today.
+  //
+  // `dayUseCheckOutHour` is the hour the guest must be out by, 0–23. null here
+  // means "not offered", NOT "inherit" — and that difference is load-bearing.
+  // The arrival and departure hours above fall back to the platform's when a
+  // listing leaves them unset; this one must never do that, or every rest house
+  // that does not do day bookings would start advertising a leave-by time for a
+  // booking it does not take. See `resolveDayUseCheckOut` in
+  // src/lib/policies.ts, which deliberately has no platform tier.
   dayUsePrice          Int    @default(0) // weekdays, no overnight stay
   dayUseWeekendPrice   Int    @default(0) // Friday/Saturday, no overnight stay
+  dayUseCheckOutHour   Int?
+  // Legacy free text — read only while the hour above is null, per the note on
+  // SiteSettings.checkInHour.
   dayUseCheckOutTime   String @default("")
   dayUseCheckOutTimeEn String?
 
@@ -486,11 +519,11 @@ model Listing {
   // rest house has its own policy, so each listing stores its own.
   //
   // ─── Blank / null means "inherit", and null is not 0 ──────────────────
-  // The times follow `dayUseCheckOutTime` above: free text, "" meaning the
-  // owner has not set one and the platform default should show. Free text
-  // because owners write these in their own words ("٤ عصرًا", "بعد العصر"),
-  // and the `En` siblings follow the same blank-means-fall-back-to-Arabic rule
-  // as `nameEn`.
+  // `checkInHour` / `checkOutHour` are 0–23, null meaning "use the platform's".
+  // They replaced four free-text columns an owner had to fill in twice, once
+  // per language — see the note on SiteSettings.checkInHour for why the text
+  // columns below survive as the middle tier of the fallback rather than being
+  // dropped, and src/lib/clock.ts for why an hour is a number here.
   //
   // `freeCancelHours` follows `depositPercent` instead, and for the same
   // reason: null and 0 are genuinely different answers. null = "use the
@@ -498,10 +531,32 @@ model Listing {
   // it with `resolveFreeCancelHours()` in src/lib/policies.ts — a truthiness
   // check would turn every no-free-cancellation listing back into a 48-hour
   // one, which is a promise the platform would be making on the owner's behalf.
+  checkInHour    Int?
+  checkOutHour   Int?
+  // Legacy free text — read only while the matching hour above is null.
   checkInTime    String  @default("")
   checkInTimeEn  String?
   checkOutTime   String  @default("")
   checkOutTimeEn String?
+
+  // ---------------------------------------------------------------------
+  // What this rest house says about cancelling. One of CANCEL_POLICIES in
+  // src/lib/policies.ts, or "" for a listing that predates the list.
+  //
+  //   "NONE" | "H24" | "H48" | "H72" | "H120" | "ASK"
+  //
+  // A named mode rather than a number because "اسأل المالك" — how a great many
+  // of these arrangements actually work — is not a count of hours, and the
+  // obvious `-1` sentinel is destroyed by `clampHours`, which floors at 0 and
+  // would turn "ask me" into "no free cancellation at all". A String with a
+  // read-side normaliser, exactly like `weekendMode`.
+  //
+  // `freeCancelHours` below is NOT dead: it is the middle tier, read whenever
+  // this is "". Backfilling those rows would have frozen today's platform
+  // window onto the whole catalogue and deleted the inheritance that null
+  // means. See `resolveCancelPolicy`.
+  cancelPolicy   String  @default("")
+
   freeCancelHours Int?
 
   // Deposit the owner asks for, as a whole percentage of the booking total.

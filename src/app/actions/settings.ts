@@ -5,10 +5,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { SETTINGS_ID } from "@/lib/settings";
+import { stayHourWrite } from "@/lib/clock";
 import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
 import {
   optionalEmailField,
   optionalPhoneField,
+  stayHourField,
   whatsappField,
 } from "@/lib/validation";
 import type { ActionResult } from "./listings";
@@ -85,6 +87,21 @@ function settingsSchema(t: Dictionary) {
   // At least one day, or a review link would expire before it was sent.
   reviewInviteDays: z.coerce.number().int().min(1).max(365),
   freeCancelHours: z.coerce.number().int().min(0).max(720),
+  /**
+   * The platform's fallback arrival and departure hours, 0–23.
+   *
+   * `min(0)`, not `min(1)` — midnight is a real answer and stores as 0. The
+   * *menu* offers the hours in reading order, 1 AM last-to-midnight, but that
+   * ordering lives in `STAY_HOURS` (src/lib/clock.ts) and must not leak into
+   * the valid range, or midnight becomes unsavable.
+   *
+   * Nullable through the same `preprocess` shape `Listing.freeCancelHours`
+   * uses, and for the same reason: `Number("")` is 0, and 0 here means
+   * midnight. Without this, an operator submitting the form with the option
+   * left on "keep the current text" would set the platform to midnight.
+   */
+  checkInHour: stayHourField(),
+  checkOutHour: stayHourField(),
   checkInTime: z.string().trim().max(40).default("٤ عصرًا"),
   checkOutTime: z.string().trim().max(40).default("١٢ ظهرًا"),
   depositPaymentsEnabled: z.coerce.boolean().default(false),
@@ -143,6 +160,21 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     };
   }
 
+  // The four stay-time text columns are no longer rendered by the form — an
+  // hour is picked from a menu instead. They are still read as the middle tier
+  // of the fallback, so they are carried through from the stored row rather
+  // than defaulted: reconstructing them from a form that does not post them
+  // would silently reset an operator's own wording on the next unrelated save.
+  const current = await prisma.siteSettings.findUnique({
+    where: { id: SETTINGS_ID },
+    select: {
+      checkInTime: true,
+      checkInTimeEn: true,
+      checkOutTime: true,
+      checkOutTimeEn: true,
+    },
+  });
+
   const parsed = settingsSchema(t).safeParse({
     siteName: formData.get("siteName"),
     tagline: formData.get("tagline") ?? "",
@@ -174,8 +206,14 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     commissionPercent: formData.get("commissionPercent") ?? 5,
     reviewInviteDays: formData.get("reviewInviteDays") ?? 15,
     freeCancelHours: formData.get("freeCancelHours") ?? 48,
-    checkInTime: formData.get("checkInTime") || "٤ عصرًا",
-    checkOutTime: formData.get("checkOutTime") || "١٢ ظهرًا",
+    checkInHour: formData.get("checkInHour"),
+    checkOutHour: formData.get("checkOutHour"),
+    // The form no longer renders these; the stored text is carried through
+    // untouched so a settings save cannot wipe the legacy value an operator is
+    // still relying on. `applyStayHours` below clears it, but only for the one
+    // of the pair that just gained an hour.
+    checkInTime: current?.checkInTime ?? "٤ عصرًا",
+    checkOutTime: current?.checkOutTime ?? "١٢ ظهرًا",
     depositPaymentsEnabled: formData.get("depositPaymentsEnabled") === "on",
     heroTitle: formData.get("heroTitle"),
     heroTitleAlt: formData.get("heroTitleAlt") ?? "",
@@ -187,8 +225,8 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     siteNameEn: formData.get("siteNameEn") ?? "",
     taglineEn: formData.get("taglineEn") ?? "",
     addressLineEn: formData.get("addressLineEn") ?? "",
-    checkInTimeEn: formData.get("checkInTimeEn") ?? "",
-    checkOutTimeEn: formData.get("checkOutTimeEn") ?? "",
+    checkInTimeEn: current?.checkInTimeEn ?? "",
+    checkOutTimeEn: current?.checkOutTimeEn ?? "",
     seoTitleEn: formData.get("seoTitleEn") ?? "",
     seoDescriptionEn: formData.get("seoDescriptionEn") ?? "",
     heroTitleEn: formData.get("heroTitleEn") ?? "",
@@ -208,11 +246,32 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
 
   const d = parsed.data;
 
+  // Whichever of the two just gained an hour drops its legacy text; the other
+  // keeps it. See `stayHourWrite` in src/lib/clock.ts.
+  const checkIn = stayHourWrite(d.checkInHour, {
+    arabic: d.checkInTime,
+    english: d.checkInTimeEn,
+  });
+  const checkOut = stayHourWrite(d.checkOutHour, {
+    arabic: d.checkOutTime,
+    english: d.checkOutTimeEn,
+  });
+
+  const stayTimes = {
+    checkInHour: checkIn.hour,
+    checkInTime: checkIn.arabic,
+    checkInTimeEn: checkIn.english,
+    checkOutHour: checkOut.hour,
+    checkOutTime: checkOut.arabic,
+    checkOutTimeEn: checkOut.english,
+  };
+
   try {
     await prisma.siteSettings.upsert({
       where: { id: SETTINGS_ID },
       update: {
         ...d,
+        ...stayTimes,
         // Empty string means "no link" — store NULL so the footer can skip it.
         email: d.email || null,
         phone: d.phone || null,
@@ -224,7 +283,7 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
         seoTitle: d.seoTitle || null,
         seoDescription: d.seoDescription || null,
       },
-      create: { id: SETTINGS_ID, ...d },
+      create: { id: SETTINGS_ID, ...d, ...stayTimes },
     });
   } catch (error) {
     console.error("saveSettings failed:", error);

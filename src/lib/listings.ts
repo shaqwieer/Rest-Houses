@@ -5,6 +5,7 @@ import { parseIdList } from "./json-list";
 import { cityLabel, DEFAULT_PHOTO_URL, getAmenities, type SortId } from "./constants";
 import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 import { activeOwnerWhere, publicOwnerFields } from "./owners";
+import { resolveDayUseCheckOut } from "./policies";
 import type { ISODate } from "./dates";
 import { nightsInRange, occupiedDays, todayISO } from "./dates";
 
@@ -155,6 +156,7 @@ export function localizeListing(
      * nothing about day bookings. A caller that doesn't ask for these gets ""
      * back, which is the same thing "not offered" means everywhere else.
      */
+    dayUseCheckOutHour?: number | null;
     dayUseCheckOutTime?: string;
     dayUseCheckOutTimeEn?: string | null;
   },
@@ -165,11 +167,11 @@ export function localizeListing(
     description: localized(listing.description, listing.descriptionEn, locale),
     area:
       localized(listing.area, listing.areaEn, locale) || cityLabel(listing.city, locale),
-    dayUseCheckOutTime: localized(
-      listing.dayUseCheckOutTime ?? "",
-      listing.dayUseCheckOutTimeEn ?? null,
-      locale,
-    ),
+    // Goes through `resolveDayUseCheckOut` rather than `localized` so a listing
+    // that has picked an hour renders it in both languages, while one still on
+    // the old free text renders exactly what it renders today. Crucially it has
+    // no platform fallback — "" here means "no day bookings", not "unset".
+    dayUseCheckOutTime: resolveDayUseCheckOut(listing, locale),
   };
 }
 

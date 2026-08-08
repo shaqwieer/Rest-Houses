@@ -46,15 +46,16 @@ export default async function NewOwnerListingPage() {
         // Blank inherits the platform's times and cancellation window, which is
         // exactly the page a new listing has today. An owner who wants their
         // own hours types them here.
+        checkInHour: null,
+        checkOutHour: null,
         checkInTime: "",
-        checkInTimeEn: "",
         checkOutTime: "",
-        checkOutTimeEn: "",
+        cancelPolicy: "",
         freeCancelHours: null,
         dayUsePrice: 0,
         dayUseWeekendPrice: 0,
+        dayUseCheckOutHour: null,
         dayUseCheckOutTime: "",
-        dayUseCheckOutTimeEn: "",
         securityDeposit: 0,
         instagram: "",
         capacity: 40,

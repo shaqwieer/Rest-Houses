@@ -9,6 +9,7 @@ import { AvailabilityCalendar, type DateRange } from "./availability-calendar";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import type { ResolvedCancelPolicy } from "@/lib/policies";
 
 /** The calendar section in the main column. Reads/writes the shared selection. */
 export function CalendarSection({
@@ -185,7 +186,7 @@ export function BookingCard({
   serviceFeePercent,
   depositPercent,
   securityDeposit,
-  freeCancelHours,
+  cancel,
   ownerWhatsappHref,
 }: {
   slug: string;
@@ -197,7 +198,7 @@ export function BookingCard({
   depositPercent: number;
   /** Refundable, collected by the owner. 0 hides the line. */
   securityDeposit: number;
-  freeCancelHours: number;
+  cancel: ResolvedCancelPolicy;
   /** "" when this listing has no usable WhatsApp number — hides the button. */
   ownerWhatsappHref: string;
 }) {
@@ -355,14 +356,14 @@ export function BookingCard({
           <span className="block text-[14px] font-bold text-ink">
             {t.listing.ownerLabel(ownerName)}
           </span>
-          {/* An owner who allows no free cancellation stores 0, and this line
-              is the reassuring green one — printing "إلغاء مجاني خلال ٠ ساعة"
-              there would promise the opposite of what they set. It drops out
-              entirely rather than turning into a warning: the terms are stated
-              in full in the key-facts row above. */}
-          {freeCancelHours > 0 && (
+          {/* This is the reassuring green line, so it only appears when there
+              is something reassuring to say. An owner who allows no free
+              cancellation, or who wants to be asked, gets no line at all rather
+              than a green one carrying a caveat — the terms are stated in full
+              in the key-facts row above. */}
+          {cancel.kind === "hours" && (
             <span className="block text-[12px] font-semibold text-ok">
-              {t.listing.freeCancel(arNum(freeCancelHours, locale))}
+              {t.listing.freeCancel(arNum(cancel.hours, locale))}
             </span>
           )}
         </span>

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isValidPhone, normalizePhone, phoneProblem } from "./phone";
+import { normalizeDigits } from "./format";
 import type { Dictionary } from "./i18n";
 
 /**
@@ -100,4 +101,33 @@ export function emailField(t: Dictionary) {
 /** The same, but blank-allowed for records where an address is optional. */
 export function optionalEmailField(t: Dictionary) {
   return emailField(t).or(z.literal("")).default("");
+}
+
+/**
+ * An hour of the day from a `<select>`: 0–23, or null when nothing was picked.
+ *
+ * Shared by the listing editor and the settings form, which both offer the same
+ * menu and both need the same two traps handled:
+ *
+ *   • `Number("")` is 0, and 0 is **midnight** here — a real, choosable answer.
+ *     Coercing straight to a number would turn "I left this alone" into "the
+ *     guest arrives at midnight" on every save. Same trap `freeCancelHours`
+ *     documents, with a nastier payload: there, 0 at least means something an
+ *     owner might have meant.
+ *   • an unrecognised value (a crafted post, a stale tab) resolves to null
+ *     rather than failing the whole save of an otherwise valid record — the
+ *     same judgement `weekendMode`'s `.catch()` makes. null is the safe
+ *     landing: it means "unset", which every reader already handles.
+ *
+ * `normalizeDigits` first, so "١٦" submitted by an Arabic keyboard is the 16
+ * the menu offered.
+ */
+export function stayHourField() {
+  return z.preprocess((value) => {
+    if (value === null || value === undefined) return null;
+    const raw = normalizeDigits(String(value)).trim();
+    if (raw === "") return null;
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 0 && n <= 23 ? n : null;
+  }, z.number().int().min(0).max(23).nullable());
 }

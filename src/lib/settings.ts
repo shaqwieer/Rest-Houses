@@ -60,6 +60,11 @@ const FALLBACK = {
   // `platformCommission()` in src/lib/pricing.ts.
   commissionPercent: 5,
   reviewInviteDays: 15,
+  // null, not 16/12: the fallback chain in src/lib/policies.ts reads the legacy
+  // text below whenever the hour is unset, and a fresh install with no settings
+  // row should behave exactly like one whose operator has not picked an hour.
+  checkInHour: null,
+  checkOutHour: null,
   checkInTime: "٤ عصرًا",
   checkOutTime: "١٢ ظهرًا",
   depositPaymentsEnabled: false,

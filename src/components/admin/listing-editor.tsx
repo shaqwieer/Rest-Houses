@@ -20,6 +20,9 @@ import {
 import { AMENITIES, CATEGORIES, CITIES, label } from "@/lib/constants";
 import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
+import { stayHourOptions } from "@/lib/clock";
+import { CANCEL_POLICIES } from "@/lib/policies";
+import type { Locale } from "@/lib/i18n/config";
 import type { WeekendMode } from "@/lib/dates";
 
 /**
@@ -60,15 +63,23 @@ export type ListingDraft = {
   /** Which days `weekendPrice` covers — "short" (Sat+Sun) or "long" (+Friday). */
   weekendMode: WeekendMode;
   /**
-   * This rest house's own stay policy. "" on the times and null on the hours
-   * mean "inherit the platform's", which is what a listing nobody has touched
-   * carries — and null is NOT 0 on the hours: 0 is an owner saying they allow
-   * no free cancellation. See `resolveFreeCancelHours` in src/lib/policies.ts.
+   * This rest house's own stay policy.
+   *
+   * `checkInHour` / `checkOutHour` are 0–23 or null for "inherit the
+   * platform's". `checkInTime` / `checkOutTime` are the free text this listing
+   * had before the menu existed — passed in only so the first option of the
+   * menu can name it, never edited directly again.
+   *
+   * On `freeCancelHours`, null is NOT 0: 0 is an owner saying they allow no
+   * free cancellation. See `resolveFreeCancelHours` in src/lib/policies.ts.
    */
+  checkInHour: number | null;
+  checkOutHour: number | null;
   checkInTime: string;
-  checkInTimeEn: string;
   checkOutTime: string;
-  checkOutTimeEn: string;
+  /** One of CANCEL_POLICIES, or "" for a listing that predates the list. */
+  cancelPolicy: string;
+  /** The old number, shown in the first option so the menu tells the truth. */
   freeCancelHours: number | null;
   /**
    * Day-use (بدون مبيت) rates, the hour the guest leaves by, and the refundable
@@ -78,8 +89,9 @@ export type ListingDraft = {
    */
   dayUsePrice: number;
   dayUseWeekendPrice: number;
+  /** null = day bookings not offered. No platform fallback for this one. */
+  dayUseCheckOutHour: number | null;
   dayUseCheckOutTime: string;
-  dayUseCheckOutTimeEn: string;
   securityDeposit: number;
   /** Full profile URL, or "" for a rest house with no Instagram. */
   instagram: string;
@@ -229,6 +241,22 @@ export function ListingEditor({
   }
 
   const sectionLabel = "mb-2.5 text-[12.5px] font-bold text-bronze";
+
+  /**
+   * What "leave the first option selected" currently resolves to.
+   *
+   * Two cases, same as the hour menus. A listing carrying an old
+   * `freeCancelHours` shows that number, because that is the promise its page
+   * is making right now; one carrying nothing shows the platform's window. In
+   * both cases the owner is looking at the answer they would keep, not a label
+   * that merely says "default".
+   */
+  const inheritedCancelLabel =
+    draft.freeCancelHours === null
+      ? t.listing.upToHours(arNum(platformPolicy.freeCancelHours, locale))
+      : draft.freeCancelHours > 0
+        ? t.listing.upToHours(arNum(draft.freeCancelHours, locale))
+        : t.listing.noFreeCancel;
 
   return (
     <div className="animate-fade-up">
@@ -436,78 +464,56 @@ export function ListingEditor({
           </Field>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
-            <Field
-              label={t.admin.listingCheckInLabel}
-              hint={t.admin.usingPlatformTime(platformPolicy.checkInTime)}
-              error={errors.checkInTime}
-            >
-              <TextInput
-                name="checkInTime"
-                defaultValue={draft.checkInTime}
-                placeholder={platformPolicy.checkInTime}
+            <Field label={t.admin.listingCheckInLabel} error={errors.checkInHour}>
+              <StayHourSelect
+                name="checkInHour"
+                hour={draft.checkInHour}
+                legacyText={draft.checkInTime}
+                inheritLabel={t.admin.usePlatformTime(platformPolicy.checkInTime)}
+                keepLabel={t.admin.keepCurrentTime}
+                locale={locale}
               />
             </Field>
 
-            <Field
-              label={t.admin.listingCheckOutLabel}
-              hint={t.admin.usingPlatformTime(platformPolicy.checkOutTime)}
-              error={errors.checkOutTime}
-            >
-              <TextInput
-                name="checkOutTime"
-                defaultValue={draft.checkOutTime}
-                placeholder={platformPolicy.checkOutTime}
+            <Field label={t.admin.listingCheckOutLabel} error={errors.checkOutHour}>
+              <StayHourSelect
+                name="checkOutHour"
+                hour={draft.checkOutHour}
+                legacyText={draft.checkOutTime}
+                inheritLabel={t.admin.usePlatformTime(platformPolicy.checkOutTime)}
+                keepLabel={t.admin.keepCurrentTime}
+                locale={locale}
               />
             </Field>
 
-            {/* Blank ≠ 0 here, and the hint says so. Blank means "whatever the
-                platform allows"; a typed 0 means this owner allows no free
-                cancellation at all, and the listing page then says so in
-                words. `defaultValue` is "" for null rather than 0 — rendering
-                null as 0 would silently convert every inheriting listing into
-                a no-cancellation one the first time it was saved. */}
+            {/* Six answers from a list, replacing a free number box. "No free
+                cancellation" is one of the six and is NOT the same as leaving
+                the first option selected — that one inherits. The first
+                option's label names what is currently inherited or already
+                stored, for the same reason the hour menus do: a menu that says
+                "platform policy" while the page says something else is lying
+                about the page. */}
             <Field
               label={t.admin.listingFreeCancelLabel}
-              hint={
-                errors.freeCancelHours ? undefined : t.admin.listingFreeCancelHint
-              }
-              error={errors.freeCancelHours}
+              hint={errors.cancelPolicy ? undefined : t.admin.listingFreeCancelHint}
+              error={errors.cancelPolicy}
             >
-              <TextInput
-                name="freeCancelHours"
-                type="number"
-                min={0}
-                max={720}
-                defaultValue={draft.freeCancelHours ?? ""}
-                placeholder={String(platformPolicy.freeCancelHours)}
-                invalid={Boolean(errors.freeCancelHours)}
-                className="font-bold"
-              />
+              <Select name="cancelPolicy" defaultValue={draft.cancelPolicy}>
+                <option value="">
+                  {t.admin.usePlatformCancel(inheritedCancelLabel)}
+                </option>
+                {CANCEL_POLICIES.map((id) => (
+                  <option key={id} value={id}>
+                    {t.admin.cancelPolicyOptions[id]}
+                  </option>
+                ))}
+              </Select>
             </Field>
           </div>
 
-          {/* The two times are free text, so they need the English siblings
-              every other stored string on a listing has. Blank falls back to
-              the Arabic, which is at least this venue's real hour — never to
-              the platform's, which would not be. */}
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            <Field label={t.admin.listingCheckInEnLabel} error={errors.checkInTimeEn}>
-              <TextInput
-                name="checkInTimeEn"
-                dir="ltr"
-                defaultValue={draft.checkInTimeEn}
-                placeholder={t.admin.listingCheckInEnPlaceholder}
-              />
-            </Field>
-            <Field label={t.admin.listingCheckOutEnLabel} error={errors.checkOutTimeEn}>
-              <TextInput
-                name="checkOutTimeEn"
-                dir="ltr"
-                defaultValue={draft.checkOutTimeEn}
-                placeholder={t.admin.listingCheckOutEnPlaceholder}
-              />
-            </Field>
-          </div>
+          {/* The English boxes that used to sit here are gone. An hour is the
+              same fact in both languages, so it is stored once as a number and
+              rendered per locale by `formatHour` — see src/lib/clock.ts. */}
         </div>
 
         {/* ---- day use (بدون مبيت) ----
@@ -553,34 +559,25 @@ export function ListingEditor({
               />
             </Field>
 
+            {/* The one option that is NOT "use the platform's time". Nothing
+                selected here means this rest house does not take day bookings
+                at all, so there is nothing to inherit — see
+                `resolveDayUseCheckOut` in src/lib/policies.ts. */}
             <Field
               label={t.admin.dayUseCheckOutLabel}
               hint={t.admin.dayUseCheckOutHint}
-              error={errors.dayUseCheckOutTime}
+              error={errors.dayUseCheckOutHour}
             >
-              <TextInput
-                name="dayUseCheckOutTime"
-                defaultValue={draft.dayUseCheckOutTime}
-                placeholder={t.admin.dayUseCheckOutPlaceholder}
+              <StayHourSelect
+                name="dayUseCheckOutHour"
+                hour={draft.dayUseCheckOutHour}
+                legacyText={draft.dayUseCheckOutTime}
+                inheritLabel={t.admin.dayUseCheckOutNotSet}
+                keepLabel={t.admin.keepCurrentTime}
+                locale={locale}
               />
             </Field>
           </div>
-
-          {/* The leave-by time is the one free-text value in this block, so it
-              gets the same English sibling every other stored string on a
-              listing has. Blank falls back to the Arabic. */}
-          <Field
-            label={t.admin.dayUseCheckOutEnLabel}
-            error={errors.dayUseCheckOutTimeEn}
-            className="mt-3"
-          >
-            <TextInput
-              name="dayUseCheckOutTimeEn"
-              dir="ltr"
-              defaultValue={draft.dayUseCheckOutTimeEn}
-              placeholder={t.admin.dayUseCheckOutEnPlaceholder}
-            />
-          </Field>
         </div>
 
         {/* ---- deposit ----
@@ -909,6 +906,59 @@ export function ListingEditor({
         </div>
       </form>
     </div>
+  );
+}
+
+/**
+ * The hour menu, shared by check-in, check-out and the day-use leave-by time.
+ *
+ * ─── The first option is the interesting one ─────────────────────────────────
+ * Its value is always "" — "no hour picked" — but its *label* depends on what
+ * that currently resolves to, and getting this wrong would make the menu lie
+ * about the page:
+ *
+ *   • this listing still has free text from before the menu existed
+ *       → "الوقت الحالي: بعد العصر". That text is what the listing page prints
+ *         today, so an option reading "use the platform's time" would be false.
+ *         Naming it also turns the menu into the migration prompt: the owner
+ *         sees their own wording and the twenty-four hours it could become.
+ *   • nothing stored at all
+ *       → "use the platform's time (4:00 PM)", with the hour spelled out. An
+ *         owner cannot decide whether their hour differs from the default
+ *         without being shown the default.
+ *
+ * Picking any hour retires the free text — see `stayHourWrite` in
+ * src/lib/clock.ts — so the first case is a one-way door, by design.
+ */
+function StayHourSelect({
+  name,
+  hour,
+  legacyText,
+  inheritLabel,
+  keepLabel,
+  locale,
+}: {
+  name: string;
+  hour: number | null;
+  /** Whatever this field held before hours existed. "" once migrated. */
+  legacyText: string;
+  /** Shown when there is no legacy text: "use the platform's time (…)". */
+  inheritLabel: string;
+  /** Shown when there is: takes the legacy text and names it. */
+  keepLabel: (current: string) => string;
+  locale: Locale;
+}) {
+  const unset = legacyText.trim() ? keepLabel(legacyText.trim()) : inheritLabel;
+
+  return (
+    <Select name={name} defaultValue={hour === null ? "" : String(hour)}>
+      <option value="">{unset}</option>
+      {stayHourOptions(locale).map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </Select>
   );
 }
 

@@ -353,17 +353,19 @@ export default async function ListingDetailPage({
                       : t.booking.noDepositRequired
                   }
                 />
-                {/* 0 hours is a real answer — "this owner allows no free
-                    cancellation" — and it has to read as one. "حتى ٠ ساعة"
-                    would look like a bug, and the guest would assume the
-                    platform's 48 hours still applied. */}
+                {/* Three answers, not a number. "No free cancellation" and
+                    "ask the owner" both have to read as sentences: "حتى ٠ ساعة"
+                    looks like a bug and would leave the guest assuming the
+                    platform's window still applied. */}
                 <Fact
                   icon="event_repeat"
                   label={t.listing.freeCancelLabel}
                   value={
-                    policy.freeCancelHours > 0
-                      ? t.listing.upToHours(arNum(policy.freeCancelHours, locale))
-                      : t.listing.noFreeCancel
+                    policy.cancel.kind === "hours"
+                      ? t.listing.upToHours(arNum(policy.cancel.hours, locale))
+                      : policy.cancel.kind === "ask"
+                        ? t.listing.cancelAskOwner
+                        : t.listing.noFreeCancel
                   }
                 />
               </div>
@@ -560,7 +562,7 @@ export default async function ListingDetailPage({
             depositPercent={depositPercent}
             // Shown beside the total as a refundable extra, never added to it.
             securityDeposit={listing.securityDeposit}
-            freeCancelHours={policy.freeCancelHours}
+            cancel={policy.cancel}
             // "" when the listing has no usable number, which hides the button
             // rather than pointing it at a bare wa.me/.
             ownerWhatsappHref={contactHref}

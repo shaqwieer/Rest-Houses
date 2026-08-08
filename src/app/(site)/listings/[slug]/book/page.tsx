@@ -10,7 +10,7 @@ import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
 import { arDayMonth, isISODate, todayISO, toWeekendMode } from "@/lib/dates";
-import { resolveFreeCancelHours } from "@/lib/policies";
+import { resolveCancelPolicy } from "@/lib/policies";
 import { getI18n } from "@/lib/i18n/server";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -148,12 +148,9 @@ export default async function BookPage({
             dayUseCheckOutTime={l.dayUseCheckOutTime}
             guests={guests}
             capacity={listing.capacity}
-            // This rest house's own cancellation window, not the platform's —
+            // This rest house's own cancellation terms, not the platform's —
             // the policy paragraph under the form is a promise the OWNER keeps.
-            freeCancelHours={resolveFreeCancelHours(
-              listing.freeCancelHours,
-              settings.freeCancelHours,
-            )}
+            cancel={resolveCancelPolicy(listing, settings)}
             depositPercent={depositPercent}
           />
 

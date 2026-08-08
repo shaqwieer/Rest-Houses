@@ -362,6 +362,8 @@ export const ar = {
     upToHours: (h: string) => `حتى ${h} ساعة`,
     /** ٠ ساعة إجابة حقيقية من المالك — لا تُعرض كرقم بل كجملة. */
     noFreeCancel: "غير متاح لهذه الاستراحة",
+    /** ليست مهلة بالساعات، بل إحالة إلى المالك — لا رقم يوضع في الجملة. */
+    cancelAskOwner: "اسأل المالك",
     locationNote: (where: string) =>
       `${where} — يُرسل الموقع الدقيق على الخريطة بعد تأكيد الحجز.`,
     ratingOutOf: (rating: string, count: string) => `${rating} من ${count} تقييم`,
@@ -411,6 +413,11 @@ export const ar = {
       `. لا يوجد إلغاء مجاني لهذه الاستراحة، ويُستحق عربون ${pct}٪ عند تأكيد المالك.`,
     policyDetailNoCancelNoDeposit:
       ". لا يوجد إلغاء مجاني لهذه الاستراحة، ولا يُطلب عربون.",
+    // «اسأل المالك» ليست مهلة، فلا يمكن إدراجها في جملة فيها عدد ساعات.
+    policyDetailAsk: (pct: string) =>
+      `. سياسة الإلغاء تُتفق عليها مباشرة مع المالك، ويُستحق عربون ${pct}٪ عند تأكيد المالك.`,
+    policyDetailAskNoDeposit:
+      ". سياسة الإلغاء تُتفق عليها مباشرة مع المالك، ولا يُطلب عربون.",
     submit: "إرسال الطلب عبر الواتساب",
     submitting: "جارٍ إرسال الطلب…",
     noPaymentOnline: "لا يُطلب أي دفع عبر الموقع — يتواصل معك المالك للتأكيد.",
@@ -849,13 +856,24 @@ export const ar = {
     listingCheckTimeHint: "اتركه فارغًا لاستخدام وقت المنصة",
     listingCheckInPlaceholder: "مثال: ٤ عصرًا",
     listingCheckOutPlaceholder: "مثال: ١٢ ظهرًا",
-    listingCheckInEnLabel: "وقت الدخول بالإنجليزية",
-    listingCheckOutEnLabel: "وقت الخروج بالإنجليزية",
-    listingCheckInEnPlaceholder: "e.g. 4 PM",
-    listingCheckOutEnPlaceholder: "e.g. 12 noon",
+    /** خيارات قائمة الإلغاء المجاني — نفس ترتيب CANCEL_POLICIES. */
+    cancelPolicyOptions: {
+      NONE: "لا يوجد إلغاء مجاني",
+      H24: "قبل ٢٤ ساعة",
+      H48: "قبل ٤٨ ساعة",
+      H72: "قبل ٣ أيام",
+      H120: "قبل ٥ أيام",
+      ASK: "اسأل المالك",
+    },
+    /** الخيار الأول: ما ترثه الاستراحة اليوم، مسمّى حتى لا تكذب القائمة. */
+    usePlatformCancel: (value: string) => `سياسة المنصة (${value})`,
     listingFreeCancelLabel: "الإلغاء المجاني (ساعة)",
     listingFreeCancelHint: "اتركه فارغًا لاستخدام مهلة المنصة، أو اكتب ٠ لمنع الإلغاء المجاني",
-    usingPlatformTime: (value: string) => `المنصة الآن: ${value}`,
+    // The first option of every hour menu. Two wordings, because "unset" means
+    // two different things — see `StayHourSelect` in listing-editor.tsx.
+    usePlatformTime: (value: string) => `وقت المنصة (${value})`,
+    keepCurrentTime: (value: string) => `الوقت الحالي: ${value}`,
+    dayUseCheckOutNotSet: "لا يوجد حجز بدون مبيت",
     // ---- day-use card in the listing editor
     dayUseCardTitle: "الحجز بدون مبيت (اختياري)",
     dayUseCardHint:
@@ -864,9 +882,6 @@ export const ar = {
     dayUseWeekendPriceLabel: "سعر نهاية الأسبوع (د.إ)",
     dayUseCheckOutLabel: "وقت الخروج",
     dayUseCheckOutHint: "الوقت الذي يغادر فيه الضيف",
-    dayUseCheckOutPlaceholder: "مثال: ١٠ مساءً",
-    dayUseCheckOutEnLabel: "وقت الخروج بالإنجليزية",
-    dayUseCheckOutEnPlaceholder: "e.g. 10 PM",
     capacityLabel: "السعة (ضيف)",
     descriptionLabel: "الوصف",
     listingInstagram: "رابط إنستقرام الاستراحة",
@@ -948,8 +963,6 @@ export const ar = {
     seoTitleEnLabel: "عنوان SEO (إنجليزي)",
     seoDescriptionEnLabel: "وصف SEO (إنجليزي)",
     addressLineEnLabel: "العنوان النصّي (إنجليزي)",
-    checkInTimeEnLabel: "وقت الدخول (إنجليزي)",
-    checkOutTimeEnLabel: "وقت الخروج (إنجليزي)",
     paymentDisabled: "الدفع الإلكتروني غير مُفعّل — العربون يُحصّل مباشرة من المالك.",
     paymentMisconfigured:
       "الخيار مُفعّل لكن مفاتيح بوابة الدفع غير مُهيّأة في الخادم (STRIPE_SECRET_KEY).",

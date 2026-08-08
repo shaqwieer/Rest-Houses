@@ -4,12 +4,15 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { Icon, type IconName } from "@/components/ui/icon";
-import { Field, TextArea, TextInput } from "@/components/ui/field";
+import { Field, Select, TextArea, TextInput } from "@/components/ui/field";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { useToast } from "@/components/ui/toast";
 import { removeLogo, saveSettings, uploadHeroImage, uploadLogo } from "@/app/actions/settings";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import { stayHourOptions } from "@/lib/clock";
+import type { Locale } from "@/lib/i18n/config";
+import type { Dictionary } from "@/lib/i18n";
 
 /**
  * Site settings.
@@ -31,8 +34,6 @@ export type SettingsFormValues = {
   siteNameEn: string;
   taglineEn: string;
   addressLineEn: string;
-  checkInTimeEn: string;
-  checkOutTimeEn: string;
   seoTitleEn: string;
   seoDescriptionEn: string;
   heroTitleEn: string;
@@ -68,6 +69,9 @@ export type SettingsFormValues = {
   commissionPercent: number;
   reviewInviteDays: number;
   freeCancelHours: number;
+  /** 0-23, or null while this row still answers with the legacy text below. */
+  checkInHour: number | null;
+  checkOutHour: number | null;
   checkInTime: string;
   checkOutTime: string;
   depositPaymentsEnabled: boolean;
@@ -604,12 +608,28 @@ export function SettingsForm({
                 className="font-bold"
               />
             </Field>
+            {/* Hours, not free text, and stored once for both languages — the
+                same menu the listing editor offers. See src/lib/clock.ts. The
+                first option keeps whatever text this row already had, so an
+                operator who never opens this menu keeps their exact wording. */}
             <div className="grid gap-3">
               <Field label={t.admin.fieldCheckIn} hint={t.admin.platformFallbackHint}>
-                <TextInput name="checkInTime" defaultValue={values.checkInTime} />
+                <PlatformHourSelect
+                  name="checkInHour"
+                  hour={values.checkInHour}
+                  legacyText={values.checkInTime}
+                  locale={locale}
+                  t={t}
+                />
               </Field>
               <Field label={t.admin.fieldCheckOut} hint={t.admin.platformFallbackHint}>
-                <TextInput name="checkOutTime" defaultValue={values.checkOutTime} />
+                <PlatformHourSelect
+                  name="checkOutHour"
+                  hour={values.checkOutHour}
+                  legacyText={values.checkOutTime}
+                  locale={locale}
+                  t={t}
+                />
               </Field>
             </div>
           </div>
@@ -760,14 +780,8 @@ export function SettingsForm({
           <Field label={t.admin.addressLineEnLabel}>
             <TextInput name="addressLineEn" dir="ltr" defaultValue={values.addressLineEn} />
           </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t.admin.checkInTimeEnLabel}>
-              <TextInput name="checkInTimeEn" dir="ltr" defaultValue={values.checkInTimeEn} />
-            </Field>
-            <Field label={t.admin.checkOutTimeEnLabel}>
-              <TextInput name="checkOutTimeEn" dir="ltr" defaultValue={values.checkOutTimeEn} />
-            </Field>
-          </div>
+          {/* The English arrival and departure boxes are gone: both languages
+              now come from one stored hour. */}
         </Card>
       </div>
 
@@ -837,5 +851,39 @@ function ColorField({
       </span>
       {error && <span className="text-[11px] font-semibold text-busy">{error}</span>}
     </div>
+  );
+}
+
+/**
+ * The platform's fallback arrival or departure hour.
+ *
+ * The listing editor's twin (`StayHourSelect`) has an "inherit" case; this one
+ * does not, because the settings row *is* what everything else inherits. Its
+ * blank option means "leave the text this row already has", which is what keeps
+ * the change non-breaking: an operator who never touches the menu keeps their
+ * own wording, and the fallback chain in src/lib/policies.ts keeps reading it.
+ */
+function PlatformHourSelect({
+  name,
+  hour,
+  legacyText,
+  locale,
+  t,
+}: {
+  name: string;
+  hour: number | null;
+  legacyText: string;
+  locale: Locale;
+  t: Dictionary;
+}) {
+  return (
+    <Select name={name} defaultValue={hour === null ? "" : String(hour)}>
+      <option value="">{t.admin.keepCurrentTime(legacyText.trim() || "—")}</option>
+      {stayHourOptions(locale).map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </Select>
   );
 }

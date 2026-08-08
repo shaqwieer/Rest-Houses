@@ -44,6 +44,8 @@ export default async function AdminSettingsPage() {
         commissionPercent: settings.commissionPercent,
         reviewInviteDays: settings.reviewInviteDays,
         freeCancelHours: settings.freeCancelHours,
+        checkInHour: settings.checkInHour,
+        checkOutHour: settings.checkOutHour,
         checkInTime: settings.checkInTime,
         checkOutTime: settings.checkOutTime,
         depositPaymentsEnabled: settings.depositPaymentsEnabled,
@@ -58,8 +60,7 @@ export default async function AdminSettingsPage() {
         siteNameEn: settings.siteNameEn ?? "",
         taglineEn: settings.taglineEn ?? "",
         addressLineEn: settings.addressLineEn ?? "",
-        checkInTimeEn: settings.checkInTimeEn ?? "",
-        checkOutTimeEn: settings.checkOutTimeEn ?? "",
+
         seoTitleEn: settings.seoTitleEn ?? "",
         seoDescriptionEn: settings.seoDescriptionEn ?? "",
         heroTitleEn: settings.heroTitleEn ?? "",

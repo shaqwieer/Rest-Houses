@@ -510,8 +510,12 @@ async function main() {
       siteNameEn: "Sands Rest Houses",
       taglineEn: "Rest houses & chalets across the UAE",
       addressLineEn: "Dubai — United Arab Emirates",
-      checkInTimeEn: "4 PM",
-      checkOutTimeEn: "12 noon",
+      // Hours, not text: a fresh install starts on the new representation, so
+      // a seeded site never leaves legacy strings for an operator to convert.
+      // The Arabic/English time columns keep their schema defaults and simply
+      // go unread while these are set. See src/lib/clock.ts.
+      checkInHour: 16,
+      checkOutHour: 12,
       seoTitleEn: "Book rest houses and chalets in the UAE",
       seoDescriptionEn:
         "Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.",

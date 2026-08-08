@@ -43,18 +43,19 @@ export default async function NewListingPage() {
         // every listing shows today. Same reasoning as `depositPercent` below:
         // an unset field tracks the platform if the operator changes it later,
         // rather than freezing today's value into the row.
+        checkInHour: null,
+        checkOutHour: null,
         checkInTime: "",
-        checkInTimeEn: "",
         checkOutTime: "",
-        checkOutTimeEn: "",
+        cancelPolicy: "",
         freeCancelHours: null,
         // 0 / "" = not offered. A new listing does not advertise day bookings
         // or ask for a security deposit until someone deliberately fills these
         // in, which is the "اختياري" the requirement asks for.
         dayUsePrice: 0,
         dayUseWeekendPrice: 0,
+        dayUseCheckOutHour: null,
         dayUseCheckOutTime: "",
-        dayUseCheckOutTimeEn: "",
         securityDeposit: 0,
         instagram: "",
         capacity: 40,

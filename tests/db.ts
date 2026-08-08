@@ -60,6 +60,9 @@ export async function seedSettings(
     depositPercent: number;
     /** The platform fallback a listing inherits when it sets none of its own. */
     freeCancelHours: number;
+    /** The hour form. Leave unset to exercise the legacy-text fallback. */
+    checkInHour: number | null;
+    checkOutHour: number | null;
     checkInTime: string;
     checkOutTime: string;
   }> = {},
@@ -72,6 +75,10 @@ export async function seedSettings(
       ...(overrides.freeCancelHours === undefined
         ? {}
         : { freeCancelHours: overrides.freeCancelHours }),
+      ...(overrides.checkInHour === undefined ? {} : { checkInHour: overrides.checkInHour }),
+      ...(overrides.checkOutHour === undefined
+        ? {}
+        : { checkOutHour: overrides.checkOutHour }),
       ...(overrides.checkInTime === undefined ? {} : { checkInTime: overrides.checkInTime }),
       ...(overrides.checkOutTime === undefined
         ? {}
@@ -161,8 +168,16 @@ export async function createListing(
     weekendMode?: "short" | "long";
     /** null (the default) inherits the platform's window; 0 means none at all. */
     freeCancelHours?: number | null;
+    /** One of CANCEL_POLICIES, or "" (the default) to inherit. */
+    cancelPolicy?: string;
+    /** null (the default) inherits the platform's hour. 0 is midnight. */
+    checkInHour?: number | null;
+    checkOutHour?: number | null;
+    /** null = day bookings not offered. Never inherits — see policies.ts. */
+    dayUseCheckOutHour?: number | null;
     checkInTime?: string;
     checkOutTime?: string;
+    dayUseCheckOutTime?: string;
   } = {},
 ) {
   listingCounter += 1;
@@ -189,8 +204,15 @@ export async function createListing(
       // null, not 0 — 0 would make every fixture a listing that refuses free
       // cancellation, which is the exact confusion the column exists to avoid.
       freeCancelHours: opts.freeCancelHours ?? null,
+      cancelPolicy: opts.cancelPolicy ?? "",
+      // null on all three: a fixture inherits the platform's hours and offers
+      // no day booking unless it says otherwise, matching every existing row.
+      checkInHour: opts.checkInHour ?? null,
+      checkOutHour: opts.checkOutHour ?? null,
+      dayUseCheckOutHour: opts.dayUseCheckOutHour ?? null,
       checkInTime: opts.checkInTime ?? "",
       checkOutTime: opts.checkOutTime ?? "",
+      dayUseCheckOutTime: opts.dayUseCheckOutTime ?? "",
       categories: JSON.stringify(["family"]),
       amenities: JSON.stringify(["pool"]),
     },

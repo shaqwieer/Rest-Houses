@@ -78,6 +78,8 @@ const settings = {
   addressLineEn: "Dubai — United Arab Emirates",
   checkInTimeEn: "",
   checkOutTimeEn: "",
+  checkInHour: null,
+  checkOutHour: null,
   seoTitleEn: "",
   seoDescriptionEn: "",
   heroTitleEn: "",

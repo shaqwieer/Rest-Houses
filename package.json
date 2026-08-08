@@ -15,6 +15,7 @@
     "db:reset": "prisma migrate reset --force",
     "postinstall": "prisma generate",
     "verify": "tsx scripts/verify.ts",
+    "policy-audit": "tsx scripts/policy-audit.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",

@@ -23,7 +23,10 @@ import {
   platformPolicyFor,
   resolveFreeCancelHours,
   resolveListingPolicy,
+  resolveCancelPolicy,
+  resolveDayUseCheckOut,
   resolveStayTimes,
+  toCancelPolicy,
 } from "@/lib/policies";
 
 /**
@@ -322,7 +325,17 @@ describe("createBookingRequest honours the listing's weekend", () => {
 /* Per-listing stay policy                                                    */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A settings row that has been through the hour migration: it carries hours
+ * AND the free text they superseded, which is exactly the state the migration
+ * leaves a seeded install in. Keeping both lets the tests below pin the tier
+ * order rather than merely the happy path — if the hour ever stopped winning
+ * here, the expectations would quietly fall back to "٤ عصرًا" and still read
+ * like plausible output.
+ */
 const PLATFORM = {
+  checkInHour: 16,
+  checkOutHour: 12,
   checkInTime: "٤ عصرًا",
   checkInTimeEn: "4 PM",
   checkOutTime: "١٢ ظهرًا",
@@ -357,96 +370,240 @@ describe("resolveFreeCancelHours", () => {
   });
 });
 
-describe("resolveStayTimes", () => {
-  it("inherits both times when the listing sets neither", () => {
-    const times = resolveStayTimes(
-      { checkInTime: "", checkOutTime: "" },
-      PLATFORM,
-      "ar",
-    );
-    expect(times).toEqual({ checkInTime: "٤ عصرًا", checkOutTime: "١٢ ظهرًا" });
+describe("resolveCancelPolicy", () => {
+  /**
+   * Six answers from a list, replacing "any integer 0…720 typed into a box".
+   *
+   * The interesting one is ASK: it is not a number of hours, and the obvious
+   * encoding for it (-1) is destroyed by `clampHours`, which floors at 0. That
+   * would publish "no free cancellation" — a refusal — on behalf of an owner
+   * who said "talk to me". Hence a named mode and a tagged result, so no call
+   * site can accidentally read "ask" as a quantity.
+   */
+  it("returns the window for each of the four hour policies", () => {
+    const cases = [
+      ["H24", 24],
+      ["H48", 48],
+      ["H72", 72],
+      ["H120", 120],
+    ] as const;
+    for (const [id, hours] of cases) {
+      expect(resolveCancelPolicy({ cancelPolicy: id }, PLATFORM)).toEqual({
+        kind: "hours",
+        hours,
+      });
+    }
   });
 
-  it("prefers the listing's own hours", () => {
-    const times = resolveStayTimes(
-      { checkInTime: "٣ عصرًا", checkOutTime: "١١ صباحًا" },
-      PLATFORM,
-      "ar",
-    );
-    expect(times).toEqual({ checkInTime: "٣ عصرًا", checkOutTime: "١١ صباحًا" });
-  });
-
-  it("overrides one side without disturbing the other", () => {
-    const times = resolveStayTimes({ checkInTime: "٥ عصرًا" }, PLATFORM, "ar");
-    expect(times.checkInTime).toBe("٥ عصرًا");
-    expect(times.checkOutTime).toBe("١٢ ظهرًا");
-  });
-
-  it("uses the listing's English hour on the English site", () => {
-    const times = resolveStayTimes(
-      { checkInTime: "٣ عصرًا", checkInTimeEn: "3 PM" },
-      PLATFORM,
-      "en",
-    );
-    expect(times.checkInTime).toBe("3 PM");
+  it("distinguishes 'no free cancellation' from 'ask the owner'", () => {
+    expect(resolveCancelPolicy({ cancelPolicy: "NONE" }, PLATFORM)).toEqual({ kind: "none" });
+    expect(resolveCancelPolicy({ cancelPolicy: "ASK" }, PLATFORM)).toEqual({ kind: "ask" });
   });
 
   /**
-   * An owner who filled in the Arabic hour but not the English one gets their
-   * Arabic hour on the English page — not the platform's. The platform's would
-   * be a different venue's time, stated as fact; the Arabic one is at least
-   * this venue's.
+   * The sentinel trap, pinned directly. If ASK ever goes back to being a number
+   * it will land here first: `clampHours(-1)` is 0, and 0 is NONE.
    */
-  it("falls back to the listing's Arabic hour, not the platform's English one", () => {
+  it("never collapses 'ask the owner' into 'no free cancellation'", () => {
+    const asked = resolveCancelPolicy({ cancelPolicy: "ASK" }, PLATFORM);
+    expect(asked.kind).not.toBe("none");
+    expect(asked.kind).not.toBe("hours");
+  });
+
+  /* ─── tier 2 and 3: rows nobody has converted ───────────────────────────── */
+
+  it("inherits the platform window when the listing has chosen nothing", () => {
+    expect(resolveCancelPolicy({}, PLATFORM)).toEqual({ kind: "hours", hours: 48 });
+  });
+
+  /**
+   * The non-breaking guarantee. A listing still carrying the old number keeps
+   * advertising that number — including the awkward ones no mode covers, which
+   * is precisely why the migration converted nothing.
+   */
+  it("still reads the old freeCancelHours, including values no mode covers", () => {
+    expect(resolveCancelPolicy({ freeCancelHours: 36 }, PLATFORM)).toEqual({
+      kind: "hours",
+      hours: 36,
+    });
+  });
+
+  /**
+   * null vs 0 survives the new column: null inherits, 0 is a refusal the owner
+   * made. Collapsing them would publish a 48-hour promise for an owner who
+   * explicitly allowed none.
+   */
+  it("keeps null-inherits and zero-refuses apart on the legacy number", () => {
+    expect(resolveCancelPolicy({ freeCancelHours: null }, PLATFORM)).toEqual({
+      kind: "hours",
+      hours: 48,
+    });
+    expect(resolveCancelPolicy({ freeCancelHours: 0 }, PLATFORM)).toEqual({ kind: "none" });
+  });
+
+  it("prefers a chosen mode over a leftover number on the same listing", () => {
+    const resolved = resolveCancelPolicy({ cancelPolicy: "ASK", freeCancelHours: 36 }, PLATFORM);
+    expect(resolved).toEqual({ kind: "ask" });
+  });
+
+  /** A crafted post or a stale tab must inherit, not publish some other answer. */
+  it("treats an unrecognised mode as 'nothing chosen'", () => {
+    expect(resolveCancelPolicy({ cancelPolicy: "SOMEDAY" }, PLATFORM)).toEqual({
+      kind: "hours",
+      hours: 48,
+    });
+    expect(toCancelPolicy("SOMEDAY")).toBeNull();
+    expect(toCancelPolicy("")).toBeNull();
+  });
+});
+
+describe("resolveStayTimes", () => {
+  /**
+   * Three tiers, and the whole suite below is about which one wins.
+   *
+   *   1. the listing's own hour        — picked from the menu
+   *   2. the listing's own legacy text — typed, before the menu existed
+   *   3. the platform's answer         — tiers 1 and 2 on the settings row
+   *
+   * ─── What happened to the Arabic-set-English-blank case ───────────────────
+   * There used to be a test here pinning "an owner who filled the Arabic box
+   * but not the English one gets their Arabic hour on the English page". It is
+   * gone rather than rewritten, because under a stored hour the situation it
+   * described cannot arise: one number renders correctly in both languages, so
+   * there is no half-filled pair left to have a rule about. The rule itself is
+   * NOT gone — it still governs tier 2, and the "legacy text" cases below are
+   * where it is now pinned, because un-migrated rows still hit exactly it.
+   */
+  it("inherits both times when the listing sets neither", () => {
+    const times = resolveStayTimes({}, PLATFORM, "ar");
+    expect(times).toEqual({ checkInTime: "٤:٠٠ مساءً", checkOutTime: "١٢:٠٠ ظهرًا" });
+  });
+
+  it("renders the same stored hour in each language", () => {
+    const listing = { checkInHour: 15, checkOutHour: 11 };
+    expect(resolveStayTimes(listing, PLATFORM, "ar")).toEqual({
+      checkInTime: "٣:٠٠ مساءً",
+      checkOutTime: "١١:٠٠ صباحًا",
+    });
+    expect(resolveStayTimes(listing, PLATFORM, "en")).toEqual({
+      checkInTime: "3:00 PM",
+      checkOutTime: "11:00 AM",
+    });
+  });
+
+  it("overrides one side without disturbing the other", () => {
+    const times = resolveStayTimes({ checkInHour: 17 }, PLATFORM, "ar");
+    expect(times.checkInTime).toBe("٥:٠٠ مساءً");
+    expect(times.checkOutTime).toBe("١٢:٠٠ ظهرًا");
+  });
+
+  /**
+   * Midnight is 0, and 0 is falsy. Every tier in this chain is stacked with
+   * `||`, so a naive implementation drops straight past a listing that closes
+   * at midnight and prints the platform's noon instead — turning a twelve-hour
+   * difference into a silent one. This is the case that makes `isStayHour`
+   * necessary rather than a truthiness check.
+   */
+  it("treats midnight as a real answer rather than as unset", () => {
+    const times = resolveStayTimes({ checkOutHour: 0 }, PLATFORM, "ar");
+    expect(times.checkOutTime).toBe("١٢:٠٠ منتصف الليل");
+    expect(times.checkOutTime).not.toBe("١٢:٠٠ ظهرًا");
+  });
+
+  it("uses the platform's stored hour when it has one", () => {
+    const platform = { ...PLATFORM, checkInHour: 14 };
+    expect(resolveStayTimes({}, platform, "en").checkInTime).toBe("2:00 PM");
+  });
+
+  /* ─── tier 2: rows nobody has migrated ──────────────────────────────────── */
+
+  /**
+   * The non-breaking guarantee, stated as a test: a listing still holding the
+   * text an owner typed renders that text, not a converted guess and not the
+   * platform's hour. If this fails, the migration silently rewrote what a rest
+   * house advertises.
+   */
+  it("still renders a listing's legacy free text when it has no hour", () => {
+    const times = resolveStayTimes({ checkInTime: "بعد العصر" }, PLATFORM, "ar");
+    expect(times.checkInTime).toBe("بعد العصر");
+  });
+
+  it("prefers a stored hour over leftover text on the same field", () => {
+    const times = resolveStayTimes(
+      { checkInHour: 15, checkInTime: "بعد العصر" },
+      PLATFORM,
+      "ar",
+    );
+    expect(times.checkInTime).toBe("٣:٠٠ مساءً");
+  });
+
+  /**
+   * The rule the deleted test used to guard, now living where it still applies.
+   * An un-migrated listing with Arabic text and no English shows its Arabic on
+   * the English page — the platform's hour would be a different venue's time
+   * stated as fact, where the Arabic one is at least this venue's.
+   */
+  it("falls back to a listing's Arabic text, not the platform's, on the English site", () => {
     const times = resolveStayTimes(
       { checkInTime: "٣ عصرًا", checkInTimeEn: null },
       PLATFORM,
       "en",
     );
     expect(times.checkInTime).toBe("٣ عصرًا");
-    expect(times.checkInTime).not.toBe("4 PM");
+    expect(times.checkInTime).not.toBe("4:00 PM");
+  });
+
+  /**
+   * The platform half of the non-breaking guarantee: an operator who has not
+   * opened the new menu keeps their own wording on every listing that inherits.
+   */
+  it("uses the platform's legacy text when the platform has no hour", () => {
+    const unmigrated = { ...PLATFORM, checkInHour: null, checkOutHour: null };
+    expect(resolveStayTimes({}, unmigrated, "ar").checkInTime).toBe("٤ عصرًا");
+    expect(resolveStayTimes({}, unmigrated, "en").checkInTime).toBe("4 PM");
+  });
+
+  /** A settings row cleared to nothing still has to print something sane. */
+  it("falls back to the platform default when every tier is empty", () => {
+    const empty = { checkInTime: "", checkOutTime: "", freeCancelHours: 48 };
+    expect(resolveStayTimes({}, empty, "en")).toEqual({
+      checkInTime: "4:00 PM",
+      checkOutTime: "12:00 noon",
+    });
   });
 });
 
-describe("resolveListingPolicy", () => {
-  it("resolves all three at once", () => {
-    expect(
-      resolveListingPolicy(
-        { checkInTime: "٣ عصرًا", checkOutTime: "", freeCancelHours: 0 },
-        PLATFORM,
-        "ar",
-      ),
-    ).toEqual({
-      checkInTime: "٣ عصرًا",
-      checkOutTime: "١٢ ظهرًا",
-      freeCancelHours: 0,
-    });
+describe("resolveDayUseCheckOut", () => {
+  /**
+   * The one stay time with NO platform tier, and the reason it is a separate
+   * function. Unset here means "this rest house does not take day bookings" —
+   * which is most of the catalogue — not "use the platform's hour". Give it a
+   * fallback and every overnight-only listing starts advertising a leave-by
+   * time for a booking it does not accept.
+   */
+  it("returns nothing when the listing offers no day booking", () => {
+    expect(resolveDayUseCheckOut({}, "ar")).toBe("");
+    expect(resolveDayUseCheckOut({ dayUseCheckOutHour: null }, "en")).toBe("");
   });
 
-  /** A listing nobody has touched shows exactly the page it showed before. */
-  it("reproduces the platform's terms for an untouched listing", () => {
-    expect(
-      resolveListingPolicy(
-        { checkInTime: "", checkOutTime: "", freeCancelHours: null },
-        PLATFORM,
-        "ar",
-      ),
-    ).toEqual({
-      checkInTime: "٤ عصرًا",
-      checkOutTime: "١٢ ظهرًا",
-      freeCancelHours: 48,
-    });
+  it("renders the stored hour in each language", () => {
+    expect(resolveDayUseCheckOut({ dayUseCheckOutHour: 22 }, "ar")).toBe("١٠:٠٠ مساءً");
+    expect(resolveDayUseCheckOut({ dayUseCheckOutHour: 22 }, "en")).toBe("10:00 PM");
+  });
+
+  it("still renders legacy text on a listing with no hour", () => {
+    expect(resolveDayUseCheckOut({ dayUseCheckOutTime: "١٠ مساءً" }, "ar")).toBe("١٠ مساءً");
   });
 });
 
 describe("platformPolicyFor", () => {
   it("gives the editor the default it is telling owners about", () => {
     expect(platformPolicyFor(PLATFORM, "ar")).toEqual({
-      checkInTime: "٤ عصرًا",
-      checkOutTime: "١٢ ظهرًا",
+      checkInTime: "٤:٠٠ مساءً",
+      checkOutTime: "١٢:٠٠ ظهرًا",
       freeCancelHours: 48,
     });
-    expect(platformPolicyFor(PLATFORM, "en").checkInTime).toBe("4 PM");
+    expect(platformPolicyFor(PLATFORM, "en").checkInTime).toBe("4:00 PM");
   });
 });
 
@@ -497,58 +654,93 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
     const result = await saveOwnerListing(
       listingForm({
         weekendMode: "long",
-        checkInTime: "٣ عصرًا",
-        checkInTimeEn: "3 PM",
-        checkOutTime: "١١ صباحًا",
-        freeCancelHours: "24",
+        checkInHour: "15",
+        checkOutHour: "11",
+        cancelPolicy: "H24",
       }),
     );
     expect(result.ok).toBe(true);
 
     const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
     expect(row!.weekendMode).toBe("long");
-    expect(row!.checkInTime).toBe("٣ عصرًا");
-    expect(row!.checkInTimeEn).toBe("3 PM");
-    expect(row!.checkOutTime).toBe("١١ صباحًا");
-    expect(row!.freeCancelHours).toBe(24);
+    expect(row!.checkInHour).toBe(15);
+    expect(row!.checkOutHour).toBe(11);
+    expect(row!.cancelPolicy).toBe("H24");
   });
 
   /**
-   * The null/0 distinction, through the form this time. An empty box must reach
-   * the database as NULL — `Number("")` is 0, and 0 would publish this owner as
-   * refusing free cancellation on a form they never touched.
+   * Midnight through the form, which is where it is most likely to be lost:
+   * the field arrives as the string "0", and anything treating that as "empty"
+   * stores null and hands the listing back to the platform's noon.
    */
-  it("stores a blank cancellation window as null, not as zero", async () => {
+  it("saves a midnight checkout as 0, not as unset", async () => {
     await signedInOwner();
 
     const { saveOwnerListing } = await import("@/app/actions/listings");
-    await saveOwnerListing(listingForm({ freeCancelHours: "" }));
+    await saveOwnerListing(listingForm({ checkOutHour: "0" }));
 
     const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
-    expect(row!.freeCancelHours).toBeNull();
-    expect(resolveFreeCancelHours(row!.freeCancelHours, 48)).toBe(48);
+    expect(row!.checkOutHour).toBe(0);
   });
 
-  it("stores a typed 0 as 0 — an owner who allows no free cancellation", async () => {
+  /**
+   * Picking an hour retires the free text that used to answer for that field,
+   * so the legacy tier drains as owners touch their listings. Only the field
+   * that gained an hour is cleared — the other keeps its text and keeps
+   * rendering it.
+   */
+  it("clears the legacy text for the field that gained an hour, and only that one", async () => {
     await signedInOwner();
+    const { owner } = await createOwner({ email: "legacy@test.ae", status: "APPROVED" });
+    sessionUser.current = { id: (await prisma.user.findFirstOrThrow({
+      where: { ownerProfile: { id: owner.id } },
+    })).id };
+
+    const listing = await createListing({
+      ownerId: owner.id,
+      checkInTime: "بعد العصر",
+      checkOutTime: "١١ صباحًا",
+    });
 
     const { saveOwnerListing } = await import("@/app/actions/listings");
-    await saveOwnerListing(listingForm({ freeCancelHours: "0" }));
+    const form = listingForm({ checkInHour: "15" });
+    form.set("id", listing.id);
+    form.set("name", listing.name);
+    const result = await saveOwnerListing(form);
+    expect(result.ok).toBe(true);
 
-    const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
-    expect(row!.freeCancelHours).toBe(0);
-    expect(resolveFreeCancelHours(row!.freeCancelHours, 48)).toBe(0);
+    const row = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } });
+    expect(row.checkInHour).toBe(15);
+    expect(row.checkInTime).toBe("");
+    // Untouched: still no hour, still its own words, still what the page shows.
+    expect(row.checkOutHour).toBeNull();
+    expect(row.checkOutTime).toBe("١١ صباحًا");
   });
 
-  /** Arabic-Indic digits, which is what an owner on an Arabic keyboard types. */
-  it("understands ٢٤ as 24", async () => {
+  /**
+   * ─── Where the old freeCancelHours form tests went ────────────────────────
+   * Three tests here used to post `freeCancelHours` as text: blank-is-not-zero,
+   * typed-zero-is-a-refusal, and Arabic-digits-parse. The form no longer has
+   * that box, so posting it proved nothing about the form. Each guarantee moved
+   * rather than being dropped:
+   *
+   *   blank ≠ zero    → "leaves an untouched listing inheriting, not refusing"
+   *                     above, and the null/0 unit tests in `resolveCancelPolicy`
+   *   typed 0         → the "NONE" case of the same pair
+   *   Arabic digits   → the hour menu below, which is the only numeric field an
+   *                     owner still types into via `normalizeDigits`
+   *
+   * The one thing genuinely gone is the ability to store 37 hours from the
+   * form, which was the problem being solved.
+   */
+  it("normalises Arabic-Indic digits on the hour menu", async () => {
     await signedInOwner();
 
     const { saveOwnerListing } = await import("@/app/actions/listings");
-    await saveOwnerListing(listingForm({ freeCancelHours: "٢٤" }));
+    await saveOwnerListing(listingForm({ checkInHour: "١٦" }));
 
     const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
-    expect(row!.freeCancelHours).toBe(24);
+    expect(row!.checkInHour).toBe(16);
   });
 
   /** A form that never mentions any of this leaves the platform in charge. */
@@ -560,9 +752,104 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
 
     const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
     expect(row!.weekendMode).toBe("short");
+    expect(row!.checkInHour).toBeNull();
+    expect(row!.checkOutHour).toBeNull();
+    expect(row!.dayUseCheckOutHour).toBeNull();
     expect(row!.checkInTime).toBe("");
-    expect(row!.checkInTimeEn).toBeNull();
     expect(row!.freeCancelHours).toBeNull();
+  });
+
+  /**
+   * The same round-trip through the ADMIN save path.
+   *
+   * Not redundant with the owner test above: `saveListing` and
+   * `saveOwnerListing` fetch the legacy text through different calls —
+   * `legacyStayTextFor(id)` against `legacyStayTextFor(id, owner.id)` — and it
+   * is the fetch, not the write, that decides whether an un-migrated listing
+   * keeps its own words or has them blanked. A regression in one would not show
+   * up in the other.
+   */
+  it("preserves and retires legacy text the same way when an admin saves", async () => {
+    const admin = await prisma.user.create({
+      data: { email: "operator-hours@example.ae", passwordHash: "x", role: "ADMIN" },
+    });
+    sessionUser.current = { id: admin.id };
+
+    const listing = await createListing({
+      checkInTime: "بعد العصر",
+      checkOutTime: "١١ صباحًا",
+      dayUseCheckOutTime: "١٠ مساءً",
+    });
+
+    const { saveListing } = await import("@/app/actions/listings");
+    const form = listingForm({ checkInHour: "15" });
+    form.set("id", listing.id);
+    form.set("name", listing.name);
+    const result = await saveListing(form);
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } });
+    expect(row.checkInHour).toBe(15);
+    expect(row.checkInTime).toBe("");
+    // The two nobody touched keep their text — a save must not blank a field
+    // just because the form stopped rendering it.
+    expect(row.checkOutTime).toBe("١١ صباحًا");
+    expect(row.dayUseCheckOutTime).toBe("١٠ مساءً");
+  });
+
+  /**
+   * The cancellation list through the form. "NONE" and "" are the pair that
+   * must not blur: one is an owner refusing free cancellation, the other is a
+   * listing that has not been asked yet and still inherits.
+   */
+  it("stores a chosen cancellation policy, and keeps NONE distinct from unset", async () => {
+    await signedInOwner();
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+
+    await saveOwnerListing(listingForm({ cancelPolicy: "ASK" }));
+    let row = await prisma.listing.findFirstOrThrow({ where: { name: "Sharjah Rest House" } });
+    expect(row.cancelPolicy).toBe("ASK");
+    expect(resolveCancelPolicy(row, { freeCancelHours: 48 })).toEqual({ kind: "ask" });
+
+    const form = listingForm({ cancelPolicy: "NONE" });
+    form.set("id", row.id);
+    await saveOwnerListing(form);
+    row = await prisma.listing.findUniqueOrThrow({ where: { id: row.id } });
+    expect(row.cancelPolicy).toBe("NONE");
+    expect(resolveCancelPolicy(row, { freeCancelHours: 48 })).toEqual({ kind: "none" });
+  });
+
+  it("leaves an untouched listing inheriting, not refusing", async () => {
+    await signedInOwner();
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+    await saveOwnerListing(listingForm());
+
+    const row = await prisma.listing.findFirstOrThrow({ where: { name: "Sharjah Rest House" } });
+    expect(row.cancelPolicy).toBe("");
+    expect(resolveCancelPolicy(row, { freeCancelHours: 48 })).toEqual({ kind: "hours", hours: 48 });
+  });
+
+  /**
+   * The old number is not posted by the form any more, so a save must carry it
+   * through rather than default it away — it is what an un-converted listing
+   * still advertises.
+   */
+  it("preserves a legacy freeCancelHours across a save that does not mention it", async () => {
+    const { owner } = await createOwner({ email: "legacy-cancel@test.ae", status: "APPROVED" });
+    const user = await prisma.user.findFirstOrThrow({ where: { ownerProfile: { id: owner.id } } });
+    sessionUser.current = { id: user.id };
+
+    const listing = await createListing({ ownerId: owner.id, freeCancelHours: 36 });
+
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+    const form = listingForm();
+    form.set("id", listing.id);
+    form.set("name", listing.name);
+    expect((await saveOwnerListing(form)).ok).toBe(true);
+
+    const row = await prisma.listing.findUniqueOrThrow({ where: { id: listing.id } });
+    expect(row.freeCancelHours).toBe(36);
+    expect(resolveCancelPolicy(row, { freeCancelHours: 48 })).toEqual({ kind: "hours", hours: 36 });
   });
 
   /** A crafted post cannot store a mode the pricing does not understand. */

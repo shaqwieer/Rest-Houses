@@ -11,6 +11,7 @@ import { createBookingRequest } from "@/app/actions/booking";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import type { ResolvedCancelPolicy } from "@/lib/policies";
 
 /**
  * Booking request form.
@@ -33,7 +34,7 @@ export function BookingForm({
   dayUseCheckOutTime,
   guests: initialGuests,
   capacity,
-  freeCancelHours,
+  cancel,
   depositPercent,
 }: {
   listingId: string;
@@ -46,7 +47,7 @@ export function BookingForm({
   dayUseCheckOutTime: string;
   guests: number;
   capacity: number;
-  freeCancelHours: number;
+  cancel: ResolvedCancelPolicy;
   depositPercent: number;
 }) {
   const router = useRouter();
@@ -242,21 +243,28 @@ export function BookingForm({
           <Link href="/policies" className="text-bronze">
             {t.booking.policyLink}
           </Link>
-          {/* Four sentences, not one with two numbers in it. A 0% deposit and a
-              0-hour cancellation window are both real answers an owner can give
-              — "a 0% deposit is due" and "free up to 0 hours before" each read
-              as a bug to a customer, and the second is worse than a bug: it
-              implies a window that this rest house does not offer. */}
-          {freeCancelHours > 0
+          {/* Six sentences, not one with two numbers in it. Three cancellation
+              answers times "is there a deposit", written out rather than
+              assembled: a 0% deposit and a 0-hour window are both real answers
+              an owner can give, and "a 0% deposit is due" or "free up to 0
+              hours before" each read as a bug to a customer — the second worse
+              than a bug, because it implies a window this rest house does not
+              offer. "Ask the owner" needs its own pair for the same reason:
+              there is no number to put in the sentence at all. */}
+          {cancel.kind === "hours"
             ? depositPercent > 0
               ? t.booking.policyDetail(
-                  arNum(freeCancelHours, locale),
+                  arNum(cancel.hours, locale),
                   arNum(depositPercent, locale),
                 )
-              : t.booking.policyDetailNoDeposit(arNum(freeCancelHours, locale))
-            : depositPercent > 0
-              ? t.booking.policyDetailNoCancel(arNum(depositPercent, locale))
-              : t.booking.policyDetailNoCancelNoDeposit}
+              : t.booking.policyDetailNoDeposit(arNum(cancel.hours, locale))
+            : cancel.kind === "ask"
+              ? depositPercent > 0
+                ? t.booking.policyDetailAsk(arNum(depositPercent, locale))
+                : t.booking.policyDetailAskNoDeposit
+              : depositPercent > 0
+                ? t.booking.policyDetailNoCancel(arNum(depositPercent, locale))
+                : t.booking.policyDetailNoCancelNoDeposit}
         </p>
       </div>
 

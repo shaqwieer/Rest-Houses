@@ -301,6 +301,7 @@ export const en: Dictionary = {
     upToHours: (h) => `Up to ${h} hours before`,
     /** 0 hours is a real answer from the owner — say it in words, not as "0". */
     noFreeCancel: "Not offered for this rest house",
+    cancelAskOwner: "Ask the owner",
     locationNote: (where) =>
       `${where} — the exact location is sent on the map once your booking is confirmed.`,
     ratingOutOf: (rating, count) => `${rating} from ${count} reviews`,
@@ -347,6 +348,10 @@ export const en: Dictionary = {
       `. Cancellation is free up to ${hours} hours before check-in, and no deposit is required for this rest house.`,
     policyDetailNoCancel: (pct) =>
       `. This rest house offers no free cancellation, and a ${pct}% deposit is due once the owner confirms.`,
+    policyDetailAsk: (pct) =>
+      `. The cancellation policy is agreed directly with the owner, and a ${pct}% deposit is due once they confirm.`,
+    policyDetailAskNoDeposit:
+      ". The cancellation policy is agreed directly with the owner, and no deposit is required.",
     policyDetailNoCancelNoDeposit:
       ". This rest house offers no free cancellation, and no deposit is required.",
     submit: "Send request on WhatsApp",
@@ -762,13 +767,20 @@ export const en: Dictionary = {
     listingCheckTimeHint: "Leave blank to use the platform's time",
     listingCheckInPlaceholder: "e.g. ٤ عصرًا",
     listingCheckOutPlaceholder: "e.g. ١٢ ظهرًا",
-    listingCheckInEnLabel: "Check-in time (English)",
-    listingCheckOutEnLabel: "Check-out time (English)",
-    listingCheckInEnPlaceholder: "e.g. 4 PM",
-    listingCheckOutEnPlaceholder: "e.g. 12 noon",
+    cancelPolicyOptions: {
+      NONE: "No free cancellation",
+      H24: "Before 24 hours",
+      H48: "Before 48 hours",
+      H72: "Before 3 days",
+      H120: "Before 5 days",
+      ASK: "Ask the owner",
+    },
+    usePlatformCancel: (value) => `Platform policy (${value})`,
     listingFreeCancelLabel: "Free cancellation (hours)",
     listingFreeCancelHint: "Leave blank for the platform's window, or enter 0 to allow none",
-    usingPlatformTime: (value) => `Platform default: ${value}`,
+    usePlatformTime: (value) => `Platform time (${value})`,
+    keepCurrentTime: (value) => `Current: ${value}`,
+    dayUseCheckOutNotSet: "No day bookings",
     dayUseCardTitle: "Day booking, no overnight stay (optional)",
     dayUseCardHint:
       "Rates for arriving and leaving on the same day. Leave at zero if you don't offer this — none of it then appears on the rest house's page.",
@@ -776,9 +788,6 @@ export const en: Dictionary = {
     dayUseWeekendPriceLabel: "Weekend rate (AED)",
     dayUseCheckOutLabel: "Leave by",
     dayUseCheckOutHint: "The time the guest has to be out",
-    dayUseCheckOutPlaceholder: "e.g. ١٠ مساءً",
-    dayUseCheckOutEnLabel: "Leave-by time in English",
-    dayUseCheckOutEnPlaceholder: "e.g. 10 PM",
     capacityLabel: "Capacity (guests)",
     descriptionLabel: "Description",
     listingInstagram: "This rest house's Instagram URL",
@@ -857,8 +866,6 @@ export const en: Dictionary = {
     seoTitleEnLabel: "SEO title (English)",
     seoDescriptionEnLabel: "SEO description (English)",
     addressLineEnLabel: "Address line (English)",
-    checkInTimeEnLabel: "Check-in time (English)",
-    checkOutTimeEnLabel: "Check-out time (English)",
     paymentDisabled:
       "Online payment is off — the deposit is collected by the owner directly.",
     paymentMisconfigured:

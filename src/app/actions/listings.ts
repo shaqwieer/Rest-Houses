@@ -20,6 +20,9 @@ import { DEFAULT_WEEKEND_MODE, WEEKEND_MODES } from "@/lib/dates";
 import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
 import { getI18n } from "@/lib/i18n/server";
 import { normalizeDigits } from "@/lib/format";
+import { stayHourWrite } from "@/lib/clock";
+import { CANCEL_POLICIES } from "@/lib/policies";
+import { stayHourField } from "@/lib/validation";
 import type { Dictionary } from "@/lib/i18n";
 
 /**
@@ -110,13 +113,31 @@ function listingSchema(t: Dictionary) {
     /**
      * The rest house's own arrival, departure and free-cancellation policy.
      *
-     * Blank times mean "show the platform's" — the same "" -as-inherit rule
-     * `dayUseCheckOutTime` above uses. `freeCancelHours` gets the `preprocess`
-     * treatment instead, for exactly the reason `depositPercent` does at the
-     * bottom of this schema: `Number("")` is 0, and 0 here means "no free
-     * cancellation at all". Without this, every owner who left the box empty
-     * would be published as refusing free cancellation.
+     * The two hours come from a menu now and are null when the owner left the
+     * "use the platform's time" option selected — see `stayHourField` in
+     * src/lib/validation.ts for why null rather than 0, given that 0 is
+     * midnight. The `*Time` / `*TimeEn` columns beside them are no longer
+     * posted by the form; they are carried through from the stored row and
+     * retired by `stayHourWrite` the moment an hour is chosen.
+     *
+     * `freeCancelHours` gets the same `preprocess` treatment for a different
+     * reason, the one `depositPercent` documents at the bottom of this schema:
+     * `Number("")` is 0, and 0 there means "no free cancellation at all".
+     * Without it, every owner who left the box empty would be published as
+     * refusing free cancellation.
      */
+    checkInHour: stayHourField(),
+    checkOutHour: stayHourField(),
+    /**
+     * The cancellation answer, from a list of six.
+     *
+     * `.catch("")` rather than a bare enum, matching `weekendMode` above: a
+     * value outside the list is a crafted post or a stale tab, and neither
+     * deserves to fail the save of an otherwise valid listing. "" is the safe
+     * landing because it means "inherit", which is what the listing already
+     * did — unlike, say, defaulting to NONE, which would publish a refusal.
+     */
+    cancelPolicy: z.enum(["", ...CANCEL_POLICIES]).catch(""),
     checkInTime: z.string().trim().max(40).default(""),
     checkInTimeEn: blankToNull(40),
     checkOutTime: z.string().trim().max(40).default(""),
@@ -147,6 +168,13 @@ function listingSchema(t: Dictionary) {
      */
     dayUsePrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
     dayUseWeekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    /**
+     * The leave-by hour. Null means "not offered" here, NOT "inherit" — this
+     * one has no platform tier, and `resolveDayUseCheckOut` in
+     * src/lib/policies.ts explains why giving it one would advertise a leave-by
+     * time on every rest house that does not take day bookings.
+     */
+    dayUseCheckOutHour: stayHourField(),
     dayUseCheckOutTime: z.string().trim().max(40).default(""),
     dayUseCheckOutTimeEn: blankToNull(40),
     /** Refundable security deposit in whole dirhams. 0 = none asked for. */
@@ -208,8 +236,81 @@ function listingSchema(t: Dictionary) {
 
 type ListingInput = z.infer<ReturnType<typeof listingSchema>>;
 
-/** Read the shared listing fields out of a FormData. */
-function readListingForm(formData: FormData, t: Dictionary) {
+/**
+ * The stay-time free text a listing already has, as `readListingForm` needs it.
+ *
+ * Empty for a listing being created — a new one has no legacy text to preserve.
+ */
+export type LegacyStayText = {
+  /** The pre-list cancellation window. null = inherit, 0 = none allowed. */
+  freeCancelHours: number | null;
+  checkInTime: string;
+  checkInTimeEn: string | null;
+  checkOutTime: string;
+  checkOutTimeEn: string | null;
+  dayUseCheckOutTime: string;
+  dayUseCheckOutTimeEn: string | null;
+};
+
+const NO_LEGACY_STAY_TEXT: LegacyStayText = {
+  freeCancelHours: null,
+  checkInTime: "",
+  checkInTimeEn: null,
+  checkOutTime: "",
+  checkOutTimeEn: null,
+  dayUseCheckOutTime: "",
+  dayUseCheckOutTimeEn: null,
+};
+
+/**
+ * The legacy stay text on an existing listing, or the empty set for a new one.
+ *
+ * A missing row also returns the empty set rather than throwing: the save paths
+ * below already report "listing not found" properly a few lines later, and
+ * failing here would turn that into an unhandled error.
+ */
+async function legacyStayTextFor(
+  id: string | null,
+  /**
+   * Scopes the read to one owner's listings, mirroring the WHERE clause the
+   * owner save path already writes through. Without it an owner could name
+   * somebody else's listing id and have that row's text read on their behalf —
+   * the write would still be refused, but a read scoped differently from its
+   * write is the shape these bugs arrive in.
+   */
+  ownerId?: string,
+): Promise<LegacyStayText> {
+  if (!id) return NO_LEGACY_STAY_TEXT;
+  const row = await prisma.listing.findFirst({
+    where: ownerId ? { id, ownerId } : { id },
+    select: {
+      freeCancelHours: true,
+      checkInTime: true,
+      checkInTimeEn: true,
+      checkOutTime: true,
+      checkOutTimeEn: true,
+      dayUseCheckOutTime: true,
+      dayUseCheckOutTimeEn: true,
+    },
+  });
+  return row ?? NO_LEGACY_STAY_TEXT;
+}
+
+/**
+ * Read the shared listing fields out of a FormData.
+ *
+ * `legacy` comes from the stored row, never from the request. The editor no
+ * longer renders the six free-text stay-time boxes, so a form that posted them
+ * would be posting nothing — and defaulting them to "" would wipe the answer an
+ * un-migrated listing still depends on. Threading the stored values in keeps
+ * them server-side, where a hidden input would have handed them to the browser
+ * to give back.
+ */
+function readListingForm(
+  formData: FormData,
+  t: Dictionary,
+  legacy: LegacyStayText = NO_LEGACY_STAY_TEXT,
+) {
   // Checkboxes are absent from FormData when unchecked, hence the `=== "on"`
   // rather than a truthiness check on a possibly-null value.
   return listingSchema(t).safeParse({
@@ -223,15 +324,22 @@ function readListingForm(formData: FormData, t: Dictionary) {
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
     weekendMode: formData.get("weekendMode") ?? DEFAULT_WEEKEND_MODE,
-    checkInTime: formData.get("checkInTime") ?? "",
-    checkInTimeEn: formData.get("checkInTimeEn") ?? "",
-    checkOutTime: formData.get("checkOutTime") ?? "",
-    checkOutTimeEn: formData.get("checkOutTimeEn") ?? "",
-    freeCancelHours: formData.get("freeCancelHours"),
+    checkInHour: formData.get("checkInHour"),
+    checkOutHour: formData.get("checkOutHour"),
+    checkInTime: legacy.checkInTime,
+    checkInTimeEn: legacy.checkInTimeEn ?? "",
+    checkOutTime: legacy.checkOutTime,
+    checkOutTimeEn: legacy.checkOutTimeEn ?? "",
+    cancelPolicy: formData.get("cancelPolicy") ?? "",
+    // No longer posted by the form — the list replaced the number box. Carried
+    // through from the stored row so it survives as the middle tier for a
+    // listing nobody has converted yet.
+    freeCancelHours: legacy.freeCancelHours,
     dayUsePrice: formData.get("dayUsePrice") ?? 0,
     dayUseWeekendPrice: formData.get("dayUseWeekendPrice") ?? 0,
-    dayUseCheckOutTime: formData.get("dayUseCheckOutTime") ?? "",
-    dayUseCheckOutTimeEn: formData.get("dayUseCheckOutTimeEn") ?? "",
+    dayUseCheckOutHour: formData.get("dayUseCheckOutHour"),
+    dayUseCheckOutTime: legacy.dayUseCheckOutTime,
+    dayUseCheckOutTimeEn: legacy.dayUseCheckOutTimeEn ?? "",
     securityDeposit: formData.get("securityDeposit") ?? 0,
     instagram: formData.get("instagram") ?? "",
     capacity: formData.get("capacity"),
@@ -334,6 +442,23 @@ function listingColumns(
   categories: string[],
   opts: { allowEditorialFlags: boolean },
 ) {
+  // The three stay times. The form posts only an hour for each; the legacy free
+  // text arrives on `data` from the stored row (see `readListingForm`), and
+  // `stayHourWrite` decides which of the two survives — the text is retired the
+  // moment an hour is chosen, and kept untouched while none is.
+  const checkIn = stayHourWrite(data.checkInHour, {
+    arabic: data.checkInTime,
+    english: data.checkInTimeEn,
+  });
+  const checkOut = stayHourWrite(data.checkOutHour, {
+    arabic: data.checkOutTime,
+    english: data.checkOutTimeEn,
+  });
+  const dayUseCheckOut = stayHourWrite(data.dayUseCheckOutHour, {
+    arabic: data.dayUseCheckOutTime,
+    english: data.dayUseCheckOutTimeEn,
+  });
+
   const common = {
     name: data.name,
     description: data.description,
@@ -355,10 +480,13 @@ function listingColumns(
     // `weekendMode` from the row), so nothing the browser posts is trusted for
     // money either way.
     weekendMode: data.weekendMode,
-    checkInTime: data.checkInTime,
-    checkInTimeEn: data.checkInTimeEn,
-    checkOutTime: data.checkOutTime,
-    checkOutTimeEn: data.checkOutTimeEn,
+    checkInHour: checkIn.hour,
+    checkInTime: checkIn.arabic,
+    checkInTimeEn: checkIn.english,
+    checkOutHour: checkOut.hour,
+    checkOutTime: checkOut.arabic,
+    checkOutTimeEn: checkOut.english,
+    cancelPolicy: data.cancelPolicy,
     freeCancelHours: data.freeCancelHours,
     // Day-use rates, the leave-by time and the refundable security deposit are
     // commercial terms of the rest house, exactly like the nightly price — so
@@ -366,8 +494,9 @@ function listingColumns(
     // them, and they are display-only, so there is no money path to protect.
     dayUsePrice: data.dayUsePrice,
     dayUseWeekendPrice: data.dayUseWeekendPrice,
-    dayUseCheckOutTime: data.dayUseCheckOutTime,
-    dayUseCheckOutTimeEn: data.dayUseCheckOutTimeEn,
+    dayUseCheckOutHour: dayUseCheckOut.hour,
+    dayUseCheckOutTime: dayUseCheckOut.arabic,
+    dayUseCheckOutTimeEn: dayUseCheckOut.english,
     securityDeposit: data.securityDeposit,
     // The rest house's own Instagram, in `common` alongside the other contact
     // details for the same reason: it is the owner's account, not an editorial
@@ -414,7 +543,7 @@ export async function saveListing(formData: FormData): Promise<ActionResult> {
   }
 
   const id = String(formData.get("id") ?? "").trim() || null;
-  const parsed = readListingForm(formData, t);
+  const parsed = readListingForm(formData, t, await legacyStayTextFor(id));
 
   if (!parsed.success) {
     return {
@@ -547,7 +676,7 @@ export async function saveOwnerListing(formData: FormData): Promise<ActionResult
   }
 
   const id = String(formData.get("id") ?? "").trim() || null;
-  const parsed = readListingForm(formData, t);
+  const parsed = readListingForm(formData, t, await legacyStayTextFor(id, owner.id));
 
   if (!parsed.success) {
     return {
