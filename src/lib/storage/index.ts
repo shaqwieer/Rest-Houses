@@ -1,5 +1,6 @@
 import { DatabaseStorageAdapter } from "./database";
 import { LocalStorageAdapter } from "./local";
+import { OptimizingStorage } from "./optimize";
 import type { StorageAdapter } from "./types";
 
 export * from "./types";
@@ -47,13 +48,30 @@ function build(driver: string): StorageAdapter {
   }
 }
 
-/** The adapter new uploads are written through. */
+/**
+ * The adapter new uploads are written through.
+ *
+ * Every driver is wrapped in `OptimizingStorage`, so an owner's 8 MB phone
+ * photo is recompressed to a few hundred kilobytes before it reaches storage —
+ * whichever storage that is. See src/lib/storage/optimize.ts for the settings
+ * and why they are visually lossless.
+ *
+ * Wrapped here rather than at the call site so a future uploader cannot skip
+ * it, and inside the cache so the sharp pipeline is built once.
+ *
+ * Set `IMAGE_OPTIMIZE=off` to store originals — useful only for diagnosing a
+ * suspected encoder problem, and it will grow the database quickly.
+ */
 export function getStorage(): StorageAdapter {
   const driver = (process.env.STORAGE_DRIVER ?? "local").toLowerCase();
-  let adapter = cache.get(driver);
+  const optimize = (process.env.IMAGE_OPTIMIZE ?? "on").toLowerCase() !== "off";
+  const key = optimize ? `${driver}+opt` : driver;
+
+  let adapter = cache.get(key);
   if (!adapter) {
-    adapter = build(driver);
-    cache.set(driver, adapter);
+    const base = build(driver);
+    adapter = optimize ? new OptimizingStorage(base) : base;
+    cache.set(key, adapter);
   }
   return adapter;
 }

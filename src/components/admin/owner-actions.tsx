@@ -15,6 +15,7 @@ import {
   updateOwnerAccount,
 } from "@/app/actions/owners";
 import { useLocale } from "@/lib/i18n/provider";
+import { arPercent } from "@/lib/format";
 import { CITIES, label as pickLabel, type OwnerAccessState } from "@/lib/constants";
 
 /** The owner's editable details, as they stand right now. */
@@ -28,6 +29,15 @@ export type OwnerAccount = {
   city: string;
   idNumber: string;
   about: string;
+  /**
+   * This owner's negotiated commission rate, or null for the platform's.
+   *
+   * null and 0 are different answers — "no special deal" versus "pays no
+   * commission" — so this must not be flattened to a number with a 0 default
+   * anywhere between the column and the input. See the note on the column in
+   * prisma/schema.prisma.
+   */
+  commissionPercent: number | null;
 };
 
 /**
@@ -43,6 +53,7 @@ export function OwnerActions({
   state,
   membershipExpiresAt,
   account,
+  platformCommissionPercent,
 }: {
   ownerId: string;
   state: OwnerAccessState;
@@ -50,6 +61,8 @@ export function OwnerActions({
   membershipExpiresAt: string | null;
   /** Current details, used to pre-fill the manage dialog. */
   account: OwnerAccount;
+  /** SiteSettings.commissionPercent — what a blank commission field falls back to. */
+  platformCommissionPercent: number;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -338,6 +351,27 @@ export function OwnerActions({
                   rows={3}
                   defaultValue={account.about}
                   className={`${inputClass} resize-y`}
+                />
+              </ModalField>
+
+              {/* Blank is meaningful here and the placeholder says what it
+                  means, because an empty number box otherwise reads as zero —
+                  which is the one value that would cost the platform every
+                  dirham of its cut on this owner's bookings. */}
+              <ModalField
+                label={t.admin.ownerCommissionLabel}
+                error={errors.commissionPercent}
+                hint={t.admin.ownerCommissionHint(arPercent(platformCommissionPercent, locale))}
+              >
+                <input
+                  name="commissionPercent"
+                  type="number"
+                  min={0}
+                  max={100}
+                  dir="ltr"
+                  placeholder={t.admin.ownerCommissionPlaceholder}
+                  defaultValue={account.commissionPercent ?? ""}
+                  className={inputClass}
                 />
               </ModalField>
 

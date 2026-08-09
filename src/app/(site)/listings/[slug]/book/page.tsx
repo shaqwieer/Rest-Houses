@@ -4,7 +4,12 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { BookingForm } from "@/components/booking/booking-form";
 import { Icon } from "@/components/ui/icon";
-import { getListingBySlug, isRangeAvailable, localizeListing } from "@/lib/listings";
+import {
+  getListingBySlug,
+  getSpecialDays,
+  isRangeAvailable,
+  localizeListing,
+} from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
@@ -97,6 +102,11 @@ export default async function BookPage({
   // action; this one only drives what the guest is shown.
   const depositPercent = resolveDepositPercent(listing.depositPercent, settings.depositPercent);
 
+  // The occasion nights inside this stay. Loaded here so the figure on the
+  // confirmation screen matches the one the action stores — which loads them
+  // again itself and does not trust this page.
+  const specialDays = await getSpecialDays(listing.id, from!, to!);
+
   const q = quote({
     checkIn: from!,
     checkOut: to!,
@@ -105,6 +115,8 @@ export default async function BookPage({
     // The listing's own weekend — the same value the server action re-reads
     // when it recomputes this total for real.
     weekendMode: toWeekendMode(listing.weekendMode),
+    holidayPrice: listing.holidayPrice,
+    specialDays,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
     dayUse,

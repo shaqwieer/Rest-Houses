@@ -272,13 +272,25 @@ export async function getOwnerInsights(ownerId: string): Promise<OwnerInsights> 
     // hand, and a confirmed booking writes its nights here. Counting nights from
     // this table rather than from booking rows means the occupancy figure matches
     // what the calendar shows.
+    //
+    // EXTERNAL is included with BOOKED: a night sold on Airbnb or Booking.com is
+    // a night this rest house is full, and an owner who takes half their
+    // business there would otherwise see their own dashboard call them empty.
+    // Owner blocks are still excluded — a day closed for maintenance is not
+    // demand and counting it would flatter the figure.
+    //
+    // `distinct` on (listingId, date) rather than counting rows: since imported
+    // calendars arrived a row is a *reason* a day is closed, not the day, and a
+    // night both booked here and present in a feed is two rows for one night.
+    // Counting rows would let occupancy exceed 100%.
     prisma.availability.findMany({
       where: {
-        status: "BOOKED",
+        status: { in: ["BOOKED", "EXTERNAL"] },
         date: { gte: today, lt: horizon },
         listing: { ownerId, published: true },
       },
-      select: { listingId: true },
+      select: { listingId: true, date: true },
+      distinct: ["listingId", "date"],
     }),
   ]);
 

@@ -112,6 +112,22 @@ COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build --chown=node:node /app/node_modules/.prisma ./node_modules/.prisma
 
+# sharp, and the platform binaries it loads at runtime.
+#
+# Copied explicitly for exactly the reason Prisma's engine is, just above: the
+# JS wrapper is a static import the tracer can follow, but the actual codec is
+# a native `.node` selected from @img/sharp-linux-* by a runtime lookup that no
+# static analysis can see. Standalone builds that omit it fail on the first
+# upload with "Could not load the sharp module", long after the deploy looked
+# healthy — an image recompression failure has to be impossible to introduce
+# silently, because `optimizeImage` deliberately falls back to storing the
+# ORIGINAL bytes on any error. Without these the site keeps working and quietly
+# fills Postgres with 8 MB phone photos.
+#
+# Next also uses sharp for its own image optimiser, so this hardens that too.
+COPY --from=build --chown=node:node /app/node_modules/sharp ./node_modules/sharp
+COPY --from=build --chown=node:node /app/node_modules/@img ./node_modules/@img
+
 # Taken from the build stage, where it was already CR-stripped, validated and
 # made executable.
 COPY --from=build --chown=node:node /app/docker/entrypoint.sh /usr/local/bin/entrypoint.sh

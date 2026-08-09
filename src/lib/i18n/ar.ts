@@ -300,6 +300,16 @@ export const ar = {
         many: "ليلة",
         other: "ليلة",
       })}`,
+    occasionNightShort: "مناسبة",
+    /** "عيد الفطر — ٣٬٠٠٠ د.إ × ليلتان" */
+    occasionLine: (occasion: string, price: string, nights: string, count: number) =>
+      `${occasion} — ${price} د.إ × ${nights} ${plural("ar", count, {
+        one: "ليلة",
+        two: "ليلتان",
+        few: "ليالٍ",
+        many: "ليلة",
+        other: "ليلة",
+      })}`,
     serviceFee: (pct: string) => `رسوم الخدمة (${pct}٪)`,
     total: "الإجمالي",
     depositLine: (pct: string, amount: string) =>
@@ -373,6 +383,7 @@ export const ar = {
     tooManyImages: (n: string) => `الحد الأقصى ${n} صورة لكل استراحة`,
     prevMonth: "الشهر السابق",
     nextMonth: "الشهر التالي",
+    occasionNight: "ليلة مناسبة — بسعر خاص",
     dayBooked: "محجوز",
     dayAvailable: "متاح",
     weekendHigher: "نهاية الأسبوع — سعر مرتفع",
@@ -550,6 +561,7 @@ export const ar = {
     // dashboard
     dashboardTitle: "لوحة تحكم المالك",
     myListings: "استراحاتي",
+    myCalendar: "التقويم",
     myBookings: "طلبات الحجز",
     myProfile: "ملفي",
     overview: "نظرة عامة",
@@ -747,6 +759,10 @@ export const ar = {
       "٨ أحرف على الأقل. أبلغ المالك بها بنفسك — لا تُرسل من الموقع، ولا تظهر في السجل.",
     changePassword: "تغيير كلمة المرور",
     ownerNoCity: "غير محدّدة",
+    ownerCommissionLabel: "عمولة هذا المالك (٪)",
+    ownerCommissionHint: (platform: string) =>
+      `اتركه فارغًا لتطبيق عمولة المنصة (${platform}). اكتب صفرًا لإعفائه من العمولة.`,
+    ownerCommissionPlaceholder: "عمولة المنصة",
     ownerAboutLabel: "نبذة",
     ownerIdNumberLabel: "رقم الهوية / الرخصة التجارية",
     hiddenListingsNote: (n: string) =>
@@ -782,8 +798,10 @@ export const ar = {
     commissionCollectedTile: "عمولة مستلمة فعلياً",
     commissionOutstandingTile: "عمولة لم تصل بعد",
     allValueTile: "قيمة كل الحجوزات",
+    // "الافتراضية" منذ أن صار لكل مالك أن يُخصَّص له سعر عمولة خاص. الرقم
+    // المطبَّق فعليًا على كل حجز مخزَّن في صفّه ويظهر في جدول الحجوزات أدناه.
     commissionRateNote: (percent: string) =>
-      `العمولة ${percent} من قيمة الحجز، يحوّلها المالك بنكياً في الخطوة السادسة.`,
+      `العمولة الافتراضية ${percent} من قيمة الحجز، يحوّلها المالك بنكياً في الخطوة السادسة. قد يكون لبعض الملّاك سعر متفق عليه مختلف.`,
 
     // reviews moderation
     reviews: "التقييمات",
@@ -842,6 +860,9 @@ export const ar = {
     areaLabel: "المنطقة / الموقع",
     areaPlaceholder: "لهباب – دبي",
     pricePerNightLabel: "سعر الليلة (د.إ)",
+    holidayPriceLabel: "سعر المناسبات والعطل الرسمية (د.إ)",
+    holidayPriceHint:
+      "لعيد الفطر والأضحى واليوم الوطني ورأس السنة. اتركه صفرًا إن لم ترغب بسعر خاص، ثم حدّد الأيام من التقويم.",
     weekendPriceLabel: "سعر نهاية الأسبوع",
     weekendPriceHint: "اتركه صفرًا ليساوي السعر العادي",
     // ---- أيام نهاية الأسبوع: الشارقة عطلتها ثلاثة أيام، وبقية الإمارات يومان
@@ -1054,6 +1075,111 @@ export const ar = {
     settingsSubtitle: "كل ما تعدّله هنا يظهر على الموقع فورًا — لا حاجة لتعديل الكود أو إعادة النشر.",
   },
 
+  /* -------------------------------------------------------------- calendar */
+  /**
+   * ربط التقويم مع المنصات الخارجية.
+   *
+   * مجموعة مستقلة عن `admin` لأن اللوحتين تعرضان اللوحة نفسها — المشغّل من
+   * /admin/calendar والمالك من صفحة استراحته — فوضعها تحت `admin` كان سيجعل
+   * صفحة المالك تقرأ من قاموس ليس لها.
+   */
+  calendar: {
+    title: "ربط التقويم مع المنصات",
+    introOwner:
+      "إذا كانت استراحتك معروضة على Airbnb أو Booking.com، اربط تقويمها هنا حتى لا يُحجز اليوم مرتين.",
+    introAdmin:
+      "ربط تقويم هذه الاستراحة مع حساباتها على المنصات الأخرى، في الاتجاهين.",
+
+    importTitle: "١ — استيراد الحجوزات من المنصات",
+    importHint:
+      "الصق رابط تصدير التقويم (iCal) من كل منصة. أي حجز هناك سيُغلق نفس الأيام هنا تلقائيًا.",
+    platform: "المنصة",
+    platformOther: "منصة أخرى",
+    urlLabel: "رابط التقويم (iCal)",
+    urlHint:
+      "من Airbnb: التقويم ← الإتاحة ← مزامنة التقاويم. ومن Booking.com: الأسعار والإتاحة ← مزامنة التقاويم.",
+    urlRequired: "الرجاء لصق رابط التقويم",
+    labelLabel: "اسم هذا التقويم",
+    labelPlaceholder: "مثال: Vrbo، أو تقويم جوجل",
+    addFeed: "إضافة الرابط",
+    removeFeed: "حذف الرابط",
+    syncNow: "مزامنة الآن",
+    syncing: "جارٍ المزامنة…",
+    neverSynced: "لم تتم المزامنة بعد",
+    daysImported: (n: string) => `${n} يوم مستورد`,
+    lastOkAt: (when: string) => `آخر مزامنة ناجحة: ${when}`,
+
+    feedRemoved: "حُذف الرابط وأُفرجت عن أيامه",
+    addedAndSynced: (n: string) => `تمت الإضافة — استُوردت ${n} يومًا`,
+    addedButFailed: (reason: string) =>
+      `حُفظ الرابط لكن تعذّرت قراءته: ${reason}. سنعيد المحاولة تلقائيًا.`,
+    syncedAll: (n: string) => `تمت المزامنة — ${n} يومًا محجوزًا خارجيًا`,
+    syncedWithErrors: (n: string, failed: string) =>
+      `تمت مزامنة جزئية — ${n} يومًا، وتعذّر ${failed} رابط`,
+    noFeedsToSync: "لا توجد روابط تقويم لهذه الاستراحة",
+
+    exportTitle: "٢ — تصدير حجوزاتك إلى المنصات",
+    exportHint:
+      "انسخ هذا الرابط والصقه في خانة استيراد التقويم لدى Airbnb و Booking.com، حتى يُغلق الحجز الذي يتم هنا نفس الأيام هناك.",
+    exportEnable: "إنشاء رابط التصدير",
+    exportDisable: "إيقاف الرابط",
+    exportEnabled: "أُنشئ رابط التصدير",
+    exportDisabled: "أُوقف رابط التصدير — لم يعد يعمل",
+    exportPrivacy:
+      "الرابط لا يحتوي على أي بيانات ضيوف — يذكر التواريخ غير المتاحة فقط. عامله كرابط سرّي.",
+    exportBookingTip:
+      "إن ألصقت هذا الرابط في Booking.com، اختر عندهم «الأيام المحجوزة فقط» بدل «المحجوزة والمغلقة»، حتى لا يعيد الموقعان إرسال نفس الحجز لبعضهما.",
+
+    /* ---- وضع التقويم: حظر الأيام أو تسعير المناسبات ---- */
+    modeLabel: "ماذا يفعل الضغط على اليوم",
+    modeBlock: "حظر الأيام",
+    modeSpecial: "أيام المناسبات",
+    specialModeHint:
+      "اضغط على أيام المناسبات والعطل الرسمية ليُطبَّق عليها سعر المناسبات بدل السعر العادي. اليوم المحجوز يمكن تعليمه أيضًا — السعر والإتاحة أمران منفصلان.",
+    occasionName: "اسم المناسبة (اختياري)",
+    occasionPlaceholder: "مثال: عيد الفطر، اليوم الوطني، رأس السنة",
+    holidayRateActive: (price: string) => `سعر المناسبات لهذه الاستراحة: ${price} د.إ لليلة`,
+    holidayRateMissing:
+      "لم تُحدَّد قيمة «سعر المناسبات» لهذه الاستراحة بعد، فلن يتغيّر السعر. أضفها من إعدادات الاستراحة بعد سعر نهاية الأسبوع.",
+    specialDay: "يوم مناسبة",
+    specialDaysCount: (n: string) => `${n} يوم مناسبة`,
+    markRestOfMonth: "تعليم بقية الشهر",
+    unmarkRestOfMonth: "إلغاء تعليم الشهر",
+    rangeMarkedSpecial: "عُلِّمت الأيام كمناسبات",
+    rangeUnmarkedSpecial: "أُلغي تعليم الأيام",
+
+    dayImported: "محجوز على منصة أخرى",
+    externalPlatform: "منصة خارجية",
+    dayHeldBy: (platform: string) => `محجوز على ${platform} — يُفرج عنه من هناك`,
+    importedDaysCount: (n: string) => `${n} يومًا مستوردًا`,
+
+    latencyWarning:
+      "تنبيه: هذا الربط يعمل بتقنية iCal، وتحديث المنصات لملفاتها يستغرق عادة ساعتين إلى ثلاث. لذلك يبقى احتمال الحجز المزدوج قائمًا خلال هذه الفترة، وهو قيد في المنصات نفسها لا في الموقع.",
+
+    /**
+     * أسباب فشل جلب الرابط.
+     *
+     * الأسباب أكواد ثابتة تُترجم هنا، ولا تُخزَّن كنص جاهز: نص الخطأ الأصلي قد
+     * يتضمّن الرابط نفسه، والرابط بمثابة كلمة سر لحساب المالك على المنصة الأخرى.
+     * أي كود غير معروف يُعرض كرسالة عامة بدل أن يظهر فارغًا.
+     */
+    fetchError: (code: string) =>
+      ({
+        INVALID_URL: "الرابط غير صالح",
+        NOT_HTTPS: "يجب أن يبدأ الرابط بـ https",
+        PRIVATE_ADDRESS: "هذا الرابط يشير إلى عنوان داخلي غير مسموح",
+        DNS: "تعذّر الوصول إلى الخادم",
+        TIMEOUT: "انتهت مهلة الاتصال",
+        TOO_MANY_REDIRECTS: "الرابط يعيد التوجيه كثيرًا",
+        HTTP_ERROR: "رفضت المنصة الطلب — تأكد من صلاحية الرابط",
+        TOO_LARGE: "حجم التقويم كبير جدًا",
+        NOT_CALENDAR: "الرابط لا يعيد ملف تقويم صالحًا",
+        NETWORK: "تعذّر الاتصال بالمنصة",
+        // ليس خطأ في رابط المالك — تعذّر الحفظ، وستُعاد المحاولة تلقائيًا.
+        WRITE_FAILED: "تعذّر حفظ التقويم — سنعيد المحاولة",
+      })[code] ?? "تعذّرت قراءة التقويم",
+  },
+
   /* ------------------------------------------------------------ validation */
   validation: {
     required: "هذا الحقل مطلوب",
@@ -1097,6 +1223,8 @@ export const ar = {
     invalidCity: "اختر مدينة صحيحة",
     priceRequired: "السعر مطلوب",
     capacityRequired: "السعة مطلوبة",
+    holidayBelowWeekday: "سعر المناسبات أقل من سعر الليلة العادية — تأكّد من الأرقام",
+    holidayBelowWeekdayShort: "أقل من السعر العادي",
     weekendBelowWeekday: "سعر نهاية الأسبوع لا يمكن أن يكون أقل من سعر الليلة العادية",
     weekendBelowWeekdayShort: "أقل من السعر العادي",
     depositRange: "نسبة العربون يجب أن تكون بين ٠ و ١٠٠",
@@ -1123,6 +1251,10 @@ export const ar = {
     ownerInactive: "حسابك غير نشط أو انتهت عضويتك",
     dateNotEditable: "لا يمكن تعديل تاريخ ماضٍ",
     dayHeldByBooking: "هذا اليوم محجوز بطلب مؤكد — ألغِ الطلب من صفحة الطلبات لتحريره",
+    invalidPlatform: "منصة غير معروفة",
+    feedAlreadyAdded: "هذا الرابط مضاف مسبقًا لهذه الاستراحة",
+    feedNotFound: "رابط التقويم غير موجود",
+    tooManyFeeds: "بلغت الحد الأقصى لروابط التقويم لهذه الاستراحة",
     invalidRange: "نطاق تواريخ غير صالح",
     noEditableDays: "لا توجد أيام قابلة للتعديل في هذا النطاق",
     rangeTooLong: "النطاق طويل جدًا — أقصى حد ٤٠٠ يوم",
@@ -1297,6 +1429,10 @@ export const ar = {
     REVIEW_INVITED: "إنشاء رابط تقييم",
     REVIEW_APPROVED: "الموافقة على تقييم",
     REVIEW_REJECTED: "رفض تقييم",
+    CALENDAR_FEED_ADDED: "ربط تقويم خارجي",
+    CALENDAR_FEED_REMOVED: "حذف تقويم خارجي",
+    CALENDAR_EXPORT_ENABLED: "تفعيل رابط تصدير التقويم",
+    CALENDAR_EXPORT_DISABLED: "إيقاف رابط تصدير التقويم",
     OWNER_APPROVED: "الموافقة على مالك",
     OWNER_REJECTED: "رفض طلب مالك",
     OWNER_SUSPENDED: "إيقاف مالك",

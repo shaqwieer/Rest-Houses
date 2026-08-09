@@ -43,11 +43,30 @@ export default async function AdminOverviewPage() {
       take: 5,
       include: { listing: { select: { name: true } } },
     }),
-    // Occupancy = booked nights ÷ (listings × 30 nights) over the coming month.
+    // Occupancy = sold nights ÷ (listings × 30 nights) over the coming month.
+    //
+    // "Sold" counts a confirmed booking here AND a night imported from
+    // Airbnb/Booking.com: both are nights the rest house cannot be let for, and
+    // an owner who takes half their business on Airbnb would otherwise read
+    // this figure as half-empty. Owner blocks stay out — a day closed for
+    // maintenance is not demand.
+    //
+    // `distinct` and not `count`, because a row here is now a *reason* a day is
+    // closed rather than the day itself: a night booked on this platform while
+    // also appearing in an imported feed is two rows and one night, and
+    // counting rows would push occupancy over 100%. See the note on
+    // `Availability` in prisma/schema.prisma.
     Promise.all([
-      prisma.availability.count({
-        where: { status: "BOOKED", date: { gte: today, lt: monthAhead } },
-      }),
+      prisma.availability
+        .findMany({
+          where: {
+            status: { in: ["BOOKED", "EXTERNAL"] },
+            date: { gte: today, lt: monthAhead },
+          },
+          select: { listingId: true, date: true },
+          distinct: ["listingId", "date"],
+        })
+        .then((rows) => rows.length),
       prisma.listing.count({ where: { published: true } }),
     ]),
     // Confirmed revenue for stays starting in the next 30 days.
@@ -81,9 +100,15 @@ export default async function AdminOverviewPage() {
     [0, 1, 2, 3].map(async (w) => {
       const from = addDays(today, w * 7);
       const to = addDays(today, (w + 1) * 7);
-      const booked = await prisma.availability.count({
-        where: { status: "BOOKED", date: { gte: from, lt: to } },
-      });
+      // Same two rules as the headline figure above: imported nights count as
+      // sold, and days are counted once however many sources closed them.
+      const booked = (
+        await prisma.availability.findMany({
+          where: { status: { in: ["BOOKED", "EXTERNAL"] }, date: { gte: from, lt: to } },
+          select: { listingId: true, date: true },
+          distinct: ["listingId", "date"],
+        })
+      ).length;
       const total = publishedCount * 7;
       const pct = total > 0 ? Math.round((booked / total) * 100) : 0;
       return { label: t.admin.weekLabel(arNum(w + 1, locale)), pct };

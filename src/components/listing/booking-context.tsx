@@ -64,6 +64,16 @@ type BookingContextValue = {
    * two components below the only place that knows it.
    */
   weekendMode: WeekendMode;
+  /**
+   * The occasion nights this listing charges its holiday rate for, so the
+   * calendar can mark them and the preview can price them.
+   *
+   * A PREVIEW ONLY. `createBookingRequest` re-reads these from the database for
+   * the listing and range being booked and ignores whatever the browser had —
+   * see the authority note at the top of src/lib/pricing.ts. Nothing here is
+   * trusted for the stored total.
+   */
+  specialDays: ReadonlyMap<ISODate, string>;
 };
 
 const BookingContext = createContext<BookingContextValue | null>(null);
@@ -73,6 +83,8 @@ export function BookingProvider({
   pricePerNight,
   weekendPrice,
   weekendMode,
+  holidayPrice,
+  specialDays,
   dayUsePrice,
   dayUseWeekendPrice,
   serviceFeePercent,
@@ -84,6 +96,9 @@ export function BookingProvider({
   pricePerNight: number;
   weekendPrice: number;
   weekendMode: WeekendMode;
+  holidayPrice: number;
+  /** Serialised as pairs: a Map cannot cross the server/client boundary. */
+  specialDays: [ISODate, string][];
   dayUsePrice: number;
   dayUseWeekendPrice: number;
   serviceFeePercent: number;
@@ -100,6 +115,11 @@ export function BookingProvider({
   );
 
   const dayUseAvailable = dayUsePrice > 0;
+
+  // Rebuilt from the serialised pairs. A Map cannot cross the server/client
+  // boundary, and rebuilding it once here beats doing it inside the quote memo,
+  // which would make a fresh Map on every keystroke and defeat the memo.
+  const specialDayMap = useMemo(() => new Map(specialDays), [specialDays]);
 
   const setStayType = useCallback((next: StayType) => {
     setStayTypeState(next);
@@ -142,6 +162,8 @@ export function BookingProvider({
       pricePerNight,
       weekendPrice,
       weekendMode,
+      holidayPrice,
+      specialDays: specialDayMap,
       serviceFeePercent,
       depositPercent,
       dayUse: isDayUse,
@@ -154,6 +176,8 @@ export function BookingProvider({
     pricePerNight,
     weekendPrice,
     weekendMode,
+    holidayPrice,
+    specialDayMap,
     dayUsePrice,
     dayUseWeekendPrice,
     serviceFeePercent,
@@ -187,6 +211,7 @@ export function BookingProvider({
       bookingQuery,
       ready,
       weekendMode,
+      specialDays: specialDayMap,
     }),
     [
       range,
@@ -201,6 +226,7 @@ export function BookingProvider({
       ready,
       capacity,
       weekendMode,
+      specialDayMap,
     ],
   );
 

@@ -23,9 +23,14 @@ import { arFullDate } from "@/lib/dates";
  * dead links reads as a broken product rather than an account awaiting review.
  */
 
+// Calendar sits next to listings rather than at the end: blocking a weekend and
+// pricing Eid are things an owner does far more often than editing their
+// profile, and on a five-tab bottom bar the order is the whole information
+// hierarchy.
 const TABS: { href: string; labelKey: keyof TabLabels; icon: IconName; exact?: boolean }[] = [
   { href: "/owner", labelKey: "overview", icon: "space_dashboard", exact: true },
   { href: "/owner/listings", labelKey: "listings", icon: "holiday_village" },
+  { href: "/owner/calendar", labelKey: "calendar", icon: "calendar_month" },
   { href: "/owner/bookings", labelKey: "bookings", icon: "inbox" },
   { href: "/owner/profile", labelKey: "profile", icon: "person" },
 ];
@@ -33,6 +38,7 @@ const TABS: { href: string; labelKey: keyof TabLabels; icon: IconName; exact?: b
 type TabLabels = {
   overview: string;
   listings: string;
+  calendar: string;
   bookings: string;
   profile: string;
 };
@@ -62,6 +68,7 @@ export function OwnerShell({
   const labels: TabLabels = {
     overview: t.owner.overview,
     listings: t.owner.myListings,
+    calendar: t.owner.myCalendar,
     bookings: t.owner.myBookings,
     profile: t.owner.myProfile,
   };

@@ -471,6 +471,73 @@ the matching Postgres password.
 
 ---
 
+## 10b. Calendar sync cron (Airbnb / Booking.com)
+
+Owners paste their Airbnb and Booking.com iCal export URLs into a rest house's
+page, and the platform pulls each one on a schedule so a booking taken there
+closes the same days here. **Nothing pulls them without this cron entry** — the
+only other trigger is the "Sync now" button, which an owner has to press.
+
+There is no scheduler inside the app on purpose: a `setInterval` would fire once
+per container, race itself, and restart its clock on every deploy. One cron on
+the host has one timer, survives a restart, and can be run by hand.
+
+**1. Put a secret in `.env`** (the endpoint answers 503 until you do — it will
+not run unauthenticated, because it makes an outbound request per feed):
+
+```bash
+cd /opt/Rest-Houses
+echo "CRON_SECRET=\"$(openssl rand -hex 32)\"" >> .env
+docker compose up -d --force-recreate app
+```
+
+**2. Add the entry.** Every 15 minutes, matching `SYNC_INTERVAL_MINUTES` in
+`src/lib/calendar/sync.ts`:
+
+```bash
+crontab -e
+# */15 * * * * curl -fsS -m 120 -X POST http://127.0.0.1:3010/api/calendar/sync -H "X-Cron-Secret: PASTE_THE_SECRET" >> /var/log/calendar-sync.log 2>&1
+```
+
+`127.0.0.1:3010` goes straight to the container and skips nginx, so the secret
+never appears in an access log. Replace the port if you changed `APP_PORT`.
+
+**3. Check it worked**, after a listing has at least one feed:
+
+```bash
+curl -fsS -X POST http://127.0.0.1:3010/api/calendar/sync \
+  -H "X-Cron-Secret: $(grep CRON_SECRET .env | cut -d'"' -f2)"
+# {"ok":true,"synced":2,"succeeded":2,"failed":0,"days":37,...}
+```
+
+A `"failed"` count comes with a reason code per feed (`HTTP_ERROR` usually means
+the owner's export URL was regenerated on the other platform and needs pasting
+again). Feed URLs are never logged — they are credentials for the owner's
+account elsewhere.
+
+### What this does not fix
+
+Airbnb regenerates its own `.ics` roughly every 3 hours, and Booking.com is
+similar. Polling faster than 15 minutes learns nothing: the refresh interval on
+**their** side bounds how quickly a booking there closes a night here, so a
+double booking remains possible inside that window. That is a property of iCal,
+not of this implementation. The owner-facing panel says so on screen.
+
+### The outbound direction
+
+Each listing can also publish its own `.ics` at
+`https://<your-domain>/api/calendar/<token>.ics`, which owners paste into Airbnb
+and Booking.com so bookings taken **here** close days **there**. It is opt-in per
+listing and needs no cron — the platforms fetch it. Two things must be right:
+
+* `NEXT_PUBLIC_SITE_URL` in `.env`, since the URL is built from it;
+* nginx must not block unknown user agents on `/api/calendar/`, or the platforms'
+  crawlers cannot read it.
+
+The feed carries no guest details — only which dates are unavailable.
+
+---
+
 ## 11. Troubleshooting
 
 **`port is already allocated` on `docker compose up`**

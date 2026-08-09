@@ -240,6 +240,7 @@ async function loadOwner(ownerId: string, t: Dictionary) {
       businessName: true,
       status: true,
       membershipExpiresAt: true,
+      commissionPercent: true,
       user: { select: { id: true, email: true, username: true } },
       _count: { select: { listings: true } },
     },
@@ -251,13 +252,26 @@ async function loadOwner(ownerId: string, t: Dictionary) {
 /**
  * Approve a pending (or previously rejected) owner.
  *
- * `membershipMonths` sets the initial membership window. It defaults to 12 and
- * may be 0, which means "no expiry" — an open-ended membership, stored as null
- * rather than as a far-future date so the distinction stays legible in the data.
+ * `membershipMonths` sets the initial membership window. 0 means "no expiry" —
+ * an open-ended membership, stored as null rather than as a far-future date so
+ * the distinction stays legible in the data.
+ *
+ * ─── Why the default is 0 and not 12 ────────────────────────────────────────
+ * It used to be 12, so approving an owner quietly scheduled their listings to
+ * vanish a year later. `activeOwnerWhere()` filters on the expiry date, so the
+ * failure was silent and delayed: no warning, no audit entry at the moment it
+ * happened, just an owner whose rest houses stopped appearing in search while
+ * their account still read "approved".
+ *
+ * Memberships are not currently billed, so there is nothing an expiry enforces.
+ * An operator who wants a window still sets one explicitly — the field is on
+ * the owner's row and `setMembership` below changes it at any time — which is
+ * the right way round: a date that ends someone's business should be typed by
+ * a person, not defaulted by a function signature.
  */
 export async function approveOwner(
   ownerId: string,
-  membershipMonths = 12,
+  membershipMonths = 0,
 ): Promise<ActionResult> {
   const { t } = await getI18n();
 
@@ -271,9 +285,12 @@ export async function approveOwner(
   const { owner, error } = await loadOwner(ownerId, t);
   if (!owner) return { ok: false, error: error! };
 
+  // A non-finite argument falls back to 0 — no expiry — matching the parameter
+  // default. Falling back to 12 here would reintroduce the surprise window
+  // through the back door for any caller that passed NaN.
   const months = Number.isFinite(membershipMonths)
     ? Math.min(120, Math.max(0, Math.round(membershipMonths)))
-    : 12;
+    : 0;
   const expiresAt = months > 0 ? addMonths(new Date(), months) : null;
 
   await prisma.$transaction([
@@ -508,6 +525,18 @@ function ownerAccountSchema(t: Dictionary) {
       .default("")
       .refine((v) => v === "" || VALID_CITY_IDS.includes(v), t.validation.invalidCity),
     about: z.string().trim().max(2000).default(""),
+    /**
+     * This owner's commission rate. "" → null → "use the platform's".
+     *
+     * A blank field and a typed 0 are different answers and must stay so all
+     * the way from the form to the column: 0 is a real, negotiated
+     * zero-commission deal, blank is "no special arrangement". `z.coerce.number`
+     * on its own turns "" into 0 and would silently promise every owner whose
+     * field was left empty that they owe nothing.
+     */
+    commissionPercent: z
+      .union([z.literal(""), z.coerce.number().int().min(0).max(100)])
+      .transform((v) => (v === "" ? null : v)),
   });
 }
 
@@ -553,6 +582,7 @@ export async function updateOwnerAccount(
     idNumber: formData.get("idNumber") ?? "",
     city: formData.get("city") ?? "",
     about: formData.get("about") ?? "",
+    commissionPercent: formData.get("commissionPercent") ?? "",
   });
 
   if (!parsed.success) {
@@ -622,6 +652,7 @@ export async function updateOwnerAccount(
           idNumber: data.idNumber || null,
           city: data.city,
           about: data.about,
+          commissionPercent: data.commissionPercent,
         },
       }),
       prisma.auditLog.create({
@@ -637,6 +668,11 @@ export async function updateOwnerAccount(
             emailFrom: owner.user.email,
             emailTo: data.email,
             listingsAffected: owner._count.listings,
+            // Money: what this owner is charged on FUTURE bookings. null means
+            // the platform rate. Existing bookings keep the rate they were
+            // quoted — it is snapshotted on each row.
+            commissionFrom: owner.commissionPercent,
+            commissionTo: data.commissionPercent,
           },
         }),
       }),

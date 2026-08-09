@@ -58,6 +58,14 @@ export function AvailabilityCalendar({
    * is the page contradicting itself in front of the guest.
    */
   weekendMode = DEFAULT_WEEKEND_MODE,
+  /**
+   * Nights the owner marked as a big occasion, date → occasion name.
+   *
+   * Shown so a guest learns *before* picking the dates that Eid costs more,
+   * rather than watching the total jump once the range is set. The rate itself
+   * is applied by `quote()`; this only marks the cells.
+   */
+  specialDays,
 }: {
   unavailableDates: ISODate[];
   value: DateRange;
@@ -65,6 +73,7 @@ export function AvailabilityCalendar({
   months?: number;
   singleDay?: boolean;
   weekendMode?: WeekendMode;
+  specialDays?: ReadonlyMap<ISODate, string>;
 }) {
   const today = todayISO();
   const unavailable = useMemo(() => new Set(unavailableDates), [unavailableDates]);
@@ -204,6 +213,9 @@ export function AvailabilityCalendar({
                   cell.iso < value.checkOut;
 
                 const disabled = cell.isPast || cell.isUnavailable;
+                const occasion = specialDays?.get(cell.iso);
+                // A past occasion is history and marking it only adds noise.
+                const isSpecial = occasion !== undefined && !cell.isPast;
 
                 return (
                   <button
@@ -213,7 +225,8 @@ export function AvailabilityCalendar({
                     disabled={disabled}
                     aria-label={`${cell.dayNumber}${
                   cell.isUnavailable ? ` — ${t.listing.dayBooked}` : ""
-                }`}
+                }${isSpecial ? ` — ${occasion || t.listing.occasionNight}` : ""}`}
+                    title={isSpecial ? occasion || t.listing.occasionNight : undefined}
                     aria-pressed={isStart || isEnd}
                     className={clsx(
                       "relative flex h-11.5 flex-col items-center justify-center rounded-xl border text-[14px] font-bold leading-none transition",
@@ -242,6 +255,16 @@ export function AvailabilityCalendar({
                     <span>{cell.label}</span>
                     {cell.hijri && (
                       <span className="mt-0.5 text-[9px] font-medium opacity-55">{cell.hijri}</span>
+                    )}
+                    {/* A dot rather than a colour, so the occasion marker can
+                        sit on top of whatever state the cell already has —
+                        selected, in-range, weekend or unavailable — instead of
+                        competing with it for the background. */}
+                    {isSpecial && (
+                      <span
+                        aria-hidden
+                        className="absolute bottom-1 size-1.25 rounded-full bg-gold-600"
+                      />
                     )}
                   </button>
                 );

@@ -7,7 +7,12 @@ import { BookingCard, CalendarSection, MobileBookingBar } from "@/components/lis
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
-import { getListingBySlug, getUnavailableDates, localizeListing } from "@/lib/listings";
+import {
+  getListingBySlug,
+  getSpecialDays,
+  getUnavailableDates,
+  localizeListing,
+} from "@/lib/listings";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { cityLabel, label as pickLabel } from "@/lib/constants";
 import { arNum, arRating, arTimeAgo } from "@/lib/format";
@@ -114,9 +119,12 @@ export default async function ListingDetailPage({
   const listing = await getListingBySlug(decodeURIComponent(slug));
   if (!listing) notFound();
 
-  const [settings, unavailable, { t, locale }] = await Promise.all([
+  const [settings, unavailable, specialDays, { t, locale }] = await Promise.all([
     getSettings(),
     getUnavailableDates(listing.id),
+    // The occasion nights, so the calendar can mark them and the sidebar can
+    // price them. A preview only — the server recomputes on submit.
+    getSpecialDays(listing.id),
     getI18n(),
   ]);
 
@@ -220,6 +228,11 @@ export default async function ListingDetailPage({
       // the calendar shades with it, so the preview in the sidebar matches the
       // total the server recomputes on submit.
       weekendMode={weekendMode}
+      // The occasion rate and the nights it lands on. Marked days with a rate
+      // of 0 change nothing, which is what every listing that never set one
+      // resolves to.
+      holidayPrice={listing.holidayPrice}
+      specialDays={[...specialDays]}
       // The day rates decide whether the "no overnight" option is offered at
       // all: 0 means the owner does not do day bookings. See the note on
       // `Listing.dayUsePrice` in prisma/schema.prisma.

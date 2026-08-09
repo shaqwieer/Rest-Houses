@@ -150,9 +150,28 @@ model OwnerProfile {
   reviewedAt      DateTime?
   reviewedById    String?
 
-  // null = no expiry set yet (a pending owner). A date in the past hides every
-  // listing this owner has, without unpublishing any of them.
+  // null = no expiry — an open-ended membership, and the DEFAULT for a newly
+  // approved owner. A date in the past hides every listing this owner has,
+  // without unpublishing any of them. `activeOwnerWhere()` in src/lib/owners.ts
+  // treats null as eligible, which is why "no expiry" needs no sentinel date.
   membershipExpiresAt DateTime?
+
+  // ---------------------------------------------------------------------
+  // This owner's commission rate, overriding the platform's.
+  //
+  // Nullable, and null vs 0 mean genuinely different things — the same
+  // distinction `Listing.depositPercent` makes and for the same reason:
+  //   null → "no special deal; use SiteSettings.commissionPercent"
+  //   0    → "this owner pays no commission"
+  // A truthiness check (`owner.commissionPercent || settings.commissionPercent`)
+  // collapses those two and silently starts charging a zero-commission owner
+  // the platform rate. Reads go through `resolveCommissionPercent()` in
+  // src/lib/pricing.ts, which tests for null explicitly.
+  //
+  // Only the *rate at the moment of booking* is read from here.
+  // `BookingRequest.commissionPercent` is snapshotted per booking, so
+  // renegotiating an owner's rate never rewrites what they already owe.
+  commissionPercent Int?
 
   listings Listing[]
 
@@ -413,6 +432,34 @@ model Listing {
   // Pricing in AED (whole dirhams — no fractional fils in this market)
   pricePerNight Int
   weekendPrice  Int @default(0) // 0 → falls back to pricePerNight
+
+  // ---------------------------------------------------------------------
+  // The rate for a big occasion or a public holiday — Eid al-Fitr, Eid
+  // al-Adha, National Day, the Gregorian and Hijri new years.
+  //
+  // A THIRD tier above the weekend rate, not a replacement for it. Demand on
+  // those few nights is nothing like a normal Saturday, and owners were pricing
+  // them by hand — blocking the days here and agreeing a figure on WhatsApp,
+  // which loses the booking from the platform entirely.
+  //
+  // ─── Which days it applies to is a separate question ──────────────────────
+  // Deliberately NOT derived from a calendar of holidays. Eid moves with the
+  // Hijri year and is announced by moon sighting a day or two ahead; a
+  // hard-coded table would be wrong every year, and "the big occasions" also
+  // covers things no table knows about — a national event, a school holiday, a
+  // week the owner knows their area fills up. So the owner marks the days
+  // themselves on their calendar and they are stored as `SpecialDay` rows.
+  //
+  // 0 means "not offered": the day may still be marked, and simply keeps
+  // whatever the weekend/weekday rules already give it. That is what every
+  // listing predating this column resolves to, so nothing repriced on release.
+  //
+  // Resolution order for one night — see `nightRate` in src/lib/pricing.ts:
+  //     marked as special AND holidayPrice > 0  → holidayPrice
+  //     weekend night AND weekendPrice > 0      → weekendPrice
+  //     otherwise                               → pricePerNight
+  holidayPrice Int @default(0)
+
   capacity      Int @default(20)
 
   // ---------------------------------------------------------------------
@@ -590,8 +637,29 @@ model Listing {
   ownerName     String? @default("المالك")
   ownerWhatsapp String?
 
+  // ---------------------------------------------------------------------
+  // The secret in this listing's public .ics export URL.
+  //
+  // Handed to Airbnb/Booking.com so a booking taken *here* closes the same
+  // night *there* — the return leg of the iCal sync described on CalendarFeed.
+  // The URL is /api/calendar/<calendarToken>.ics and the token is the entire
+  // authentication, exactly as it is for ReviewInvite: there is nobody to sign
+  // in, because the caller is another company's crawler. So it is 32 random
+  // bytes from `crypto.randomBytes`, never derived from the id or the slug —
+  // both of which are public and would make every listing's calendar readable
+  // by anyone who can see a listing page.
+  //
+  // Nullable, and null by default, so export is opt-in per listing and a
+  // listing nobody has enabled it for has no public feed at all rather than one
+  // that merely has not been shared yet. Regenerating the token revokes the old
+  // URL, which is the only way back if one leaks.
+  // ---------------------------------------------------------------------
+  calendarToken String? @unique
+
   images        ListingImage[]
   availability  Availability[]
+  specialDays   SpecialDay[]
+  calendarFeeds CalendarFeed[]
   bookings      BookingRequest[]
   reviews       Review[]
   reviewInvites ReviewInvite[]
@@ -650,7 +718,7 @@ model ListingImage {
 }
 
 // ---------------------------------------------------------------------------
-// Availability — one row per unavailable day, per listing.
+// Availability — one row per unavailable day, per listing, PER SOURCE.
 //
 // `date` is a plain "YYYY-MM-DD" string, NOT a DateTime. Storing calendar days
 // as timestamps is the classic source of off-by-one bugs: `new Date(2026,6,25)`
@@ -658,8 +726,45 @@ model ListingImage {
 // of UTC, so a day the owner blocked shows as available to some visitors.
 // A date-only string has no timezone to get wrong. Helpers: src/lib/dates.ts
 //
-// status: "BLOCKED" (owner closed the day) | "BOOKED" (confirmed reservation)
-// Both render as unavailable to visitors; the distinction is for the owner.
+// status: "BLOCKED"  — the owner closed the day (maintenance, personal use)
+//         "BOOKED"   — a confirmed reservation on this platform occupies it
+//         "EXTERNAL" — an imported hold from Airbnb/Booking.com (CalendarFeed)
+// All three render as unavailable to visitors; the distinction is for the
+// owner, and for deciding who is allowed to remove the row.
+//
+// ─── The invariant, and why the unique key is three columns ─────────────────
+// The rule the whole application is built on is "a row here means the day is
+// not bookable". Every read that gates a booking is an *existence* test —
+// `findFirst`, or a Set of dates — so a new source of unavailability blocks
+// days correctly the moment it can write a row, with no call site to update.
+// That is why importing external calendars needed no change to
+// `isRangeAvailable`, `getUnavailableDates`, `findListings` or the clash check
+// in actions/requests.ts.
+//
+// Keeping that invariant literally true is what `sourceKey` is for. One day can
+// be closed for two independent reasons at once: the owner blocked 10 September
+// for maintenance AND Airbnb has a guest that night. With the old
+// @@unique([listingId, date]) those two reasons had to share a row, so
+// whichever wrote second either lost or overwrote the other — and when the
+// Airbnb booking was later cancelled, deleting "the row for that day" would
+// have silently un-blocked a day the owner had closed by hand.
+//
+// So the key is [listingId, date, sourceKey] and each reason owns its own row:
+//   sourceKey = "LOCAL"           — owner blocks and confirmed bookings
+//   sourceKey = <CalendarFeed id> — days imported from that one feed
+// Syncing or deleting one feed touches only rows carrying its own key. Two
+// platforms holding the same day produce two rows, which is the truth, and
+// every existence-based read still gives exactly the same answer.
+//
+// What this DOES cost: a query that *counts* rows now counts reasons, not days.
+// Occupancy therefore counts distinct (listingId, date) pairs rather than rows
+// — see src/lib/owner-insights.ts and src/app/admin/page.tsx.
+//
+// A sentinel string rather than a nullable `feedId` alone, because PostgreSQL
+// treats NULLs as distinct in a unique index: [listingId, date, NULL] could be
+// inserted twice and the constraint would not complain, losing the one
+// guarantee this table has. `feedId` is carried alongside purely for the
+// cascade — deleting a feed deletes the days it imported.
 // ---------------------------------------------------------------------------
 model Availability {
   id        String  @id @default(cuid())
@@ -669,8 +774,121 @@ model Availability {
   note      String?
   listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
 
-  @@unique([listingId, date])
+  // "LOCAL", or the id of the CalendarFeed that imported this day.
+  sourceKey String        @default("LOCAL")
+  feedId    String?
+  feed      CalendarFeed? @relation(fields: [feedId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, date, sourceKey])
   @@index([listingId])
+  @@index([feedId])
+}
+
+// ---------------------------------------------------------------------------
+// SpecialDay — a night this listing charges `Listing.holidayPrice` for.
+//
+// Eid, National Day, New Year's Eve, or any other date the owner knows fills
+// up. Marked by hand on the owner's calendar because the dates are not
+// derivable: the Hijri holidays move each year and are confirmed by moon
+// sighting days in advance. See the note on `Listing.holidayPrice`.
+//
+// ─── Why this is not a row in `Availability` ────────────────────────────────
+// The rule that table enforces is "a row here means the day is NOT bookable",
+// and every availability read is an existence test built on exactly that. A
+// special-rate day is the opposite: it is very much for sale, at a higher
+// price. One row in `Availability` with a "SPECIAL" status would have made
+// every one of those existence checks wrong at once and closed the most
+// valuable nights of the year.
+//
+// So: a separate table, joined only by the pricing path. A day may of course be
+// both marked special and blocked — two rows in two tables, answering two
+// unrelated questions.
+//
+// `date` is a "YYYY-MM-DD" string for the same reason it is everywhere else
+// here; see the note at the top of this file.
+//
+// `label` names the occasion ("عيد الفطر") so the owner's calendar and the
+// guest's price breakdown can say *why* a night costs more, rather than showing
+// an unexplained higher figure. Blank is fine and renders as a generic label.
+// ---------------------------------------------------------------------------
+model SpecialDay {
+  id        String  @id @default(cuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  date  String // YYYY-MM-DD
+  label String @default("")
+
+  createdAt DateTime @default(now())
+
+  @@unique([listingId, date])
+  @@index([listingId, date])
+}
+
+// ---------------------------------------------------------------------------
+// CalendarFeed — one external calendar this listing imports days from.
+//
+// A rest house is often listed on Airbnb and Booking.com as well as here, and a
+// guest booking there must stop the same night being sold here. Neither
+// platform offers an API a single owner can use — both are closed partner
+// programmes — so the mechanism is iCal: the owner copies an export URL out of
+// their extranet and pastes it in, and we poll it. See src/lib/calendar/.
+//
+// ─── What `kind` is for ─────────────────────────────────────────────────────
+// "ICAL" is the only value today. It exists so that a future API-backed source
+// (a channel manager, or partner access to one of the platforms) is a new value
+// and a new branch in `syncFeed`, rather than a second table and a second set
+// of Availability semantics. The rows it writes are already tagged by feed id,
+// which is the part that would otherwise have to be redesigned.
+//
+// ─── The URL is a credential ────────────────────────────────────────────────
+// An iCal export URL carries its own secret token and grants read access to
+// that listing's calendar on the other platform. It is therefore never written
+// to AuditLog, never returned to a client in full (the UI shows a masked form),
+// and never quoted back in an error message.
+// ---------------------------------------------------------------------------
+model CalendarFeed {
+  id        String  @id @default(cuid())
+  listingId String
+  listing   Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  // One of CALENDAR_PLATFORMS in src/lib/constants.ts:
+  // "AIRBNB" | "BOOKING" | "OTHER". A String, like every other id in this
+  // schema — see the portability note at the top of the file.
+  platform String
+  // Transport. "ICAL" today; see the note above.
+  kind     String  @default("ICAL")
+  url      String
+  // What the owner calls this feed. Only meaningful for "OTHER", where the
+  // platform name alone would not say which of two calendars this is.
+  label    String  @default("")
+  // Paused rather than deleted: turning a feed off keeps its history and its
+  // imported days are dropped, but the URL does not have to be found again.
+  active   Boolean @default(true)
+
+  // ─── Sync bookkeeping ─────────────────────────────────────────────────────
+  // `lastSyncedAt` is every attempt; `lastOkAt` is the last one that actually
+  // parsed. Two columns because the difference between them is the only thing
+  // that tells an owner "this has been failing since Tuesday" — a single
+  // timestamp updated on every attempt would show a feed that has not worked
+  // for a week as having synced a minute ago.
+  lastSyncedAt   DateTime?
+  lastOkAt       DateTime?
+  // Null once a sync succeeds. Sanitised before it is stored — see
+  // `describeFetchFailure` in src/lib/calendar/fetch.ts.
+  lastError      String?
+  lastEventCount Int       @default(0)
+  lastDayCount   Int       @default(0)
+
+  blocks Availability[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One feed per URL per listing, so pasting the same link twice is a no-op
+  // rather than a second set of duplicate rows to reconcile.
+  @@unique([listingId, url])
+  @@index([listingId, active])
 }
 
 // ---------------------------------------------------------------------------

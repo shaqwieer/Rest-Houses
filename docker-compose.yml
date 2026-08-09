@@ -122,6 +122,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       ADMIN_NAME: ${ADMIN_NAME:-المشرف}
 
+      # Guards POST /api/calendar/sync, the endpoint the host cron calls to pull
+      # each listing's Airbnb/Booking.com iCal feeds. Deliberately NOT `:?` —
+      # unset is a valid deployment (nobody has linked a calendar yet), and the
+      # route answers 503 rather than running open. Section 10b of
+      # DEPLOYMENT.md has the crontab line.
+      CRON_SECRET: ${CRON_SECRET:-}
+
       # Seed defaults — only applied on the very first seed; afterwards the
       # settings row in the database is the source of truth (/admin/settings).
       SITE_NAME: ${SITE_NAME:-استراحات الرمال}

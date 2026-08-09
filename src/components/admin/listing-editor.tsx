@@ -60,6 +60,8 @@ export type ListingDraft = {
   areaEn: string;
   pricePerNight: number;
   weekendPrice: number;
+  /** Occasion rate — Eid, National Day. 0 = not offered. Days set on the calendar. */
+  holidayPrice: number;
   /** Which days `weekendPrice` covers — "short" (Sat+Sun) or "long" (+Friday). */
   weekendMode: WeekendMode;
   /**
@@ -421,6 +423,25 @@ export function ListingEditor({
               min={0}
               defaultValue={draft.weekendPrice}
               invalid={Boolean(errors.weekendPrice)}
+              className="font-bold"
+            />
+          </Field>
+
+          {/* Directly after the weekend price, because it is the next tier up
+              of the same ladder — weekday, weekend, occasion — and reading them
+              in that order is how an owner checks the three make sense
+              together. Which nights it applies to is chosen on the calendar. */}
+          <Field
+            label={t.admin.holidayPriceLabel}
+            hint={t.admin.holidayPriceHint}
+            error={errors.holidayPrice}
+          >
+            <TextInput
+              name="holidayPrice"
+              type="number"
+              min={0}
+              defaultValue={draft.holidayPrice}
+              invalid={Boolean(errors.holidayPrice)}
               className="font-bold"
             />
           </Field>

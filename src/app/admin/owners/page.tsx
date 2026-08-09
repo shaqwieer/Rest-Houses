@@ -1,3 +1,4 @@
+import { getSettings } from "@/lib/settings";
 import Link from "next/link";
 import { StatusBadge } from "@/components/ui/badge";
 import { Icon } from "@/components/ui/icon";
@@ -47,7 +48,7 @@ export default async function AdminOwnersPage({
   const status = typeof sp.status === "string" ? sp.status : "all";
   const sort = typeof sp.sort === "string" ? sp.sort : "recent";
 
-  const [result, counts, hiddenCount] = await Promise.all([
+  const [result, counts, hiddenCount, settings] = await Promise.all([
     listOwners({
       page,
       search,
@@ -56,6 +57,8 @@ export default async function AdminOwnersPage({
     }),
     ownerCounts(),
     hiddenByOwnerStateCount(),
+    // What a blank commission field on the manage dialog falls back to.
+    getSettings(),
   ]);
 
   return (
@@ -208,7 +211,9 @@ export default async function AdminOwnersPage({
                         city: o.city,
                         idNumber: o.idNumber ?? "",
                         about: o.about,
+                        commissionPercent: o.commissionPercent,
                       }}
+                      platformCommissionPercent={settings.commissionPercent}
                     />
                   </Td>
                 </tr>

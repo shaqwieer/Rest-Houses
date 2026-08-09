@@ -2,7 +2,14 @@ import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { parseIdList } from "./json-list";
-import { cityLabel, DEFAULT_PHOTO_URL, getAmenities, type SortId } from "./constants";
+import {
+  AVAILABILITY_STATUSES,
+  cityLabel,
+  DEFAULT_PHOTO_URL,
+  getAmenities,
+  type AvailabilityStatus,
+  type SortId,
+} from "./constants";
 import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import { resolveDayUseCheckOut } from "./policies";
@@ -476,15 +483,83 @@ export async function getUnavailableDates(
   return new Set(rows.map((r) => r.date));
 }
 
-/** Admin calendar: needs the status too, to distinguish BOOKED from BLOCKED. */
+/**
+ * Admin calendar: the status too, to tell the three kinds of closed day apart.
+ *
+ * One day can now carry more than one row — an owner block and an imported
+ * Airbnb hold are independent reasons and each owns its own row — so this
+ * collapses them to the single status the cell should display, by precedence:
+ *
+ *     BOOKED > EXTERNAL > BLOCKED
+ *
+ * Ordered by how much the operator is *not* allowed to do about it. A confirmed
+ * booking on this platform is the strongest claim and the one whose cell must
+ * say "cancel the booking to release this". An imported hold is next: also not
+ * removable here, but for a different reason and with a different remedy (do it
+ * on Airbnb). An owner block is last because it is the only one a click can
+ * clear — and showing that affordance on a day that is really sold elsewhere is
+ * the one mistake this ordering exists to prevent.
+ */
 export async function getAvailabilityMap(
   listingId: string,
-): Promise<Map<ISODate, "BLOCKED" | "BOOKED">> {
+): Promise<Map<ISODate, AvailabilityStatus>> {
   const rows = await prisma.availability.findMany({
     where: { listingId },
     select: { date: true, status: true },
   });
-  return new Map(rows.map((r) => [r.date, r.status as "BLOCKED" | "BOOKED"]));
+
+  const rank: Record<string, number> = { BLOCKED: 0, EXTERNAL: 1, BOOKED: 2 };
+  const map = new Map<ISODate, AvailabilityStatus>();
+
+  for (const row of rows) {
+    const status = (isAvailabilityStatus(row.status) ? row.status : "BLOCKED") as AvailabilityStatus;
+    const current = map.get(row.date);
+    if (!current || rank[status] > rank[current]) map.set(row.date, status);
+  }
+
+  return map;
+}
+
+function isAvailabilityStatus(value: string): value is AvailabilityStatus {
+  return (AVAILABILITY_STATUSES as readonly string[]).includes(value);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Special days                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The nights this listing charges its occasion rate for, as date → occasion name.
+ *
+ * A Map rather than a Set so the price breakdown can name the occasion instead
+ * of showing an unexplained higher figure — see `nightRate` in src/lib/pricing.ts.
+ *
+ * ─── Bounded by a range on purpose ──────────────────────────────────────────
+ * `from`/`to` are half-open and match the stay being priced, so the server-side
+ * quote in `createBookingRequest` loads only the nights it is actually charging
+ * for. An owner may mark years of Eids ahead; pulling all of them to price a
+ * two-night stay would grow without bound as the listing ages.
+ *
+ * Omit the range and it returns everything from today forward, which is what
+ * the calendar and the listing page want.
+ */
+export async function getSpecialDays(
+  listingId: string,
+  from: ISODate = todayISO(),
+  to?: ISODate,
+): Promise<Map<ISODate, string>> {
+  const rows = await prisma.specialDay.findMany({
+    where: {
+      listingId,
+      // Lexicographic comparison is correct for YYYY-MM-DD — the same property
+      // the rest of this codebase's date handling relies on.
+      date: to ? { gte: from, lt: to } : { gte: from },
+    },
+    select: { date: true, label: true },
+    orderBy: { date: "asc" },
+  });
+
+  return new Map(rows.map((r) => [r.date, r.label]));
 }
 
 /**

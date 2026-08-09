@@ -38,6 +38,7 @@ export default async function NewOwnerListingPage() {
         area: "",
         pricePerNight: 1200,
         weekendPrice: 0,
+        holidayPrice: 0,
         // Pre-selected from the owner's own emirate, because Sharjah is the
         // whole reason this option exists: its working week is four days, so a
         // Sharjah rest house is full on Friday night. It is a `<select>` the

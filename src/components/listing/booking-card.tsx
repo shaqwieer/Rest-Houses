@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
 import { useBooking } from "./booking-context";
@@ -37,6 +37,7 @@ export function CalendarSection({
     setStayType,
     dayUseAvailable,
     weekendMode,
+    specialDays,
   } = useBooking();
   const { t } = useLocale();
   const isDayUse = stayType === "dayUse";
@@ -127,6 +128,7 @@ export function CalendarSection({
         months={2}
         singleDay={isDayUse}
         weekendMode={weekendMode}
+        specialDays={specialDays}
       />
     </section>
   );
@@ -207,6 +209,28 @@ export function BookingCard({
   const { t, locale } = useLocale();
   const isDayUse = stayType === "dayUse";
 
+  /**
+   * The occasion nights of this stay, collapsed to one row per
+   * (occasion, rate) pair.
+   *
+   * Keyed on both, not on the name alone: two separate holidays priced the
+   * same still deserve their own line, and one occasion cannot span two rates
+   * anyway. `nightsLine` above already accounts for every night at the base
+   * rate, so these rows read as the uplift they are.
+   */
+  const occasionLines = useMemo(() => {
+    const groups = new Map<string, { key: string; label: string; amount: number; nights: number }>();
+    for (const night of currentQuote?.breakdown ?? []) {
+      if (night.special === undefined) continue;
+      const key = `${night.special}|${night.amount}`;
+      const existing = groups.get(key);
+      if (existing) existing.nights += 1;
+      else groups.set(key, { key, label: night.special, amount: night.amount, nights: 1 });
+    }
+    return [...groups.values()];
+  }, [currentQuote]);
+
+
   const href = `/listings/${encodeURIComponent(slug)}/book${bookingQuery}`;
 
   // One date for a day booking, two for a stay. Reading `stayType` rather than
@@ -284,6 +308,38 @@ export function BookingCard({
             </span>
             <span className="font-bold">{arNum(currentQuote.subtotal, locale)}</span>
           </div>
+
+          {/* The occasion nights inside this stay, itemised.
+              ---------------------------------------------------------------
+              Without this the line above reads "3 nights × 1,000" while the
+              subtotal says 4,500, and the guest is left to work out that
+              something in the middle cost more. Naming the night and the
+              occasion is the difference between a price that looks wrong and a
+              price that is explained — and it is the half of the feature the
+              guest actually sees; the marker in the calendar only hints at it.
+
+              Grouped by occasion and rate rather than one row per night, so a
+              five-day Eid is one line instead of five. */}
+          {occasionLines.map((line) => (
+            <div
+              key={line.key}
+              className="mb-2 flex justify-between gap-3 text-[12.5px] text-bronze"
+            >
+              <span className="flex min-w-0 items-center gap-1.5">
+                <Icon name="celebration" size={14} className="shrink-0" />
+                <span className="truncate">
+                  {t.listing.occasionLine(
+                    line.label || t.listing.occasionNightShort,
+                    arNum(line.amount, locale),
+                    arNum(line.nights, locale),
+                    line.nights,
+                  )}
+                </span>
+              </span>
+              <span className="font-bold">{arNum(line.amount * line.nights, locale)}</span>
+            </div>
+          ))}
+
           {/* The platform charges no service fee, so this row is normally
               absent and the total is simply the nights. It is still rendered
               when an operator has set a fee from /admin/settings — a charge

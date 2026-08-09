@@ -264,6 +264,42 @@
 }
 
 /* ===========================================================================
+   PHOTO PLACEHOLDER
+   ===========================================================================
+   The shimmering slot a listing photo occupies until it has decoded — see
+   src/components/ui/photo.tsx for why the slot is never left empty.
+
+   A sand-tinted sweep rather than a grey one, so a half-loaded grid still looks
+   like this site. `background-size: 200%` with the gradient at 50% is what
+   gives the sweep something to travel across.
+
+   `prefers-reduced-motion` drops the animation to a flat tint: a page of twelve
+   independently-sweeping rectangles is exactly the repetitive motion that
+   setting exists to suppress. The placeholder itself stays. */
+.photo-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--sand-100, #F6F1E6) 30%,
+    var(--sand-200, #EDE5D5) 50%,
+    var(--sand-100, #F6F1E6) 70%
+  );
+  background-size: 200% 100%;
+  animation: photo-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes photo-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .photo-skeleton {
+    animation: none;
+    background: var(--sand-100, #F6F1E6);
+  }
+}
+
+/* ===========================================================================
    LEAFLET
    ===========================================================================
    The map library ships its own CSS which we import in the map component.
@@ -284,8 +320,32 @@
   box-shadow: var(--sh-2);
 }
 
-/* Our markers are HTML price pills, so suppress Leaflet's default icon box. */
+/* Our markers are HTML price pills, so suppress Leaflet's default icon box.
+   ---------------------------------------------------------------------------
+   The `width`/`height` overrides are load-bearing, not tidying. Leaflet writes
+   `width: 0px; height: 0px` as an INLINE style on the marker element, derived
+   from the `iconSize: [0, 0]` we pass so it does not reserve a box around our
+   pill. The pill inside is `display:flex`, which is block-level, so its
+   `width: auto` resolved against that 0px container — collapsing the price to
+   nothing and rendering as a bare ellipsis inside the round pill on narrow
+   screens. Desktop hid it because the flex line had room to overflow.
+
+   `max-content` sizes the element to the price text on every browser, and
+   `!important` is required because Leaflet's is an inline style. Paired with
+   `display:inline-flex` on the pill itself in listing-map.tsx. */
 .marker-pill {
   background: none;
   border: 0;
+  width: max-content !important;
+  height: auto !important;
+}
+
+/* Phones show the same markers on a much smaller map, where several rest houses
+   in one emirate sit almost on top of each other. Tightening the pill buys back
+   the space without dropping to an unreadable size. */
+@media (max-width: 480px) {
+  .marker-pill > span {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
 }

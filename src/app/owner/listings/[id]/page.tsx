@@ -52,6 +52,7 @@ export default async function EditOwnerListingPage({
         areaEn: listing.areaEn ?? "",
         pricePerNight: listing.pricePerNight,
         weekendPrice: listing.weekendPrice,
+        holidayPrice: listing.holidayPrice,
         weekendMode: toWeekendMode(listing.weekendMode),
         checkInHour: listing.checkInHour,
         checkOutHour: listing.checkOutHour,

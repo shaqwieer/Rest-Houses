@@ -246,6 +246,9 @@ export const en: Dictionary = {
     weekendRate: (price) => `Fri & Sat ${price}`,
     nightsLine: (price, nights, count) =>
       `${price} AED × ${nights} ${plural("en", count, { one: "night", other: "nights" })}`,
+    occasionNightShort: "Occasion",
+    occasionLine: (occasion, price, nights, count) =>
+      `${occasion} — ${price} AED × ${nights} ${count === 1 ? "night" : "nights"}`,
     serviceFee: (pct) => `Service fee (${pct}%)`,
     total: "Total",
     depositLine: (pct, amount) =>
@@ -311,6 +314,7 @@ export const en: Dictionary = {
     tooManyImages: (n) => `Maximum ${n} images per rest house`,
     prevMonth: "Previous month",
     nextMonth: "Next month",
+    occasionNight: "Occasion night — special rate",
     dayBooked: "Booked",
     dayAvailable: "Available",
     weekendHigher: "Weekend — higher rate",
@@ -478,6 +482,7 @@ export const en: Dictionary = {
 
     dashboardTitle: "Owner dashboard",
     myListings: "My rest houses",
+    myCalendar: "Calendar",
     myBookings: "Booking requests",
     myProfile: "My profile",
     overview: "Overview",
@@ -662,6 +667,10 @@ export const en: Dictionary = {
       "At least 8 characters. Pass it to the owner yourself — it is never emailed, and never appears in the log.",
     changePassword: "Change password",
     ownerNoCity: "Not set",
+    ownerCommissionLabel: "This owner's commission (%)",
+    ownerCommissionHint: (platform) =>
+      `Leave blank to use the platform rate (${platform}). Enter 0 to exempt them entirely.`,
+    ownerCommissionPlaceholder: "Platform rate",
     ownerAboutLabel: "About",
     ownerIdNumberLabel: "ID / trade licence number",
     hiddenListingsNote: (n) =>
@@ -695,8 +704,10 @@ export const en: Dictionary = {
     commissionCollectedTile: "Commission received",
     commissionOutstandingTile: "Commission outstanding",
     allValueTile: "All booking value",
+    // "Default" since owners can be given individual rates. The figure actually
+    // applied to a booking is snapshotted on its row and shown in the table below.
     commissionRateNote: (percent: string) =>
-      `Commission is ${percent} of the booking value, transferred by the owner at step 6.`,
+      `The default commission is ${percent} of the booking value, transferred by the owner at step 6. Some owners may have an agreed rate of their own.`,
 
     reviews: "Reviews",
     reviewsTitle: "Guest reviews",
@@ -752,6 +763,9 @@ export const en: Dictionary = {
     areaLabel: "Area / location",
     areaPlaceholder: "Lahbab – Dubai",
     pricePerNightLabel: "Price per night (AED)",
+    holidayPriceLabel: "Occasion & public holiday price (AED)",
+    holidayPriceHint:
+      "For Eid al-Fitr and al-Adha, National Day and New Year. Leave at zero for no special rate, then pick the days on the calendar.",
     weekendPriceLabel: "Weekend price",
     weekendPriceHint: "Leave at zero to match the weekday rate",
     platformFallbackHint: "Used for rest houses whose owner has not set their own",
@@ -958,6 +972,96 @@ export const en: Dictionary = {
       "Everything you change here appears on the site immediately — no code change, no redeploy.",
   },
 
+  /* -------------------------------------------------------------- calendar */
+  calendar: {
+    title: "Connect platform calendars",
+    introOwner:
+      "If your rest house is also listed on Airbnb or Booking.com, connect its calendar here so a day is never sold twice.",
+    introAdmin:
+      "Link this rest house's calendar to its accounts on other platforms, in both directions.",
+
+    importTitle: "1 — Import bookings from the platforms",
+    importHint:
+      "Paste the iCal export link from each platform. Any booking there closes the same days here automatically.",
+    platform: "Platform",
+    platformOther: "Other platform",
+    urlLabel: "Calendar link (iCal)",
+    urlHint:
+      "On Airbnb: Calendar → Availability → Sync calendars. On Booking.com: Rates & Availability → Sync calendars.",
+    urlRequired: "Please paste the calendar link",
+    labelLabel: "Name for this calendar",
+    labelPlaceholder: "e.g. Vrbo, or Google Calendar",
+    addFeed: "Add link",
+    removeFeed: "Remove link",
+    syncNow: "Sync now",
+    syncing: "Syncing…",
+    neverSynced: "Not synced yet",
+    daysImported: (n) => `${n} days imported`,
+    lastOkAt: (when) => `Last successful sync: ${when}`,
+
+    feedRemoved: "Link removed and its days released",
+    addedAndSynced: (n) => `Added — ${n} days imported`,
+    addedButFailed: (reason) =>
+      `Link saved but could not be read: ${reason}. We will retry automatically.`,
+    syncedAll: (n) => `Synced — ${n} days held externally`,
+    syncedWithErrors: (n, failed) => `Partly synced — ${n} days, ${failed} link(s) failed`,
+    noFeedsToSync: "No calendar links for this rest house",
+
+    exportTitle: "2 — Export your bookings to the platforms",
+    exportHint:
+      "Copy this link and paste it into the calendar-import field on Airbnb and Booking.com, so a booking taken here closes the same days there.",
+    exportEnable: "Create export link",
+    exportDisable: "Turn link off",
+    exportEnabled: "Export link created",
+    exportDisabled: "Export link turned off — it no longer works",
+    exportPrivacy:
+      "The link contains no guest details — only which dates are unavailable. Treat it as secret.",
+    exportBookingTip:
+      "If you paste this link into Booking.com, choose “Booked dates only” there rather than “Booked and closed dates”, so the two sites don't send the same booking back to each other.",
+
+    /* ---- Calendar mode: blocking days vs pricing occasions ---- */
+    modeLabel: "What tapping a day does",
+    modeBlock: "Block days",
+    modeSpecial: "Occasion days",
+    specialModeHint:
+      "Tap the occasions and public holidays that should charge the occasion rate instead of the normal one. A booked day can be marked too — price and availability are separate questions.",
+    occasionName: "Occasion name (optional)",
+    occasionPlaceholder: "e.g. Eid al-Fitr, National Day, New Year",
+    holidayRateActive: (price) => `Occasion rate for this rest house: ${price} AED per night`,
+    holidayRateMissing:
+      "This rest house has no occasion rate set, so the price will not change. Add one in the listing settings, just after the weekend price.",
+    specialDay: "Occasion day",
+    specialDaysCount: (n) => `${n} occasion days`,
+    markRestOfMonth: "Mark rest of month",
+    unmarkRestOfMonth: "Unmark the month",
+    rangeMarkedSpecial: "Days marked as occasions",
+    rangeUnmarkedSpecial: "Days unmarked",
+
+    dayImported: "Booked on another platform",
+    externalPlatform: "another platform",
+    dayHeldBy: (platform) => `Booked on ${platform} — release it there`,
+    importedDaysCount: (n) => `${n} imported days`,
+
+    latencyWarning:
+      "Note: this link works over iCal, and the platforms usually take two to three hours to refresh their files. A double booking therefore remains possible within that window — a limit of the platforms themselves, not of this site.",
+
+    fetchError: (code) =>
+      ({
+        INVALID_URL: "The link is not valid",
+        NOT_HTTPS: "The link must start with https",
+        PRIVATE_ADDRESS: "That link points at an internal address and is not allowed",
+        DNS: "Could not reach the server",
+        TIMEOUT: "The connection timed out",
+        TOO_MANY_REDIRECTS: "The link redirects too many times",
+        HTTP_ERROR: "The platform refused the request — check the link is still valid",
+        TOO_LARGE: "The calendar is too large",
+        NOT_CALENDAR: "That link does not return a valid calendar file",
+        NETWORK: "Could not connect to the platform",
+        // Not a problem with the owner's link — the write failed and will retry.
+        WRITE_FAILED: "Could not save the calendar — we will retry",
+      })[code] ?? "Could not read the calendar",
+  },
+
   /* ------------------------------------------------------------ validation */
   validation: {
     required: "This field is required",
@@ -997,6 +1101,8 @@ export const en: Dictionary = {
     invalidCity: "Please choose a valid emirate",
     priceRequired: "A nightly price is required",
     capacityRequired: "A capacity is required",
+    holidayBelowWeekday: "The occasion price is lower than the normal nightly rate — check the figures",
+    holidayBelowWeekdayShort: "Below the normal rate",
     weekendBelowWeekday: "The weekend rate can't be lower than the weekday rate",
     weekendBelowWeekdayShort: "Lower than the weekday rate",
     depositRange: "The deposit percentage must be between 0 and 100",
@@ -1024,6 +1130,10 @@ export const en: Dictionary = {
     dateNotEditable: "A past date can't be changed",
     dayHeldByBooking:
       "This day is held by a confirmed booking — cancel it from the requests page to free the day",
+    invalidPlatform: "Unknown platform",
+    feedAlreadyAdded: "That link is already added for this rest house",
+    feedNotFound: "Calendar link not found",
+    tooManyFeeds: "You have reached the maximum number of calendar links for this rest house",
     invalidRange: "That date range isn't valid",
     noEditableDays: "There are no editable days in that range",
     rangeTooLong: "That range is too long — the maximum is 400 days",
@@ -1187,6 +1297,10 @@ export const en: Dictionary = {
     REVIEW_INVITED: "Review link issued",
     REVIEW_APPROVED: "Review approved",
     REVIEW_REJECTED: "Review rejected",
+    CALENDAR_FEED_ADDED: "External calendar linked",
+    CALENDAR_FEED_REMOVED: "External calendar removed",
+    CALENDAR_EXPORT_ENABLED: "Calendar export link enabled",
+    CALENDAR_EXPORT_DISABLED: "Calendar export link disabled",
     OWNER_APPROVED: "Owner approved",
     OWNER_REJECTED: "Owner request rejected",
     OWNER_SUSPENDED: "Owner suspended",

@@ -623,8 +623,15 @@ async function main() {
       })),
     });
 
-    /* availability — wiped and rebuilt from the offsets above */
-    await prisma.availability.deleteMany({ where: { listingId: listing.id } });
+    /* availability — wiped and rebuilt from the offsets above.
+     *
+     * Scoped to LOCAL rows. Days imported from an owner's Airbnb or
+     * Booking.com calendar are that platform's to hold and are released only
+     * when it stops advertising them, so re-running the seed must not clear
+     * them — see the note on `Availability` in schema.prisma. */
+    await prisma.availability.deleteMany({
+      where: { listingId: listing.id, sourceKey: "LOCAL" },
+    });
     const dates = blockedDates(item.blocked);
     await prisma.availability.createMany({
       data: dates.map((date, i) => ({

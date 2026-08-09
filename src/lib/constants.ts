@@ -279,8 +279,76 @@ export function isReviewStatus(v: unknown): v is ReviewStatus {
 export const REVIEW_RATING_MIN = 1;
 export const REVIEW_RATING_MAX = 5;
 
-export const AVAILABILITY_STATUSES = ["BLOCKED", "BOOKED"] as const;
+/**
+ * Availability.status — why a day is closed.
+ *
+ * "EXTERNAL" is a day imported from Airbnb/Booking.com by the iCal sync. It is
+ * a third status rather than a flag on "BLOCKED", and that distinction is
+ * load-bearing in the *delete* paths: `setRangeBlocked` frees a month with
+ * `deleteMany({ status: "BLOCKED" })` and cancelling a booking releases its
+ * nights with `deleteMany({ status: "BOOKED" })`. Because an imported day
+ * carries neither status, both stay correct without being touched — a day
+ * Airbnb has sold cannot be freed by an owner pressing "free the rest of the
+ * month". Folding external days into "BLOCKED" would have moved the required
+ * change into exactly those two delete calls, where forgetting one silently
+ * re-opens a booked night.
+ */
+export const AVAILABILITY_STATUSES = ["BLOCKED", "BOOKED", "EXTERNAL"] as const;
 export type AvailabilityStatus = (typeof AVAILABILITY_STATUSES)[number];
+
+/**
+ * The two `Availability.status` values this platform owns.
+ *
+ * Everything that edits the calendar on behalf of a human filters on these, so
+ * an imported day is never in scope: it belongs to the other platform and is
+ * removed only by the feed that brought it.
+ */
+export const LOCAL_AVAILABILITY_STATUSES = ["BLOCKED", "BOOKED"] as const;
+
+/**
+ * `Availability.sourceKey` for a row this platform owns. Any other value is a
+ * CalendarFeed id. See the note on the model in prisma/schema.prisma.
+ */
+export const LOCAL_SOURCE_KEY = "LOCAL";
+
+/* --------------------------------------------------------------------------
+ * External calendars — CalendarFeed.platform
+ *
+ * Named platforms rather than free text because the two that matter have
+ * different quirks worth telling an owner about (where the URL lives, how often
+ * it refreshes), and because the label has to be translatable. "OTHER" covers
+ * Vrbo, Agoda, a channel manager's combined feed, or a plain Google Calendar —
+ * all of which export the same .ics and need no code of their own.
+ * -------------------------------------------------------------------------- */
+
+export const CALENDAR_PLATFORMS = ["AIRBNB", "BOOKING", "OTHER"] as const;
+export type CalendarPlatform = (typeof CALENDAR_PLATFORMS)[number];
+
+export function isCalendarPlatform(v: unknown): v is CalendarPlatform {
+  return typeof v === "string" && (CALENDAR_PLATFORMS as readonly string[]).includes(v);
+}
+
+/**
+ * Platform names are proper nouns — "Airbnb" is "Airbnb" in both languages —
+ * so these are not in the dictionaries. Only "OTHER" needs translating, and it
+ * resolves through `t.calendar.platformOther` at the call site.
+ */
+export const CALENDAR_PLATFORM_NAMES: Record<CalendarPlatform, string> = {
+  AIRBNB: "Airbnb",
+  BOOKING: "Booking.com",
+  OTHER: "",
+};
+
+/**
+ * Transport for a CalendarFeed. One value today.
+ *
+ * Present so that adding an API-backed source later — a channel manager, or
+ * partner access to one of the platforms — is a new value here and a new branch
+ * in `syncFeed`, rather than a parallel table with its own availability
+ * semantics. See the note on CalendarFeed in prisma/schema.prisma.
+ */
+export const CALENDAR_FEED_KINDS = ["ICAL"] as const;
+export type CalendarFeedKind = (typeof CALENDAR_FEED_KINDS)[number];
 
 /* --------------------------------------------------------------------------
  * Roles and owner lifecycle
@@ -368,6 +436,16 @@ export const AUDIT_ACTIONS = [
   "REVIEW_INVITED",
   "REVIEW_APPROVED",
   "REVIEW_REJECTED",
+  // External calendar sync. Which platform and which listing, never the URL —
+  // an iCal export URL is a credential for the owner's account on the other
+  // platform, and the audit log is readable by every operator.
+  "CALENDAR_FEED_ADDED",
+  "CALENDAR_FEED_REMOVED",
+  // Minting a token publishes a calendar; rotating one revokes the published
+  // URL and breaks whatever was importing it. Both are worth a line in the log
+  // because both change who can read a listing's calendar.
+  "CALENDAR_EXPORT_ENABLED",
+  "CALENDAR_EXPORT_DISABLED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

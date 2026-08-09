@@ -35,6 +35,7 @@ export default async function NewListingPage() {
         area: "",
         pricePerNight: 1200,
         weekendPrice: 0,
+        holidayPrice: 0,
         // The UAE weekend. An admin creating a Sharjah listing switches it to
         // "long" on the same screen — unlike the owner form there is no emirate
         // chosen yet to infer it from.

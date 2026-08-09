@@ -123,6 +123,8 @@ export async function listOwners(opts: {
         // a typo in their name.
         idNumber: true,
         about: true,
+        // The owner's negotiated commission rate, or null for the platform's.
+        commissionPercent: true,
         status: true,
         rejectionReason: true,
         membershipExpiresAt: true,

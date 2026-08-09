@@ -3,11 +3,12 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
-import { isRangeAvailable, withPublicListingWhere } from "@/lib/listings";
+import { getSpecialDays, isRangeAvailable, withPublicListingWhere } from "@/lib/listings";
 import {
   dayUseRate,
   platformCommission,
   quote,
+  resolveCommissionPercent,
   resolveDepositPercent,
 } from "@/lib/pricing";
 import { isISODate, nightsBetween, todayISO, toWeekendMode } from "@/lib/dates";
@@ -187,10 +188,19 @@ export async function createBookingRequest(
       // the invoice. Omit it and a Sharjah listing charges every Friday at the
       // weekday rate no matter what its owner chose.
       weekendMode: true,
+      // The occasion rate, for the same reason as `weekendMode`: this is the
+      // total that gets stored, and omitting it would charge Eid at the
+      // ordinary rate however the owner priced it.
+      holidayPrice: true,
       dayUsePrice: true,
       dayUseWeekendPrice: true,
       depositPercent: true,
       securityDeposit: true,
+      // The owner's negotiated commission rate, if they have one. Null both
+      // when the owner has no special deal and when the listing is
+      // platform-owned; `resolveCommissionPercent` treats both as "use the
+      // platform rate".
+      owner: { select: { commissionPercent: true } },
     },
   });
 
@@ -281,12 +291,24 @@ export async function createBookingRequest(
     settings.depositPercent,
   );
 
+  // Which nights of this stay the owner marked as a big occasion, read HERE
+  // from the database rather than accepted from the form.
+  //
+  // The browser also computes this for the price preview, and that copy is not
+  // trusted for a moment: an empty `specialDays` posted from a tampered form
+  // would book Eid at the weekday rate. Same rule as the deposit percentage
+  // above and every other amount in this function — see the authority note at
+  // the top of src/lib/pricing.ts.
+  const specialDays = await getSpecialDays(listing.id, data.checkIn, data.checkOut);
+
   const q = quote({
     checkIn: data.checkIn,
     checkOut: data.checkOut,
     pricePerNight: listing.pricePerNight,
     weekendPrice: listing.weekendPrice,
     weekendMode,
+    holidayPrice: listing.holidayPrice,
+    specialDays,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
     // The rates come from the row just read, never from the form — the same
@@ -296,7 +318,13 @@ export async function createBookingRequest(
     dayUseWeekendPrice: listing.dayUseWeekendPrice,
   });
 
-  const commission = platformCommission(q.total, settings.commissionPercent);
+  // This owner's negotiated rate if they have one, otherwise the platform's.
+  // Snapshotted onto the booking row below, so renegotiating later never
+  // rewrites what is already owed.
+  const commission = platformCommission(
+    q.total,
+    resolveCommissionPercent(listing.owner?.commissionPercent, settings.commissionPercent),
+  );
 
   // --- write --------------------------------------------------------------
   //

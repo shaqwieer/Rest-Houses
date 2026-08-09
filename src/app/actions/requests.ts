@@ -9,6 +9,7 @@ import {
   BOOKING_STAGES,
   isBookingStage,
   isBookingStatus,
+  LOCAL_SOURCE_KEY,
   nextStage,
   type BookingStage,
 } from "@/lib/constants";
@@ -222,10 +223,15 @@ async function applyRequestStatus(
         },
       }),
       prisma.availability.createMany({
+        // `sourceKey: LOCAL` is what the clash check above searched *across*:
+        // the check looks at every source, so an imported Airbnb hold already
+        // refused this confirmation. What is written here is this platform's
+        // own claim on the nights, and only a cancellation here removes it.
         data: nights.map((date) => ({
           listingId: request.listingId,
           date,
           status: "BOOKED",
+          sourceKey: LOCAL_SOURCE_KEY,
         })),
       }),
       prisma.listing.update({
@@ -243,7 +249,12 @@ async function applyRequestStatus(
         data: { status, stage: "DEPOSIT", ...extra },
       }),
       prisma.availability.deleteMany({
-        where: { listingId: request.listingId, date: { in: nights }, status: "BOOKED" },
+        where: {
+          listingId: request.listingId,
+          date: { in: nights },
+          status: "BOOKED",
+          sourceKey: LOCAL_SOURCE_KEY,
+        },
       }),
       prisma.listing.update({
         where: { id: request.listingId },
@@ -305,6 +316,7 @@ export async function deleteRequest(requestId: string): Promise<ActionResult> {
         listingId: request.listingId,
         date: { in: occupiedDays(request.checkIn, request.checkOut, request.dayUse) },
         status: "BOOKED",
+        sourceKey: LOCAL_SOURCE_KEY,
       },
     });
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { Photo } from "@/components/ui/photo";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +48,7 @@ export function ListingCard({
   return (
     <article className="group flex flex-col overflow-hidden rounded-[20px] border border-line bg-surface shadow-e1 transition duration-200 hover:-translate-y-1 hover:border-sand-300 hover:shadow-e2">
       <div className="relative h-46 shrink-0 bg-sand-200">
-        <Image
+        <Photo
           // `toView` already resolves this to the stand-in when a listing has
           // no photo; the `??` covers the handful of callers that build card
           // data by hand.

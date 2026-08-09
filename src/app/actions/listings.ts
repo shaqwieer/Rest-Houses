@@ -99,6 +99,8 @@ function listingSchema(t: Dictionary) {
       .min(1, t.validation.priceRequired)
       .max(1_000_000),
     weekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    // Occasion rate. 0 = not offered, exactly like weekendPrice above.
+    holidayPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
     /**
      * Which days that weekend rate covers — "short" (Sat+Sun, the UAE weekend)
      * or "long" (Fri+Sat+Sun, Sharjah's).
@@ -323,6 +325,7 @@ function readListingForm(
     areaEn: formData.get("areaEn") ?? "",
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
+    holidayPrice: formData.get("holidayPrice") ?? 0,
     weekendMode: formData.get("weekendMode") ?? DEFAULT_WEEKEND_MODE,
     checkInHour: formData.get("checkInHour"),
     checkOutHour: formData.get("checkOutHour"),
@@ -388,6 +391,20 @@ function weekendRateProblem(data: ListingInput, t: Dictionary): ActionResult | n
       ok: false,
       error: t.validation.weekendBelowWeekday,
       fieldErrors: { weekendPrice: t.validation.weekendBelowWeekdayShort },
+    };
+  }
+
+  // The occasion rate is the top of the same ladder, so the same typo is
+  // possible and costs more: it outranks the weekend rate in `nightRate`, so an
+  // occasion price below the weekday one would make Eid the cheapest night of
+  // the year. Compared against the weekday rate — the floor of the ladder —
+  // rather than the weekend rate, because a listing may legitimately leave
+  // `weekendPrice` at 0.
+  if (data.holidayPrice > 0 && data.holidayPrice < data.pricePerNight) {
+    return {
+      ok: false,
+      error: t.validation.holidayBelowWeekday,
+      fieldErrors: { holidayPrice: t.validation.holidayBelowWeekdayShort },
     };
   }
 
@@ -472,6 +489,7 @@ function listingColumns(
     areaEn: data.areaEn,
     pricePerNight: data.pricePerNight,
     weekendPrice: data.weekendPrice,
+    holidayPrice: data.holidayPrice,
     // Which days that weekend rate covers, and the rest house's own arrival,
     // departure and free-cancellation policy. All in `common`: an owner in
     // Sharjah is the only person who knows their weekend is three days long,

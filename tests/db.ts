@@ -41,6 +41,8 @@ export async function resetDatabase(): Promise<void> {
   await prisma.auditLog.deleteMany();
   await prisma.bookingRequest.deleteMany();
   await prisma.availability.deleteMany();
+  await prisma.specialDay.deleteMany();
+  await prisma.calendarFeed.deleteMany();
   await prisma.review.deleteMany();
   await prisma.listingImage.deleteMany();
   await prisma.listing.deleteMany();
@@ -94,6 +96,8 @@ export function daysFromNow(days: number): Date {
 
 type OwnerOptions = {
   email: string;
+  /** null (the default) = no negotiated rate; use the platform's. */
+  commissionPercent?: number | null;
   status?: string;
   membershipExpiresAt?: Date | null;
   whatsapp?: string;
@@ -140,6 +144,7 @@ export async function createOwner(opts: OwnerOptions) {
       phone,
       whatsapp: phone,
       status: opts.status ?? "APPROVED",
+      commissionPercent: opts.commissionPercent ?? null,
       membershipExpiresAt:
         opts.membershipExpiresAt === undefined ? daysFromNow(365) : opts.membershipExpiresAt,
     },
@@ -164,6 +169,8 @@ export async function createListing(
     dayUsePrice?: number;
     dayUseWeekendPrice?: number;
     weekendPrice?: number;
+    /** Occasion rate — Eid, National Day. 0 (the default) = not offered. */
+    holidayPrice?: number;
     /** "short" (Sat+Sun, the default) or "long" (Fri+Sat+Sun, Sharjah's). */
     weekendMode?: "short" | "long";
     /** null (the default) inherits the platform's window; 0 means none at all. */
@@ -198,6 +205,9 @@ export async function createListing(
       dayUsePrice: opts.dayUsePrice ?? 0,
       dayUseWeekendPrice: opts.dayUseWeekendPrice ?? 0,
       weekendPrice: opts.weekendPrice ?? 0,
+      // 0 — "no occasion rate" — so every existing fixture prices exactly as it
+      // did before special days existed.
+      holidayPrice: opts.holidayPrice ?? 0,
       // The UAE weekend unless a fixture asks for Sharjah's, matching the
       // column default every existing row carries.
       weekendMode: opts.weekendMode ?? "short",

@@ -91,9 +91,21 @@ export default function ListingMap({
         coords.push([p.lat, p.lng]);
 
         const label = p.price ? `${arNum(p.price, locale)} ${currencyUnit(locale)}` : "📍";
+
         // A gold-outlined night pill instead of Leaflet's default blue teardrop,
         // matching the design's marker treatment.
-        const html = `<div style="display:flex;align-items:center;gap:6px;background:var(--night-900,#0C1522);color:var(--gold-100,#F5E9CC);border:1px solid var(--gold-500,#C9A44C);border-radius:999px;padding:5px 11px;font-family:var(--font-tajawal),sans-serif;font-weight:700;font-size:12px;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);transform:translate(-50%,-50%)">${label}</div>`;
+        //
+        // `inline-flex`, not `flex`, and the pairing matters: a block-level flex
+        // box resolves `width: auto` against its container, and Leaflet's
+        // container is the 0×0 box that `iconSize: [0, 0]` asks for — which
+        // collapsed the price to an ellipsis on narrow screens. An inline-level
+        // box is shrink-to-fit, and `.marker-pill` in globals.css overrides
+        // Leaflet's inline `width: 0px` to `max-content` so the parent cannot
+        // squeeze it either. Both halves are needed.
+        //
+        // A `<span>` rather than a `<div>` so the mobile override in globals.css
+        // can target it without matching Leaflet's own wrapper.
+        const html = `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--night-900,#0C1522);color:var(--gold-100,#F5E9CC);border:1px solid var(--gold-500,#C9A44C);border-radius:999px;padding:5px 11px;font-family:var(--font-tajawal),sans-serif;font-weight:700;font-size:12px;line-height:1.2;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);transform:translate(-50%,-50%)">${escapeHtml(label)}</span>`;
 
         const marker = L.marker([p.lat, p.lng], {
           icon: L.divIcon({ html, className: "marker-pill", iconSize: [0, 0] }),

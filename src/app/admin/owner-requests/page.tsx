@@ -1,3 +1,4 @@
+import { getSettings } from "@/lib/settings";
 import { Icon } from "@/components/ui/icon";
 import { OwnerActions } from "@/components/admin/owner-actions";
 import { AdminPagination } from "@/components/admin/table-shell";
@@ -30,9 +31,11 @@ export default async function AdminOwnerRequestsPage({
   const { t, locale } = await getI18n();
   const page = readPage(sp.page);
 
-  const [result, counts] = await Promise.all([
+  const [result, counts, settings] = await Promise.all([
     listOwners({ page, status: "PENDING", sort: "expiry" }),
     ownerCounts(),
+    // What a blank commission field on the manage dialog falls back to.
+    getSettings(),
   ]);
 
   // `sort: "expiry"` orders by membershipExpiresAt, which is null for every
@@ -129,7 +132,9 @@ export default async function AdminOwnerRequestsPage({
                     city: o.city,
                     idNumber: o.idNumber ?? "",
                     about: o.about,
+                    commissionPercent: o.commissionPercent,
                   }}
+                  platformCommissionPercent={settings.commissionPercent}
                 />
               </div>
             );

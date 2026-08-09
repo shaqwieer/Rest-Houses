@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { AvailabilityEditor } from "@/components/admin/availability-editor";
+import { CalendarSyncPanel } from "@/components/admin/calendar-sync-panel";
 import { Icon } from "@/components/ui/icon";
-import { prisma } from "@/lib/prisma";
-import { todayISO } from "@/lib/dates";
+import { loadCalendarBoard } from "@/lib/calendar/board";
+import { listingsForCalendar } from "@/lib/listing-access";
 import { getI18n } from "@/lib/i18n/server";
 import { requireAdminPage } from "@/lib/auth";
 
@@ -16,13 +17,8 @@ export default async function AdminCalendarPage({
 
   const [sp, { t }] = await Promise.all([searchParams, getI18n()]);
 
-  // `weekendMode` comes along so the editor shades the same days this listing
-  // charges the weekend rate for — an admin looking at a Sharjah calendar sees
-  // Friday marked as the weekend night it is priced as.
-  const listings = await prisma.listing.findMany({
-    select: { id: true, name: true, weekendMode: true },
-    orderBy: { createdAt: "asc" },
-  });
+  // No owner scope: an operator's calendar covers every listing.
+  const listings = await listingsForCalendar();
 
   if (listings.length === 0) {
     return (
@@ -48,22 +44,23 @@ export default async function AdminCalendarPage({
   const selectedId =
     requested && listings.some((l) => l.id === requested) ? requested : listings[0].id;
 
-  // Only load from today forward — past days aren't editable, so shipping years
-  // of history to the client would be dead weight.
-  const rows = await prisma.availability.findMany({
-    where: { listingId: selectedId, date: { gte: todayISO() } },
-    select: { date: true, status: true },
-    orderBy: { date: "asc" },
-  });
+  const board = await loadCalendarBoard(selectedId);
 
   return (
-    <AvailabilityEditor
-      listings={listings}
-      selectedId={selectedId}
-      entries={rows.map((r) => ({
-        date: r.date,
-        status: r.status === "BOOKED" ? "BOOKED" : "BLOCKED",
-      }))}
-    />
+    <>
+      <AvailabilityEditor
+        listings={listings}
+        selectedId={selectedId}
+        entries={board.entries}
+        specialDays={board.specialDays}
+        basePath="/admin/calendar"
+      />
+      <CalendarSyncPanel
+        scope="admin"
+        listingId={selectedId}
+        feeds={board.feeds}
+        exportUrl={board.exportUrl}
+      />
+    </>
   );
 }

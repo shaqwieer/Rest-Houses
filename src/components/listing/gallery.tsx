@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { Photo } from "@/components/ui/photo";
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import clsx from "clsx";
@@ -88,7 +88,7 @@ export function Gallery({
           aria-label={t.gallery.openViewer}
           className="absolute inset-0 h-full w-full cursor-zoom-in disabled:cursor-default"
         >
-          <Image
+          <Photo
             src={heroUrl}
             alt={hero?.alt || name}
             fill
@@ -165,7 +165,7 @@ export function Gallery({
                 i === active ? "border-gold-500" : "border-line hover:border-sand-400",
               )}
             >
-              <Image
+              <Photo
                 src={img.url}
                 alt=""
                 fill
