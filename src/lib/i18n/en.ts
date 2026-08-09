@@ -771,7 +771,7 @@ export const en: Dictionary = {
     platformFallbackHint: "Used for rest houses whose owner has not set their own",
     weekendModeLabel: "Weekend days",
     weekendModeHint: "The days the weekend price applies to",
-    weekendModeShort: "Short weekend — Saturday & Sunday",
+    weekendModeShort: "Short weekend — Friday & Saturday",
     weekendModeLong: "Long weekend — Friday, Saturday & Sunday",
     weekendModeCardTitle: "Weekend & this rest house's policy",
     weekendModeCardHint:

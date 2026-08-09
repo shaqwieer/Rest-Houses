@@ -101,10 +101,10 @@ function futureWeekday(): string {
   return day;
 }
 
-/** The next Friday at least a week out — a weekend day only on "long". */
-function futureFriday(): string {
+/** The next Sunday at least a week out — a weekend day only on "long". */
+function futureSunday(): string {
   let day = addDays(todayISO(), 7);
-  while (dayOfWeek(day) !== 5) day = addDays(day, 1);
+  while (dayOfWeek(day) !== 0) day = addDays(day, 1);
   return day;
 }
 
@@ -202,24 +202,24 @@ describe("dayUseRate", () => {
   });
 
   /**
-   * Friday is the day the two modes disagree about, and a day-use booking is
-   * where an owner notices it first: the same Friday is a weekday rate in Dubai
-   * and a weekend rate in Sharjah.
+   * Sunday is the day the two modes disagree about, and a day-use booking is
+   * where an owner notices it first: the same Sunday is a weekday rate on a
+   * short-weekend listing and a weekend rate on a long-weekend one.
    */
-  it("charges Friday at the weekday rate on a short weekend", () => {
+  it("charges Sunday at the weekday rate on a short weekend", () => {
     expect(
       dayUseRate(
         { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "short" },
-        futureFriday(),
+        futureSunday(),
       ),
     ).toBe(600);
   });
 
-  it("charges the same Friday at the weekend rate on a long weekend", () => {
+  it("charges the same Sunday at the weekend rate on a long weekend", () => {
     expect(
       dayUseRate(
         { dayUsePrice: 600, dayUseWeekendPrice: 900, weekendMode: "long" },
-        futureFriday(),
+        futureSunday(),
       ),
     ).toBe(900);
   });
@@ -297,11 +297,11 @@ describe("quote (day use)", () => {
     expect(q.subtotal).toBe(900);
   });
 
-  /** The same Friday, the same rates, two different totals — per listing. */
-  it("prices a Friday day booking by the listing's own weekend", () => {
-    const friday = futureFriday();
+  /** The same Sunday, the same rates, two different totals — per listing. */
+  it("prices a Sunday day booking by the listing's own weekend", () => {
+    const sunday = futureSunday();
     const rates = {
-      checkOut: friday,
+      checkOut: sunday,
       pricePerNight: 2000,
       serviceFeePercent: 0,
       depositPercent: 30,
@@ -310,8 +310,8 @@ describe("quote (day use)", () => {
       dayUseWeekendPrice: 900,
     } as const;
 
-    expect(quote({ checkIn: friday, weekendMode: "short", ...rates }).subtotal).toBe(600);
-    expect(quote({ checkIn: friday, weekendMode: "long", ...rates }).subtotal).toBe(900);
+    expect(quote({ checkIn: sunday, weekendMode: "short", ...rates }).subtotal).toBe(600);
+    expect(quote({ checkIn: sunday, weekendMode: "long", ...rates }).subtotal).toBe(900);
   });
 
   it("still takes a deposit, computed on the day total", () => {

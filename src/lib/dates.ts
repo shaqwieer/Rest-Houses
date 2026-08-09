@@ -150,22 +150,26 @@ export function dayOfWeek(iso: ISODate): number {
  * Which days carry the weekend rate — a per-listing decision, not a national
  * constant.
  *
- * The UAE weekend is Saturday and Sunday. Sharjah is not: the emirate runs a
- * four-day working week, so Friday is a day off there too and a Sharjah rest
- * house is full on Friday night while a Dubai one is not. Owners asked for the
- * choice explicitly, and it is a commercial term of the individual venue —
- * there is no single answer to hard-code and no platform-wide setting to hang
- * it on.
+ * Nearly every rest house fills on Friday and Saturday and prices those two
+ * nights above the rest of the week. Some are just as busy on Sunday and want
+ * the weekend rate on a third night — Sharjah's four-day working week is the
+ * clearest case, but any owner may choose it. Owners asked for the choice
+ * explicitly, and it is a commercial term of the individual venue — there is no
+ * single answer to hard-code and no platform-wide setting to hang it on.
  *
- *   "short" — Saturday, Sunday.            The UAE default.
- *   "long"  — Friday, Saturday, Sunday.    Sharjah's three-day weekend.
+ *   "short" — Friday, Saturday.            The default.
+ *   "long"  — Friday, Saturday, Sunday.    A third weekend night.
+ *
+ * SUNDAY is the only day the two modes disagree about. Worth knowing before
+ * writing anything meant to tell them apart: a case built around Friday now
+ * proves nothing, because both modes charge it.
  *
  * ─── Nights, not days ────────────────────────────────────────────────────────
  * Pricing walks *nights*, and a night is named by the day it begins on (see
- * `nightsInRange`). So "Saturday is a weekend day" means the night that STARTS
- * on Saturday carries the weekend rate. A guest arriving Friday and leaving
- * Sunday on a short-weekend listing pays the weekday rate for Friday night and
- * the weekend rate for Saturday night.
+ * `nightsInRange`). So "Friday is a weekend day" means the night that STARTS
+ * on Friday carries the weekend rate. A guest arriving Friday and leaving
+ * Monday on a short-weekend listing pays the weekend rate for the Friday and
+ * Saturday nights and the weekday rate for the Sunday one.
  *
  * ─── Stored as a string, normalised on read ──────────────────────────────────
  * `Listing.weekendMode` is a plain `String` column, matching how every other id
@@ -182,16 +186,17 @@ export type WeekendMode = "short" | "long";
 export const WEEKEND_MODES = ["short", "long"] as const satisfies readonly WeekendMode[];
 
 /**
- * What a listing gets when nobody has chosen: the UAE weekend.
+ * What a listing gets when nobody has chosen: Friday and Saturday, the two
+ * nights nearly every rest house fills.
  *
- * Also what every listing that predates this feature resolves to, which is the
- * one behaviour change this shipped with — see the migration note.
+ * Also what every listing that predates this feature resolves to, and what any
+ * unrecognised stored value falls back to.
  */
 export const DEFAULT_WEEKEND_MODE: WeekendMode = "short";
 
 /** 0 = Sunday … 6 = Saturday, matching `dayOfWeek`. */
 const WEEKEND_DAYS: Record<WeekendMode, readonly number[]> = {
-  short: [6, 0], // Saturday, Sunday
+  short: [5, 6], // Friday, Saturday
   long: [5, 6, 0], // Friday, Saturday, Sunday
 };
 
@@ -214,10 +219,10 @@ export function weekendDays(mode: WeekendMode): readonly number[] {
  *
  * `mode` is deliberately REQUIRED rather than defaulted. Every caller is either
  * pricing a stay, shading a calendar cell or counting weekend demand, and each
- * of those has a listing in hand; a default would let a call site quietly
- * price a Sharjah listing on Dubai's weekend, which is precisely the bug this
- * whole mechanism exists to prevent. The compiler asking the question at each
- * of the five call sites is the point.
+ * of those has a listing in hand; a default would let a call site quietly bill
+ * a long-weekend listing's Sunday at the weekday rate, which is precisely the
+ * bug this whole mechanism exists to prevent. The compiler asking the question
+ * at each of the five call sites is the point.
  */
 export function isWeekend(iso: ISODate, mode: WeekendMode): boolean {
   return weekendDays(mode).includes(dayOfWeek(iso));

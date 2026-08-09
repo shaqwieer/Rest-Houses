@@ -72,11 +72,14 @@ async function main() {
   // The weekend is per listing. 2026-07-31 is a Friday, 08-01 a Saturday and
   // 08-02 a Sunday.
   //
-  //   short — Sat + Sun. The UAE weekend, and what every listing gets by default.
-  //   long  — Fri + Sat + Sun. Sharjah's four-day working week.
-  check("short weekend: Friday is a weekday", isWeekend("2026-07-31", "short"), false);
+  //   short — Fri + Sat. What every listing gets by default.
+  //   long  — Fri + Sat + Sun. A third weekend night.
+  //
+  // Sunday is the ONLY day they differ on, so it is the only check below that
+  // would catch the two modes collapsing into one.
+  check("short weekend: Friday counts", isWeekend("2026-07-31", "short"), true);
   check("short weekend: Saturday counts", isWeekend("2026-08-01", "short"), true);
-  check("short weekend: Sunday counts", isWeekend("2026-08-02", "short"), true);
+  check("short weekend: Sunday is a weekday", isWeekend("2026-08-02", "short"), false);
   check("long weekend: Friday counts", isWeekend("2026-07-31", "long"), true);
   check("long weekend: Saturday counts", isWeekend("2026-08-01", "long"), true);
   check("long weekend: Sunday counts", isWeekend("2026-08-02", "long"), true);
@@ -124,11 +127,11 @@ async function main() {
   check("total", weekdayQuote.total, 3780);
   check("deposit 30% of total", weekdayQuote.depositDue, 1134);
 
-  // Thu→Sun on the UAE weekend: Thu(30) and Fri(31) are weekdays, Sat(01) is
-  // not = 1800 + 1800 + 2300.
+  // Fri→Mon on the short weekend: Fri(31) and Sat(01) carry the uplift, Sun(02)
+  // does not = 2300 + 2300 + 1800.
   const weekendQuote = quote({
-    checkIn: "2026-07-30",
-    checkOut: "2026-08-02",
+    checkIn: "2026-07-31",
+    checkOut: "2026-08-03",
     pricePerNight: 1800,
     weekendPrice: 2300,
     weekendMode: "short",
@@ -136,27 +139,29 @@ async function main() {
     depositPercent: 30,
   });
   check("weekend-spanning nights", weekendQuote.nights, 3);
-  check("weekend rate applied per-night", weekendQuote.subtotal, 1800 + 1800 + 2300);
+  check("weekend rate applied per-night", weekendQuote.subtotal, 2300 + 2300 + 1800);
   ok(
     "weekend nights flagged correctly",
-    weekendQuote.breakdown.filter((n) => n.weekend).length === 1,
+    weekendQuote.breakdown.filter((n) => n.weekend).length === 2,
   );
 
-  // The same three nights on a Sharjah listing: Friday is a weekend night there,
-  // so the identical stay costs one uplift more. This is the whole feature.
+  // The same three nights on a long-weekend listing: Sunday is a weekend night
+  // there, so the identical stay costs one uplift more. This is the whole
+  // feature — and the stay must span a SUNDAY to show it, since that is the one
+  // day the two modes disagree about.
   const longWeekendQuote = quote({
-    checkIn: "2026-07-30",
-    checkOut: "2026-08-02",
+    checkIn: "2026-07-31",
+    checkOut: "2026-08-03",
     pricePerNight: 1800,
     weekendPrice: 2300,
     weekendMode: "long",
     serviceFeePercent: 5,
     depositPercent: 30,
   });
-  check("long weekend prices Friday at the weekend rate", longWeekendQuote.subtotal, 1800 + 2300 + 2300);
+  check("long weekend prices Sunday at the weekend rate", longWeekendQuote.subtotal, 2300 + 2300 + 2300);
   ok(
-    "long weekend flags two of the three nights",
-    longWeekendQuote.breakdown.filter((n) => n.weekend).length === 2,
+    "long weekend flags all three nights",
+    longWeekendQuote.breakdown.filter((n) => n.weekend).length === 3,
   );
 
   // weekendPrice 0 must fall back to the weekday rate, not price at zero.

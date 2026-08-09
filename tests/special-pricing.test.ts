@@ -116,17 +116,24 @@ describe("nightRate", () => {
     expect(nightRate(noRate, WEEKEND, marked).amount).toBe(1400);
   });
 
-  it("prices a Sharjah Friday as a weekend night, and Eid above it", () => {
+  /**
+   * Sunday is the only day the two modes disagree about, so it is the only probe
+   * that proves `weekendMode` reached `nightRate` at all.
+   */
+  it("prices a long-weekend Sunday as a weekend night, and Eid above it", () => {
+    const SUNDAY = "2026-08-16";
     const sharjah = { ...listing, weekendMode: "long" as const };
-    const FRIDAY = "2026-08-14";
-    expect(nightRate(sharjah, FRIDAY).amount).toBe(1400);
-    expect(nightRate(sharjah, FRIDAY, new Map([[FRIDAY, ""]])).amount).toBe(2500);
+
+    expect(nightRate(listing, SUNDAY).amount).toBe(1000); // short — a weekday
+    expect(nightRate(sharjah, SUNDAY).amount).toBe(1400);
+    expect(nightRate(sharjah, SUNDAY, new Map([[SUNDAY, ""]])).amount).toBe(2500);
   });
 });
 
 describe("quote with occasion nights", () => {
   it("prices a mixed stay night by night", () => {
-    // Wed 12th → Sat 15th: three nights, the middle one marked.
+    // Wed 12th → Sat 15th: three nights — Wed (weekday), Thu (marked), Fri
+    // (a weekend night under both modes).
     const q = quote({
       checkIn: "2026-08-12",
       checkOut: "2026-08-15",
@@ -139,8 +146,8 @@ describe("quote with occasion nights", () => {
       depositPercent: 30,
     });
 
-    expect(q.breakdown.map((n) => n.amount)).toEqual([1000, 2500, 1000]);
-    expect(q.subtotal).toBe(4500);
+    expect(q.breakdown.map((n) => n.amount)).toEqual([1000, 2500, 1400]);
+    expect(q.subtotal).toBe(4900);
     // The occasion's name rides along so the guest is told why it costs more.
     expect(q.breakdown[1].special).toBe("اليوم الوطني");
     expect(q.breakdown[0].special).toBeUndefined();

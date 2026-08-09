@@ -34,13 +34,16 @@ import {
  * individual rest house.
  *
  * ─── The weekend ─────────────────────────────────────────────────────────────
- * `isWeekend` was a constant: Friday + Saturday, everywhere. Two things are
- * wrong with that. The UAE weekend moved to Saturday + Sunday in 2022, and
- * Sharjah does not share it at all — the emirate works a four-day week, so
- * Friday is a day off there and a Sharjah rest house is full on Friday night
- * while a Dubai one is not. One national constant either overcharges half the
+ * `isWeekend` was a constant, the same days for every listing. Nearly every
+ * rest house fills on Friday and Saturday, but some — Sharjah's four-day
+ * working week is the clearest case — are just as busy on Sunday and charge the
+ * weekend rate for a third night. One constant either overcharges half the
  * catalogue or undercharges the other half; there is no value that is right for
  * both. So the weekend is a column on the listing.
+ *
+ * SUNDAY is the only day the two modes disagree about, so every case below that
+ * means to tell them apart is built around a Sunday. A case built around Friday
+ * would pass under both modes while proving nothing.
  *
  * The failure mode worth pinning is quiet: a wrong weekend does not throw, it
  * just charges the weekday rate on the busiest night of the week. Every case
@@ -103,12 +106,20 @@ beforeEach(async () => {
   resetSpentChallenges();
 });
 
-/** The next Thursday at least a week out — a weekday under both modes. */
-function futureThursday(): string {
+/** The next given weekday (0 = Sunday … 6 = Saturday) at least a week out. */
+function futureDow(dow: number): string {
   let day = addDays(todayISO(), 7);
-  while (dayOfWeek(day) !== 4) day = addDays(day, 1);
+  while (dayOfWeek(day) !== dow) day = addDays(day, 1);
   return day;
 }
+
+/**
+ * A Saturday, so that a two-night stay starting on it covers the Saturday night
+ * both modes charge for AND the Sunday night only "long" does. Every stored-total
+ * case below starts here: a Thursday→Saturday stay would produce the identical
+ * total under both modes and pin nothing.
+ */
+const futureSaturday = () => futureDow(6);
 
 function bookingForm(
   listingId: string,
@@ -139,14 +150,14 @@ describe("weekend modes", () => {
   const SUN = "2026-08-02";
   const MON = "2026-08-03";
 
-  it("counts Saturday and Sunday on a short weekend", () => {
+  it("counts Friday and Saturday on a short weekend", () => {
+    expect(isWeekend(FRI, "short")).toBe(true);
     expect(isWeekend(SAT, "short")).toBe(true);
-    expect(isWeekend(SUN, "short")).toBe(true);
   });
 
   /** The one day the two modes disagree about, which is the whole feature. */
-  it("does not count Friday on a short weekend", () => {
-    expect(isWeekend(FRI, "short")).toBe(false);
+  it("does not count Sunday on a short weekend", () => {
+    expect(isWeekend(SUN, "short")).toBe(false);
   });
 
   it("counts Friday, Saturday and Sunday on a long weekend", () => {
@@ -172,7 +183,7 @@ describe("weekend modes", () => {
    * weekend. Returning an undefined day set would price every night — including
    * Saturday — at the weekday rate, on every listing at once.
    */
-  it("normalises anything unexpected to the UAE weekend", () => {
+  it("normalises anything unexpected to the short weekend", () => {
     expect(toWeekendMode("SHORT")).toBe("short");
     expect(toWeekendMode("friday+saturday")).toBe("short");
     expect(toWeekendMode(null)).toBe("short");
@@ -187,8 +198,9 @@ describe("weekend modes", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("quote() by weekend mode", () => {
-  // Thu → Mon: Thu, Fri, Sat, Sun nights. Under "short" two of those four carry
-  // the uplift; under "long" three do.
+  // Thu → Mon: Thu, Fri, Sat, Sun nights. Deliberately spans a Sunday, the one
+  // day the modes differ on — under "short" the Fri and Sat nights carry the
+  // uplift, under "long" the Sunday one does too.
   const stay = {
     checkIn: "2026-07-30",
     checkOut: "2026-08-03",
@@ -231,18 +243,24 @@ describe("quote() by weekend mode", () => {
 
 describe("buildMonthGrid weekend shading", () => {
   /**
-   * A Sharjah listing that priced Friday at the weekend rate while leaving the
-   * cell unshaded would be the page arguing with itself in front of the guest.
+   * A long-weekend listing that priced Sunday at the weekend rate while leaving
+   * the cell unshaded would be the page arguing with itself in front of the
+   * guest. Sunday is the probe because it is the only day the modes differ on.
    */
   it("shades the days the listing's own mode charges for", () => {
     const shortGrid = buildMonthGrid(2026, 6, new Set(), "2026-07-01", "ar", "short");
     const longGrid = buildMonthGrid(2026, 6, new Set(), "2026-07-01", "ar", "long");
 
-    const friday = (cells: ReturnType<typeof buildMonthGrid>) =>
-      cells.find((c) => c.kind === "day" && c.iso === "2026-07-31");
+    const cell = (cells: ReturnType<typeof buildMonthGrid>, iso: string) =>
+      cells.find((c) => c.kind === "day" && c.iso === iso);
 
-    expect(friday(shortGrid)).toMatchObject({ isWeekend: false });
-    expect(friday(longGrid)).toMatchObject({ isWeekend: true });
+    // 2026-07-26 is a Sunday, 2026-07-31 a Friday.
+    expect(cell(shortGrid, "2026-07-26")).toMatchObject({ isWeekend: false });
+    expect(cell(longGrid, "2026-07-26")).toMatchObject({ isWeekend: true });
+
+    // Friday is shaded on both — the days they agree on must still be shaded.
+    expect(cell(shortGrid, "2026-07-31")).toMatchObject({ isWeekend: true });
+    expect(cell(longGrid, "2026-07-31")).toMatchObject({ isWeekend: true });
   });
 });
 
@@ -253,7 +271,7 @@ describe("buildMonthGrid weekend shading", () => {
 describe("createBookingRequest honours the listing's weekend", () => {
   /**
    * The browser's quote is a preview; this one is the invoice. If the action
-   * ever stops reading `weekendMode` off the row, every Friday on every
+   * ever stops reading `weekendMode` off the row, every Sunday on every
    * long-weekend listing is silently undercharged and nothing fails loudly.
    */
   it("stores the long-weekend total for a Sharjah listing", async () => {
@@ -264,9 +282,9 @@ describe("createBookingRequest honours the listing's weekend", () => {
       weekendMode: "long",
     });
 
-    // Thursday → Saturday: Thursday night is a weekday, Friday night is a
-    // weekend night on this listing and would not be on a Dubai one.
-    const checkIn = futureThursday();
+    // Saturday → Monday: Saturday night is a weekend night everywhere, Sunday
+    // night is one on this listing and would not be on a Dubai one.
+    const checkIn = futureSaturday();
 
     const { createBookingRequest } = await import("@/app/actions/booking");
     const result = await createBookingRequest(
@@ -276,7 +294,7 @@ describe("createBookingRequest honours the listing's weekend", () => {
 
     const booking = await prisma.bookingRequest.findFirst();
     expect(booking!.nights).toBe(2);
-    expect(booking!.subtotal).toBe(1000 + 1500);
+    expect(booking!.subtotal).toBe(1500 + 1500);
   });
 
   it("stores the short-weekend total for the identical stay elsewhere", async () => {
@@ -286,7 +304,7 @@ describe("createBookingRequest honours the listing's weekend", () => {
       weekendPrice: 1500,
       weekendMode: "short",
     });
-    const checkIn = futureThursday();
+    const checkIn = futureSaturday();
 
     const { createBookingRequest } = await import("@/app/actions/booking");
     await createBookingRequest(
@@ -294,10 +312,10 @@ describe("createBookingRequest honours the listing's weekend", () => {
     );
 
     const booking = await prisma.bookingRequest.findFirst();
-    expect(booking!.subtotal).toBe(1000 + 1000);
+    expect(booking!.subtotal).toBe(1500 + 1000);
   });
 
-  /** A row holding nonsense must still be priced, and on the UAE weekend. */
+  /** A row holding nonsense must still be priced, and on the short weekend. */
   it("prices a listing with a corrupt mode as a short weekend", async () => {
     const listing = await createListing({
       pricePerNight: 1000,
@@ -308,7 +326,7 @@ describe("createBookingRequest honours the listing's weekend", () => {
       where: { id: listing.id },
       data: { weekendMode: "whenever" },
     });
-    const checkIn = futureThursday();
+    const checkIn = futureSaturday();
 
     const { createBookingRequest } = await import("@/app/actions/booking");
     const result = await createBookingRequest(
@@ -317,7 +335,7 @@ describe("createBookingRequest honours the listing's weekend", () => {
     expect(result.ok).toBe(true);
 
     const booking = await prisma.bookingRequest.findFirst();
-    expect(booking!.subtotal).toBe(2000);
+    expect(booking!.subtotal).toBe(1500 + 1000);
   });
 });
 
@@ -865,8 +883,9 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
 
   /**
    * The quote is what all of this is for. Save the long weekend through the
-   * form, then price a Thursday→Saturday stay off the saved row: Friday night
-   * carries the uplift because that is what the owner chose.
+   * form, then price a Saturday→Monday stay off the saved row: Sunday night
+   * carries the uplift because that is what the owner chose, and on "short" it
+   * would not.
    */
   it("prices from the mode the form saved", async () => {
     await signedInOwner();
@@ -875,7 +894,7 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
     await saveOwnerListing(listingForm({ weekendMode: "long" }));
 
     const row = await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } });
-    const checkIn = futureThursday();
+    const checkIn = futureSaturday();
     const q = quote({
       checkIn,
       checkOut: addDays(checkIn, 2),
@@ -885,6 +904,6 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
       serviceFeePercent: 0,
       depositPercent: 30,
     });
-    expect(q.subtotal).toBe(1000 + 1500);
+    expect(q.subtotal).toBe(1500 + 1500);
   });
 });
