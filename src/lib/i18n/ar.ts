@@ -1014,7 +1014,8 @@ export const ar = {
     fieldLogoGlyph: "حرف الشعار",
     fieldLogoGlyphHint: "يظهر داخل المربّع الذهبي عند عدم وجود صورة",
     logoAlt: "الشعار",
-    logoNote: "الشعار يظهر في الهيدر والفوتر وصفحة الدخول.",
+    logoNote:
+      "يظهر في الهيدر والفوتر وصفحة الدخول بدل اسم الموقع. يُقبل SVG وPNG وJPG، ويُقصّ الفراغ حول الشعار تلقائيًا.",
     uploadLogo: "رفع شعار",
     removeLogo: "إزالة الشعار",
     fieldWhatsapp: "رقم الواتساب",

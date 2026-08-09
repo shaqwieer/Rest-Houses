@@ -89,7 +89,7 @@ export function SiteHeader({ settings }: { settings: Settings }) {
         </button>
 
         <div className="flex-1 md:flex-none">
-          <Brand settings={settings} size="md" showTagline />
+          <Brand settings={settings} size="md" showTagline locale={locale} />
         </div>
 
         <nav className="hidden min-w-0 flex-1 flex-wrap items-center gap-1 md:flex">

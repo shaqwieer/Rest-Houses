@@ -1,6 +1,6 @@
 import sharp from "sharp";
 import type { StorageAdapter, StoredFile } from "./types";
-import { assertValidImage } from "./types";
+import { UploadError, assertValidImage, looksLikeSvg } from "./types";
 
 /**
  * Recompressing an upload before it is stored.
@@ -101,6 +101,102 @@ export async function optimizeImage(file: File): Promise<File> {
     // merely larger than it could have been.
     return file;
   }
+}
+
+/**
+ * Longest edge for a stored brand mark.
+ *
+ * Far below MAX_EDGE, because a logo is never rendered above ~200 CSS pixels:
+ * 1024 still covers that on a 3× screen with room to spare, and `next/image`
+ * derives the sizes it actually serves from here.
+ */
+const LOGO_MAX_EDGE = 1024;
+
+/**
+ * The brand logo, made ready to store. Used by `uploadLogo` only.
+ *
+ * `optimizeImage` above is tuned for an owner's photographs, and a logo has
+ * three needs it does not cover.
+ *
+ * ─── Vector in, raster out ──────────────────────────────────────────────────
+ * A logo arrives from whoever designed it as an SVG — that is the file the
+ * operator has on hand. Storing the SVG itself is not an option: `next/image`
+ * refuses SVG sources unless `dangerouslyAllowSVG` is turned on, and turning it
+ * on would mean serving an uploaded file that can carry script from our own
+ * origin, for every image on the site rather than just this one. Rendering the
+ * vector here through librsvg keeps the sharpness that made it worth having and
+ * stores inert pixels. It is also rendered at 384 dpi and allowed to scale *up*
+ * to the cap — a vector has no native resolution, so that is free quality.
+ *
+ * ─── Trim the empty margin ──────────────────────────────────────────────────
+ * Export tools centre a mark on a square artboard. The wordmark this was
+ * written for is a 1200×1200 canvas whose artwork occupies the middle third;
+ * scaled into a 40px header slot that leaves letters about sixteen pixels tall,
+ * which is the entire "the logo came out blurry" complaint — the file was fine,
+ * almost none of it was the logo. `trim()` crops back to the artwork's own
+ * bounding box (1200×1200 → 1024×537 for that file), so the height the design
+ * allots is spent on the mark instead of on its margin.
+ *
+ * ─── Keep the alpha ─────────────────────────────────────────────────────────
+ * The same mark sits on the sand header and on the night footer. Flattening it
+ * onto white would print a white card around it in both places.
+ */
+export async function prepareLogo(file: File): Promise<File> {
+  const input = Buffer.from(await file.arrayBuffer());
+
+  // What the bytes *are*, not what the upload claimed — see `looksLikeSvg` for
+  // why the claim cannot be trusted in either direction.
+  let isVector: boolean;
+  try {
+    isVector = (await sharp(input, { failOn: "none" }).metadata()).format === "svg";
+  } catch {
+    // Nothing here can read it. An upload that claimed to be an SVG has no safe
+    // fallback: storing it as it arrived is the thing this function exists to
+    // prevent. Anything else can still be stored unchanged.
+    if (looksLikeSvg(file)) {
+      throw new UploadError("The SVG could not be rendered", "BAD_FORMAT");
+    }
+    return file;
+  }
+
+  const render = (trim: boolean) => {
+    // `density` is read for vector input only; on a raster it is inert.
+    const pipeline = sharp(input, { failOn: "none", density: isVector ? 384 : 72 }).rotate();
+
+    return (trim ? pipeline.trim({ threshold: 12 }) : pipeline)
+      .resize({
+        width: LOGO_MAX_EDGE,
+        height: LOGO_MAX_EDGE,
+        fit: "inside",
+        withoutEnlargement: !isVector,
+      })
+      // Lossless for vector art: flat fills and hard edges are exactly what a
+      // lossy encoder rings around, and the result is still ~15 KB. A raster
+      // logo may be a photograph or a gradient, where quality 92 is smaller for
+      // no visible difference.
+      .webp(isVector ? { lossless: true, effort: 5 } : { quality: 92, effort: 5 })
+      .toBuffer();
+  };
+
+  let output: Buffer;
+  try {
+    output = await render(true);
+  } catch {
+    // `trim()` throws when it would leave nothing — a mark that already reaches
+    // every edge, or one whose border is not a single flat colour. Neither is a
+    // reason to refuse the upload, so fall back to the untrimmed render.
+    try {
+      output = await render(false);
+    } catch {
+      // Readable a moment ago but not encodable — truncated, or a vector whose
+      // features librsvg will not draw. Same reasoning as above.
+      if (isVector) throw new UploadError("The SVG could not be rendered", "BAD_FORMAT");
+      return file;
+    }
+  }
+
+  const name = file.name.replace(/\.[^.]+$/, "") || "logo";
+  return new File([new Uint8Array(output)], `${name}.webp`, { type: "image/webp" });
 }
 
 /**

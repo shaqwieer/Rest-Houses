@@ -200,7 +200,9 @@ export function SettingsForm({
           <div className="flex items-center gap-3 rounded-[13px] border border-line bg-sand-50 px-3 py-3">
             <div className="relative size-11 shrink-0 overflow-hidden rounded-xl bg-sand-200">
               {values.logoUrl ? (
-                <Image src={values.logoUrl} alt={t.admin.logoAlt} fill sizes="44px" className="object-cover" />
+                // `contain`, matching the header and footer: a preview that
+                // crops shows the operator something the site will never render.
+                <Image src={values.logoUrl} alt={t.admin.logoAlt} fill sizes="44px" className="object-contain" />
               ) : (
                 <div
                   className="grid size-full place-items-center font-display text-[18px] font-extrabold text-night-900"
@@ -246,7 +248,9 @@ export function SettingsForm({
             <input
               ref={logoInput}
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif"
+              // `.svg` as well as the MIME type: on a machine where SVG is not
+              // registered, the picker would grey out the operator's own logo.
+              accept="image/jpeg,image/png,image/webp,image/avif,image/svg+xml,.svg"
               onChange={(e) => onUploadLogo(e.target.files?.[0])}
               className="hidden"
             />

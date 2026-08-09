@@ -13,12 +13,12 @@ import { Brand } from "@/components/site/brand";
  */
 export default async function NotFound() {
   const settings = await getSettings();
-  const { t } = await getI18n();
+  const { t, locale } = await getI18n();
 
   return (
     <div className="flex min-h-screen flex-col bg-sand-50">
       <div className="border-b border-line bg-surface px-4 py-3.5 md:px-10">
-        <Brand settings={settings} size="md" />
+        <Brand settings={settings} size="md" locale={locale} />
       </div>
 
       <main className="grid flex-1 place-items-center px-4 py-14">

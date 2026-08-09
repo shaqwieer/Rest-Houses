@@ -908,7 +908,8 @@ export const en: Dictionary = {
     fieldLogoGlyph: "Logo letter",
     fieldLogoGlyphHint: "Shown in the gold square when there is no logo image",
     logoAlt: "Logo",
-    logoNote: "The logo appears in the header, the footer and the sign-in page.",
+    logoNote:
+      "Shown in the header, the footer and the sign-in page in place of the site name. SVG, PNG and JPG are accepted; the empty margin around the mark is trimmed automatically.",
     uploadLogo: "Upload a logo",
     removeLogo: "Remove the logo",
     fieldWhatsapp: "WhatsApp number",

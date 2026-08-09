@@ -64,6 +64,20 @@ const nextConfig: NextConfig = {
     ],
     // AVIF first, then WebP — both far smaller than JPEG for photo-heavy pages.
     formats: ["image/avif", "image/webp"],
+
+    /**
+     * Every re-encode on the site happens at the default 75 except one: the
+     * brand logo asks for 100 (see src/components/site/brand.tsx — flat fills
+     * and hard edges are where a photo-tuned quality shows as fuzz, and at that
+     * size the difference costs a few kilobytes).
+     *
+     * Listing this is optional today and required from Next 16: an unlisted
+     * quality currently only warns at build time, but once the check is
+     * enforced the optimizer answers 400 and the logo becomes a broken image.
+     * Anything added here must include 75, since that is what every other
+     * `next/image` on the site resolves to.
+     */
+    qualities: [75, 100],
   },
 
   // Long-lived immutable caching for uploaded originals.

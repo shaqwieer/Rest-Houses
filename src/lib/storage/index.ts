@@ -4,6 +4,7 @@ import { OptimizingStorage } from "./optimize";
 import type { StorageAdapter } from "./types";
 
 export * from "./types";
+export { prepareLogo } from "./optimize";
 
 /**
  * Storage driver resolution.

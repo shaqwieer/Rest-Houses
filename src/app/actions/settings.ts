@@ -6,7 +6,16 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/auth";
 import { SETTINGS_ID } from "@/lib/settings";
 import { stayHourWrite } from "@/lib/clock";
-import { deleteStoredAsset, getStorage, UploadError } from "@/lib/storage";
+import {
+  ALLOWED_LOGO_TYPES,
+  assertValidImage,
+  deleteStoredAsset,
+  getStorage,
+  looksLikeSvg,
+  prepareLogo,
+  SVG_TYPE,
+  UploadError,
+} from "@/lib/storage";
 import {
   optionalEmailField,
   optionalPhoneField,
@@ -308,7 +317,17 @@ export async function uploadLogo(file: File): Promise<ActionResult> {
       select: { logoUrl: true },
     });
 
-    const stored = await getStorage().save(file, { folder: "brand" });
+    // An SVG can reach us with an empty or generic MIME type depending on the
+    // uploader's machine; the extension settles it. Nothing is trusted by this
+    // relabelling — `prepareLogo` reads the real format out of the bytes.
+    const upload = looksLikeSvg(file) ? new File([file], file.name, { type: SVG_TYPE }) : file;
+
+    // Validated here rather than left to the adapter, because the logo accepts
+    // SVG and the adapter — shared with every gallery upload — does not. What
+    // reaches `save()` below is always one of the four raster types it knows.
+    assertValidImage(upload, ALLOWED_LOGO_TYPES);
+
+    const stored = await getStorage().save(await prepareLogo(upload), { folder: "brand" });
 
     await prisma.siteSettings.upsert({
       where: { id: SETTINGS_ID },

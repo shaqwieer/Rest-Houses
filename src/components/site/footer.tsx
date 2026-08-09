@@ -75,7 +75,7 @@ export function SiteFooter({ settings }: { settings: Settings }) {
           {/* about */}
           <div>
             <div className="mb-3.5">
-              <Brand settings={settings} tone="dark" size="md" />
+              <Brand settings={settings} tone="dark" size="md" locale={locale} />
             </div>
             <p className="mb-4 max-w-[34ch] text-[13.5px] leading-relaxed text-sand-100/60">
               {s.footerAbout}

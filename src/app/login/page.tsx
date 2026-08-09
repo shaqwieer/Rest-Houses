@@ -57,7 +57,7 @@ export default async function LoginPage({
   if (home) redirect(requestedNext || home);
 
   const session = await auth();
-  const [settings, { t }] = await Promise.all([getSettings(), getI18n()]);
+  const [settings, { t, locale }] = await Promise.all([getSettings(), getI18n()]);
 
   // A signature that still verifies against an account that no longer resolves.
   // Saying so beats silently showing the form to someone who believes they are
@@ -72,7 +72,7 @@ export default async function LoginPage({
 
         <div className="relative">
           <div className="mb-9">
-            <Brand settings={settings} tone="dark" size="lg" href={null} />
+            <Brand settings={settings} tone="dark" size="lg" href={null} locale={locale} />
             <div className="mt-1 text-[11.5px] text-sand-100/50">{t.auth.ownerPortal}</div>
           </div>
           <h1 className="m-0 mb-3.5 max-w-[20ch] font-display text-[clamp(24px,3vw,36px)] font-extrabold leading-[1.35] text-sand-50">
@@ -102,7 +102,7 @@ export default async function LoginPage({
         <div className="mx-auto w-full max-w-105">
           {/* brand repeats here on small screens, where the dark panel is hidden */}
           <div className="mb-6.5 lg:hidden">
-            <Brand settings={settings} size="md" href={null} />
+            <Brand settings={settings} size="md" href={null} locale={locale} />
             <div className="mt-1 text-[11.5px] text-muted">{t.auth.ownerPortal}</div>
           </div>
 
