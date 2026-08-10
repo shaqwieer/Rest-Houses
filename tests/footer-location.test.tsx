@@ -157,6 +157,29 @@ describe("the removed location section", () => {
 });
 
 /**
+ * The copyright year is a label, not a quantity, so it must not carry a
+ * thousands separator — the Arabic footer was reading "٢٬٠٢٦" because the year
+ * went through `arNum` (which groups) instead of `arYear` (which does not).
+ *
+ * The expected digits are built here by hand rather than by calling `arYear`,
+ * so the test fails if the formatter regresses instead of agreeing with it.
+ */
+describe("the copyright year", () => {
+  const year = new Date().getFullYear();
+  const arabicIndic = String(year).replace(/\d/g, (d) => "٠١٢٣٤٥٦٧٨٩"[Number(d)]);
+
+  it("renders ungrouped in Arabic", () => {
+    // A grouped year renders "٢٬٠٢٦", in which "٢٠٢٦" is not a substring.
+    expect(renderFooter("ar")).toContain(arabicIndic);
+  });
+
+  it("renders ungrouped in English", () => {
+    // Likewise "2,026" does not contain "2026".
+    expect(renderFooter("en")).toContain(String(year));
+  });
+});
+
+/**
  * Requirement 5: the footer publishes the commercial trade licence number, and
  * the operator fills it in from /admin/settings.
  *

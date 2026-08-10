@@ -8,7 +8,7 @@ import type { Settings } from "@/lib/settings";
 import { localizeSettings } from "@/lib/settings";
 import { whatsappLink } from "@/lib/whatsapp";
 import { useLocale } from "@/lib/i18n/provider";
-import { arNum } from "@/lib/format";
+import { arYear } from "@/lib/format";
 
 /**
  * Site footer: about + explore links + help links + contact.
@@ -63,7 +63,7 @@ export function SiteFooter({ settings }: { settings: Settings }) {
   const s = localizeSettings(settings, locale);
 
   const socials = socialLinks(settings, t.owner.email);
-  const year = arNum(new Date().getFullYear(), locale);
+  const year = arYear(new Date().getFullYear(), locale);
   const waHref = whatsappLink(settings.whatsappNumber);
 
   return (
