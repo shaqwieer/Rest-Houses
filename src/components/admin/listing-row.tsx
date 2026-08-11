@@ -86,7 +86,13 @@ export function AdminListingRow({
   const publishLabel = listing.published ? t.common.unpublished : t.common.published;
 
   return (
-    <div className="flex gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-e1">
+    // `min-w-0`: the card sits in a grid whose column is `auto`, and an auto
+    // track is never narrower than its item's min-content width. Without this
+    // the card's intrinsic width (thumbnail + price + four action buttons, ~375px)
+    // became the track width, so on a 360px phone the whole dashboard scrolled
+    // sideways and the header no longer covered the page. Zeroing the minimum
+    // lets the track follow the viewport and the card shrink into it.
+    <div className="flex min-w-0 gap-3 rounded-[20px] border border-line bg-surface p-3 shadow-e1">
       <div className="relative size-19 shrink-0 overflow-hidden rounded-[13px] bg-sand-200">
         {listing.coverUrl ? (
           <Image src={listing.coverUrl} alt="" fill sizes="76px" className="object-cover" />
@@ -131,7 +137,10 @@ export function AdminListingRow({
           <span className="truncate">{listing.area}</span>
         </div>
 
-        <div className="mt-auto flex items-center justify-between gap-2">
+        {/* Wraps rather than squashes: price and four 32px buttons don't fit on
+            one line on a small phone, and flex would otherwise shrink the
+            buttons below a tappable size. The actions drop to their own row. */}
+        <div className="mt-auto flex flex-wrap items-center justify-between gap-2">
           <span className="text-[13px] text-ink">
             <strong className="font-display text-[15px]">
               {arNum(listing.pricePerNight, locale)}
