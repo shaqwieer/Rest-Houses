@@ -194,6 +194,51 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
   CANCELLED: "ملغى",
 };
 
+/**
+ * What the filter chips on the two booking lists offer — a superset of
+ * `BOOKING_STATUSES`, and deliberately a SEPARATE array.
+ *
+ * "COMPLETED" (مكتمل) is a booking that is CONFIRMED and whose stage has
+ * reached "DONE": all seven handover steps finished, nothing left to do. It is
+ * derived at query time and is never written to `BookingRequest.status`.
+ *
+ * The separation is load-bearing, not tidiness. `isBookingStatus` is the guard
+ * `setRequestStatus` uses to decide what a button may write to the column
+ * (src/app/actions/requests.ts) — so putting "COMPLETED" in that array would
+ * make it a *storable* status, and every `status: "CONFIRMED"` query in the
+ * codebase (revenue, occupancy, the commission queue, the calendar release on
+ * cancel, the public /booking/[reference] page) would start silently missing
+ * the bookings that had been marked complete.
+ *
+ * Same shape as `OWNER_ACCESS_STATES` above: the stored vocabulary, plus the
+ * one state the UI derives rather than stores.
+ */
+export const BOOKING_FILTERS = [
+  "NEW",
+  "CONFIRMED",
+  "COMPLETED",
+  "REJECTED",
+  "CANCELLED",
+] as const;
+export type BookingFilter = (typeof BOOKING_FILTERS)[number];
+
+export function isBookingFilter(v: unknown): v is BookingFilter {
+  return typeof v === "string" && (BOOKING_FILTERS as readonly string[]).includes(v);
+}
+
+/**
+ * What the badge on a booking should say.
+ *
+ * The stored status, except that a confirmed booking whose handover has run out
+ * of steps reads "مكتمل" rather than a "مؤكد" that never changes again. Falls
+ * back to the raw status when the stage is unknown — the read-only surfaces
+ * render a request without its workflow, and a missing stage must not be
+ * mistaken for a finished one.
+ */
+export function bookingDisplayStatus(status: string, stage?: string | null): string {
+  return status === "CONFIRMED" && stage === "DONE" ? "COMPLETED" : status;
+}
+
 /* --------------------------------------------------------------------------
  * The booking handover workflow.
  *

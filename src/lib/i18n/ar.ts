@@ -696,7 +696,7 @@ export const ar = {
     statNewRequests: "طلبات جديدة",
     statNewRequestsSub: "بانتظار الرد",
     statConfirmed: "حجوزات مؤكدة",
-    statConfirmedSub: "الإجمالي",
+    statConfirmedSub: "قيد المتابعة",
     statOccupancy: "نسبة الإشغال",
     statOccupancySub: "٣٠ يومًا القادمة",
     statRevenue: "الإيراد المتوقّع",
@@ -1306,6 +1306,8 @@ export const ar = {
     // booking
     NEW: "جديد",
     CONFIRMED: "مؤكد",
+    // Derived, never stored: مؤكد + كل خطوات المسار مكتملة.
+    COMPLETED: "مكتمل",
     REJECTED: "مرفوض",
     CANCELLED: "ملغى",
     // owner
@@ -1336,6 +1338,9 @@ export const ar = {
     stepSaved: "تم حفظ الخطوة",
     stepReverted: "تم التراجع عن الخطوة",
     completed: "اكتملت جميع خطوات هذا الحجز",
+    expand: "عرض خطوات الحجز",
+    collapse: "إخفاء خطوات الحجز",
+    nextStep: (title: string) => `التالي: ${title}`,
     undo: "تراجع خطوة",
     received: "المستلم",
     expected: "حسب الإعدادات",

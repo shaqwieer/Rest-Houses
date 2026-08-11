@@ -59,16 +59,24 @@ export function Badge({
  * for the settled-good state, gold for "waiting on someone", red for refused or
  * stopped — and defining it once keeps an admin's colour intuition transferable
  * between tables.
+ *
+ * "COMPLETED" is the one that breaks the rule, and does so on purpose: it is a
+ * good outcome, so green would be defensible, but it would then be
+ * indistinguishable at a glance from the "مؤكد" bookings that still need work —
+ * which is the exact distinction the chip was added to make. Dark reads as
+ * closed and settled, and nothing else in either lifecycle uses it.
  */
 export function StatusBadge({ status }: { status: string }) {
   const t = useT();
 
   const tone: BadgeTone =
-    status === "CONFIRMED" || status === "APPROVED"
-      ? "ok"
-      : status === "NEW" || status === "PENDING" || status === "EXPIRED"
-        ? "gold"
-        : "busy";
+    status === "COMPLETED"
+      ? "night"
+      : status === "CONFIRMED" || status === "APPROVED"
+        ? "ok"
+        : status === "NEW" || status === "PENDING" || status === "EXPIRED"
+          ? "gold"
+          : "busy";
 
   const label = (t.status as unknown as Record<string, string>)[status] ?? status;
 

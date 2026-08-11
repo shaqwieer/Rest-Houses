@@ -4,6 +4,8 @@ import { StatusBadge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
 import { hiddenByOwnerStateCount, ownerCounts } from "@/lib/admin-queries";
+import { bookingFilterWhere } from "@/lib/booking-view";
+import { bookingDisplayStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum, arPercent } from "@/lib/format";
 import { addDays, arDayMonth, arFullDate, todayISO } from "@/lib/dates";
@@ -36,7 +38,11 @@ export default async function AdminOverviewPage() {
     pendingReviews,
   ] = await Promise.all([
     prisma.bookingRequest.count({ where: { status: "NEW" } }),
-    prisma.bookingRequest.count({ where: { status: "CONFIRMED" } }),
+    // Confirmed and NOT yet finished, matching the "مؤكد" chip this tile links
+    // to. Counting every confirmed booking here would have the tile say 11 and
+    // the page it opens show 4, with no way to tell which number was wrong.
+    // The completed ones have their own chip on that page.
+    prisma.bookingRequest.count({ where: bookingFilterWhere("CONFIRMED") }),
     prisma.listing.count(),
     prisma.bookingRequest.findMany({
       orderBy: { createdAt: "desc" },
@@ -324,7 +330,9 @@ export default async function AdminOverviewPage() {
                     {arNum(r.nights, locale)} {t.common.night}
                   </span>
                 </span>
-                <StatusBadge status={r.status} />
+                {/* The same derived label the requests page shows, so one
+                    booking is not "مؤكد" here and "مكتمل" one tap away. */}
+                <StatusBadge status={bookingDisplayStatus(r.status, r.stage)} />
               </Link>
             ))}
           </div>

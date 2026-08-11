@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/requests";
 import { BookingWorkflow, type WorkflowBooking } from "@/components/admin/booking-workflow";
 import type { BankDetails } from "@/components/admin/bank-details";
+import { bookingDisplayStatus } from "@/lib/constants";
 import { arDayMonth, todayISO } from "@/lib/dates";
 import { arNum, formatReference } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
@@ -108,6 +109,11 @@ export function RequestCard({
   const isNew = request.status === "NEW";
   const isConfirmed = request.status === "CONFIRMED";
 
+  // The badge only — every button below still keys off the STORED status. A
+  // completed booking is a confirmed one whose handover has finished; it still
+  // holds the calendar, so cancelling it is still the action on offer.
+  const badgeStatus = bookingDisplayStatus(request.status, request.workflow?.stage);
+
   // Mirrors the server-side rule in `setOwnerRequestStatus` — the guard that
   // matters is there; this one only stops the owner pressing a button that was
   // always going to be refused.
@@ -144,7 +150,7 @@ export function RequestCard({
             </Link>
           </div>
         </div>
-        <StatusBadge status={request.status} />
+        <StatusBadge status={badgeStatus} />
       </div>
 
       {/* facts */}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
@@ -46,6 +46,21 @@ import { whatsappLink } from "@/lib/whatsapp";
  * date). Future steps are visible but inert — deliberately visible, because a
  * step you cannot see is a step you cannot plan for, and the owner needs to
  * know on day one that they will be asked to return the security deposit.
+ *
+ * ─── …and the whole panel folds away ────────────────────────────────────────
+ * All of the above is right for reading ONE booking and wrong for managing
+ * thirty. Seven steps is roughly 400px of card, so a phone showing eleven
+ * confirmed bookings is several screens of stepper between one guest's name and
+ * the next — the list stops being scannable exactly when there is enough
+ * business for it to matter.
+ *
+ * So the panel starts folded, with the header still stating where the booking
+ * has got to and what the next step is. Nothing is hidden that was not already
+ * a summary; the detail is one tap away.
+ *
+ * The exception is a request nobody has answered yet. Its step 1 IS the confirm
+ * button, and this list exists to get those answered — hiding that button
+ * behind a tap would be a page that hides its own purpose.
  */
 
 export type WorkflowBooking = {
@@ -135,6 +150,16 @@ export function BookingWorkflow({
   const isClosed = booking.status === "REJECTED" || booking.status === "CANCELLED";
   const reviewUrl = freshLink ?? booking.reviewInviteUrl;
 
+  // Open by default only for a request still waiting on its first answer — see
+  // the note at the top of this file. Derived from props alone: reading the
+  // viewport width or localStorage for this would be a hydration mismatch on a
+  // server-rendered page, and the wrong default is cheaper than a flash of the
+  // wrong panel. It is initial state only, so advancing a step (which triggers
+  // `router.refresh()` without unmounting) leaves the panel as the operator
+  // left it.
+  const [open, setOpen] = useState(booking.status === "NEW");
+  const panelId = useId();
+
   function submit(input: StageSubmission) {
     startTransition(async () => {
       const result = isOwner
@@ -187,121 +212,168 @@ export function BookingWorkflow({
     // references and links. See the note on `RequestCard`'s root for why it is
     // a guard rather than the fix for the overflow that was reported.
     <div className="min-w-0 rounded-[18px] border border-line bg-sand-50 p-3.5">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2 font-display text-[13.5px] font-extrabold text-ink">
-          <Icon name="task_alt" size={17} className="text-gold-600" />
-          {t.workflow.title}
-        </span>
-        <span className="text-[11.5px] font-semibold text-muted">
-          {stage === "DONE"
-            ? t.workflow.completed
-            : t.workflow.stepOf(
-                arNum(stageNumber(stage), locale),
-                arNum(total, locale),
-              )}
-        </span>
-      </div>
-
-      <ol className="m-0 flex list-none flex-col gap-0 p-0">
-        {WORKFLOW_STAGES.map((step, index) => {
-          const done = isStageComplete(booking.stage, step);
-          // Step 1 is "current" for a request nobody has answered yet, which is
-          // the only stage that exists outside a confirmed booking.
-          const current = booking.stage === step && (isConfirmed || step === "DEPOSIT");
-          const last = index === WORKFLOW_STAGES.length - 1;
-
-          return (
-            <li key={step} className="relative flex gap-3">
-              {/* rail */}
-              <div className="flex flex-col items-center">
-                <span
-                  className={clsx(
-                    "grid size-8 shrink-0 place-items-center rounded-full border-2 text-[12px] font-extrabold transition",
-                    done && "border-ok bg-ok text-white",
-                    current && !done && "border-gold-600 bg-gold-100 text-bronze",
-                    !done && !current && "border-line bg-surface text-off",
+      {/* The header is the toggle — the whole row, not a small chevron, because
+          this is used on a phone with a thumb. `text-start` because a button's
+          default `text-align: center` would centre the Arabic label away from
+          the card's edge it should align with. */}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        // `title`, not `aria-label`: the button's own text already names what it
+        // opens ("مسار الحجز · الخطوة ٢ من ٧"), and an aria-label would replace
+        // that with "show the booking steps" — throwing away the progress a
+        // screen-reader user would otherwise hear. `aria-expanded` carries the
+        // state; this is only a hover hint for a mouse.
+        title={open ? t.workflow.collapse : t.workflow.expand}
+        className={clsx("flex w-full flex-col gap-0.5 text-start", open && "mb-3")}
+      >
+        <span className="flex w-full items-center justify-between gap-2">
+          {/* `shrink-0`: this is two short words in either language and always
+              fits, whereas "اكتملت جميع خطوات هذا الحجز" beside it does not at
+              320px. Letting the long side wrap keeps the title on one line. */}
+          <span className="flex shrink-0 items-center gap-2 font-display text-[13.5px] font-extrabold text-ink">
+            <Icon name="task_alt" size={17} className="text-gold-600" />
+            {t.workflow.title}
+          </span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="text-[11.5px] font-semibold text-muted">
+              {stage === "DONE"
+                ? t.workflow.completed
+                : t.workflow.stepOf(
+                    arNum(stageNumber(stage), locale),
+                    arNum(total, locale),
                   )}
-                >
-                  {done ? (
-                    <Icon name="check" size={16} />
-                  ) : (
-                    <Icon name={STEP_ICONS[step]} size={15} />
-                  )}
-                </span>
-                {!last && (
+            </span>
+            {/* One glyph rotated rather than two icons — the set has
+                `expand_more` and a rotation animates, which a swapped path
+                would not. */}
+            <Icon
+              name="expand_more"
+              size={18}
+              className={clsx("text-muted transition-transform", open && "rotate-180")}
+            />
+          </span>
+        </span>
+
+        {/* Folded, the header has to carry what the panel would have said: which
+            step is next by name, not just by number. Its own full-width line, so
+            a long step title wraps instead of squeezing the row above it, and
+            indented past the icon so the two read as one block. */}
+        {!open && stage !== "DONE" && (
+          <span className="ps-[25px] text-[11.5px] text-muted">
+            {t.workflow.nextStep(nextActionTitle(booking.status, stage, t))}
+          </span>
+        )}
+      </button>
+
+      {/* Hidden with a class, never unmounted. `StepPanel` holds the typed
+          amounts in local state, so conditionally rendering this would throw
+          away a half-filled deposit figure the moment somebody folded the card
+          to look at the booking above it. */}
+      <div id={panelId} className={clsx(!open && "hidden")}>
+        <ol className="m-0 flex list-none flex-col gap-0 p-0">
+          {WORKFLOW_STAGES.map((step, index) => {
+            const done = isStageComplete(booking.stage, step);
+            // Step 1 is "current" for a request nobody has answered yet, which is
+            // the only stage that exists outside a confirmed booking.
+            const current = booking.stage === step && (isConfirmed || step === "DEPOSIT");
+            const last = index === WORKFLOW_STAGES.length - 1;
+
+            return (
+              <li key={step} className="relative flex gap-3">
+                {/* rail */}
+                <div className="flex flex-col items-center">
                   <span
                     className={clsx(
-                      "w-0.5 flex-1 rounded-full",
-                      done ? "bg-ok" : "bg-line",
+                      "grid size-8 shrink-0 place-items-center rounded-full border-2 text-[12px] font-extrabold transition",
+                      done && "border-ok bg-ok text-white",
+                      current && !done && "border-gold-600 bg-gold-100 text-bronze",
+                      !done && !current && "border-line bg-surface text-off",
                     )}
-                    aria-hidden
-                  />
-                )}
-              </div>
-
-              {/* body */}
-              <div className={clsx("min-w-0 flex-1", last ? "pb-0" : "pb-3.5")}>
-                <div
-                  className={clsx(
-                    "flex flex-wrap items-baseline gap-x-2 text-[12.5px] font-bold",
-                    done && "text-muted",
-                    current && "text-ink",
-                    !done && !current && "text-off",
-                  )}
-                >
-                  <span>
-                    {arNum(index + 1, locale)}. {stepTitle(step, t)}
+                  >
+                    {done ? (
+                      <Icon name="check" size={16} />
+                    ) : (
+                      <Icon name={STEP_ICONS[step]} size={15} />
+                    )}
                   </span>
+                  {!last && (
+                    <span
+                      className={clsx(
+                        "w-0.5 flex-1 rounded-full",
+                        done ? "bg-ok" : "bg-line",
+                      )}
+                      aria-hidden
+                    />
+                  )}
                 </div>
 
-                {done && (
-                  <p className="m-0 mt-0.5 text-[11.5px] text-muted">
-                    {doneSummary(step, booking, { money, locale, t })}
-                  </p>
-                )}
+                {/* body */}
+                <div className={clsx("min-w-0 flex-1", last ? "pb-0" : "pb-3.5")}>
+                  <div
+                    className={clsx(
+                      "flex flex-wrap items-baseline gap-x-2 text-[12.5px] font-bold",
+                      done && "text-muted",
+                      current && "text-ink",
+                      !done && !current && "text-off",
+                    )}
+                  >
+                    <span>
+                      {arNum(index + 1, locale)}. {stepTitle(step, t)}
+                    </span>
+                  </div>
 
-                {/* The review link outlives its own step. Issuing it completes
-                    step 7 and moves the booking to DONE, but the owner still
-                    has to send it — so it stays on screen for as long as it is
-                    valid rather than vanishing at the moment it is created. */}
-                {done && step === "REVIEW" && reviewUrl && (
-                  <ReviewLinkBox url={reviewUrl} booking={booking} />
-                )}
+                  {done && (
+                    <p className="m-0 mt-0.5 text-[11.5px] text-muted">
+                      {doneSummary(step, booking, { money, locale, t })}
+                    </p>
+                  )}
 
-                {current && (
-                  <StepPanel
-                    step={step}
-                    booking={booking}
-                    scope={scope}
-                    pending={pending}
-                    reviewInviteDays={reviewInviteDays}
-                    bank={bank}
-                    money={money}
-                    percent={percent}
-                    reviewUrl={reviewUrl}
-                    onSubmit={submit}
-                    onConfirmCommission={onConfirmCommission}
-                  />
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ol>
+                  {/* The review link outlives its own step. Issuing it completes
+                      step 7 and moves the booking to DONE, but the owner still
+                      has to send it — so it stays on screen for as long as it is
+                      valid rather than vanishing at the moment it is created. */}
+                  {done && step === "REVIEW" && reviewUrl && (
+                    <ReviewLinkBox url={reviewUrl} booking={booking} />
+                  )}
 
-      {/* Undo — operators only, and never on step 1: undoing a confirmation is
-          "cancel the booking", which also has to release the calendar. */}
-      {!isOwner && isConfirmed && BOOKING_STAGES.indexOf(stage) > 1 && (
-        <button
-          type="button"
-          onClick={onRevert}
-          disabled={pending}
-          className="mt-1 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-muted transition hover:text-busy disabled:opacity-50"
-        >
-          <Icon name="history" size={14} />
-          {t.workflow.undo}
-        </button>
-      )}
+                  {current && (
+                    <StepPanel
+                      step={step}
+                      booking={booking}
+                      scope={scope}
+                      pending={pending}
+                      reviewInviteDays={reviewInviteDays}
+                      bank={bank}
+                      money={money}
+                      percent={percent}
+                      reviewUrl={reviewUrl}
+                      onSubmit={submit}
+                      onConfirmCommission={onConfirmCommission}
+                    />
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        {/* Undo — operators only, and never on step 1: undoing a confirmation is
+            "cancel the booking", which also has to release the calendar. */}
+        {!isOwner && isConfirmed && BOOKING_STAGES.indexOf(stage) > 1 && (
+          <button
+            type="button"
+            onClick={onRevert}
+            disabled={pending}
+            className="mt-1 flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[11.5px] font-semibold text-muted transition hover:text-busy disabled:opacity-50"
+          >
+            <Icon name="history" size={14} />
+            {t.workflow.undo}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -725,6 +797,21 @@ function StepButton({
 /* -------------------------------------------------------------------------- */
 
 type T = ReturnType<typeof useLocale>["t"];
+
+/**
+ * What the folded header names as the next thing to do.
+ *
+ * Not simply `stepTitle(stage)`, because `stage` is "DEPOSIT" on a request
+ * nobody has answered — that is the column's default, not a step in progress
+ * (see the note on `stage` in prisma/schema.prisma). Naming step 1's title
+ * there would tell the operator the next thing to do is "استلام العربون
+ * والتأمين", when the button that step offers actually confirms the booking and
+ * closes the calendar. Exported so the rule can be tested without a click:
+ * a NEW request renders unfolded, so this line is only reachable by hand.
+ */
+export function nextActionTitle(status: string, stage: BookingStage, t: T): string {
+  return status === "NEW" ? t.workflow.depositAction : stepTitle(stage, t);
+}
 
 function stepTitle(step: BookingStage, t: T): string {
   const titles: Record<string, string> = {

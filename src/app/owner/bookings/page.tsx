@@ -4,8 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { bankDetails, getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
-import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
-import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
+import { BOOKING_FILTERS, isBookingFilter } from "@/lib/constants";
+import {
+  ARCHIVED_BOOKINGS_WHERE,
+  BOOKING_ORDER,
+  bookingFilterCounts,
+  bookingFilterWhere,
+  isActiveFilter,
+  toWorkflowBooking,
+  WORKFLOW_INCLUDE,
+} from "@/lib/booking-view";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 import { ARCHIVE_PAGE_SIZE, Pager, pageFromParam } from "@/components/admin/pager";
@@ -15,11 +23,13 @@ import Link from "next/link";
  * The owner's booking requests.
  *
  * Every query is filtered by `listing: { ownerId }`, so an owner sees requests
- * for their own rest houses and nothing else. As on the admin page, pending
- * requests are fetched separately and never paged — they are the work queue
- * this page exists to drain, and any single capped-and-ordered query would
- * eventually push the oldest unanswered ones off the end. Only the closed
- * archive below them is paged; see the note in src/components/admin/pager.tsx.
+ * for their own rest houses and nothing else.
+ *
+ * The bucket split and the reading order are the admin page's — see the long
+ * note in src/app/admin/requests/page.tsx for why the work queue is fetched
+ * separately and never paged, and src/lib/booking-view.ts for the predicates
+ * both pages share. Only the closed archive is paged; see the note in
+ * src/components/admin/pager.tsx.
  */
 export default async function OwnerBookingsPage({
   searchParams,
@@ -34,63 +44,69 @@ export default async function OwnerBookingsPage({
   const { t, locale } = await getI18n();
 
   const sp = await searchParams;
-  const statusFilter = isBookingStatus(sp.status) ? sp.status : null;
+  const filter = isBookingFilter(sp.status) ? sp.status : null;
   const mine = { listing: { ownerId: owner.id } };
 
-  const [counts, settings] = await Promise.all([
-    prisma.bookingRequest.groupBy({
-      by: ["status"],
-      where: mine,
-      _count: { _all: true },
-    }),
-    getSettings(),
-  ]);
+  const [counts, settings] = await Promise.all([bookingFilterCounts(mine), getSettings()]);
 
-  const countFor = (status: string) => counts.find((c) => c.status === status)?._count._all ?? 0;
-  const totalCount = counts.reduce((sum, c) => sum + c._count._all, 0);
-  const newCount = countFor("NEW");
+  const newCount = counts.NEW;
 
-  // Derived from the counts already fetched, rather than a second COUNT.
-  const archiveTotal = statusFilter
-    ? statusFilter === "NEW"
-      ? 0
-      : countFor(statusFilter)
-    : totalCount - newCount;
+  // Which bucket this filter reads from, and how much of it there is — derived
+  // from the counts already fetched rather than a second COUNT.
+  const showQueue = !filter || isActiveFilter(filter);
+  const showArchive = !filter || !isActiveFilter(filter);
+  const archiveTotal = !showArchive
+    ? 0
+    : filter
+      ? counts[filter]
+      : counts.COMPLETED + counts.REJECTED + counts.CANCELLED;
+
   const totalPages = Math.max(1, Math.ceil(archiveTotal / ARCHIVE_PAGE_SIZE));
   // Clamped before the query, so `?page=99` lands on the last real page rather
   // than skipping past the end into the "no bookings yet" empty state.
   const page = pageFromParam(sp.page, totalPages);
 
-  const [pending, history] = await Promise.all([
-    // First page only — an owner reading their archive is not draining a queue.
-    (statusFilter && statusFilter !== "NEW") || page > 1
-      ? Promise.resolve([])
-      : prisma.bookingRequest.findMany({
-          where: { status: "NEW", ...mine },
-          // Oldest first: the request that has waited longest needs answering.
-          orderBy: { createdAt: "asc" },
+  // First page only — an owner reading their archive is not draining a queue.
+  const queueVisible = showQueue && page === 1;
+
+  const [pending, active, history] = await Promise.all([
+    queueVisible && filter !== "CONFIRMED"
+      ? prisma.bookingRequest.findMany({
+          where: { ...bookingFilterWhere("NEW"), ...mine },
+          orderBy: BOOKING_ORDER.pending,
           include: WORKFLOW_INCLUDE,
-        }),
-    statusFilter === "NEW"
-      ? Promise.resolve([])
-      : prisma.bookingRequest.findMany({
-          where: statusFilter
-            ? { status: statusFilter, ...mine }
-            : { status: { not: "NEW" }, ...mine },
-          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    queueVisible && filter !== "NEW"
+      ? prisma.bookingRequest.findMany({
+          where: { ...bookingFilterWhere("CONFIRMED"), ...mine },
+          orderBy: BOOKING_ORDER.active,
+          include: WORKFLOW_INCLUDE,
+        })
+      : Promise.resolve([]),
+    showArchive
+      ? prisma.bookingRequest.findMany({
+          where: filter
+            ? { ...bookingFilterWhere(filter), ...mine }
+            : { ...ARCHIVED_BOOKINGS_WHERE, ...mine },
+          orderBy: BOOKING_ORDER.archive,
           include: WORKFLOW_INCLUDE,
           skip: (page - 1) * ARCHIVE_PAGE_SIZE,
           take: ARCHIVE_PAGE_SIZE,
-        }),
+        })
+      : Promise.resolve([]),
   ]);
 
-  const ordered = [...pending, ...history];
+  // Unanswered first (oldest waiting first), then confirmed by how soon the
+  // guest arrives, then history. Each query is already in its own order, so the
+  // concatenation is the order — nothing is sorted here.
+  const ordered = [...pending, ...active, ...history];
 
   const hrefFor = (n: number) => {
     const query = new URLSearchParams();
     // The active filter survives a page change — otherwise page 2 of one status
     // quietly becomes page 2 of all of them.
-    if (statusFilter) query.set("status", statusFilter);
+    if (filter) query.set("status", filter);
     if (n > 1) query.set("page", String(n));
     const qs = query.toString();
     return qs ? `/owner/bookings?${qs}` : "/owner/bookings";
@@ -108,16 +124,16 @@ export default async function OwnerBookingsPage({
       </p>
 
       <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto pb-1">
-        <FilterChip href="/owner/bookings" active={!statusFilter}>
-          {t.common.all} ({arNum(totalCount, locale)})
+        <FilterChip href="/owner/bookings" active={!filter}>
+          {t.common.all} ({arNum(counts.total, locale)})
         </FilterChip>
-        {BOOKING_STATUSES.map((status) => (
+        {BOOKING_FILTERS.map((f) => (
           <FilterChip
-            key={status}
-            href={`/owner/bookings?status=${status}`}
-            active={statusFilter === status}
+            key={f}
+            href={`/owner/bookings?status=${f}`}
+            active={filter === f}
           >
-            {t.status[status]} ({arNum(countFor(status), locale)})
+            {t.status[f]} ({arNum(counts[f], locale)})
           </FilterChip>
         ))}
       </div>

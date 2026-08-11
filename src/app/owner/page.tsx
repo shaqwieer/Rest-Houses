@@ -20,6 +20,7 @@ import {
   OWNER_INSIGHT_WINDOW_DAYS,
   getOwnerInsights,
 } from "@/lib/owner-insights";
+import { bookingDisplayStatus } from "@/lib/constants";
 
 /**
  * Owner overview — the dashboard, and the platform's answer to "how is my rest
@@ -163,7 +164,9 @@ export default async function OwnerOverviewPage() {
                     {arNum(r.nights, locale)} {t.common.night}
                   </span>
                 </span>
-                <StatusBadge status={r.status} />
+                {/* The same derived label the bookings page shows, so one
+                    booking is not "مؤكد" here and "مكتمل" one tap away. */}
+                <StatusBadge status={bookingDisplayStatus(r.status, r.stage)} />
               </Link>
             ))}
           </div>

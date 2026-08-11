@@ -5,8 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
 import { bankDetails, getSettings } from "@/lib/settings";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
-import { BOOKING_STATUSES, isBookingStatus } from "@/lib/constants";
-import { toWorkflowBooking, WORKFLOW_INCLUDE } from "@/lib/booking-view";
+import { BOOKING_FILTERS, isBookingFilter } from "@/lib/constants";
+import {
+  ARCHIVED_BOOKINGS_WHERE,
+  BOOKING_ORDER,
+  bookingFilterCounts,
+  bookingFilterWhere,
+  isActiveFilter,
+  toWorkflowBooking,
+  WORKFLOW_INCLUDE,
+} from "@/lib/booking-view";
 import { getI18n } from "@/lib/i18n/server";
 import { arNum } from "@/lib/format";
 import { ARCHIVE_PAGE_SIZE, Pager, pageFromParam } from "@/components/admin/pager";
@@ -20,88 +28,101 @@ export default async function AdminRequestsPage({
   await requireAdminPage();
 
   const sp = await searchParams;
-  const statusFilter = isBookingStatus(sp.status) ? sp.status : null;
+  const filter = isBookingFilter(sp.status) ? sp.status : null;
   const { t, locale } = await getI18n();
 
   /**
-   * Pending requests are fetched SEPARATELY and uncapped.
+   * The work queue is fetched SEPARATELY from the archive, and uncapped.
    *
-   * A single capped query cannot guarantee they appear, whichever way it is
-   * ordered — and this page exists to surface them:
+   * A single capped query cannot guarantee the pending ones appear, whichever
+   * way it is ordered — and this page exists to surface them:
    *   • `orderBy: status ASC` sorts alphabetically (CANCELLED, CONFIRMED, NEW,
    *     REJECTED), so the window fills with closed requests first.
    *   • `orderBy: createdAt DESC` drops the *oldest* NEW ones — which are
    *     precisely the ones that have been waiting longest for a reply.
    * Both were reproduced against 250 rows before settling on this split.
    *
-   * NEW is a work queue the operator actively drains, so it is bounded in
-   * practice; the closed history is what grows without limit, so only that is
-   * paginated.
+   * "The queue" is unanswered requests AND confirmed bookings still mid-
+   * handover — both are somebody's outstanding work, both are bounded in
+   * practice because the operator drains them, and a confirmed booking sitting
+   * at step 4 needs to be as visible as one nobody has answered. The closed
+   * history is what grows without limit, so only that is paginated.
    *
    * The archive used to be capped at 200 rows rendered in one go, with a note
    * apologising for the cap. Every card carries its own seven-step handover
    * stepper, so that was a page several thousand pixels tall on a phone — and
    * the 201st closed booking was simply unreachable. Paging reaches all of them
-   * and renders 24 at a time. The pending queue is deliberately NOT paged: it
-   * is the work, it is short, and burying half of it behind "next" is the one
-   * thing this page must not do.
+   * and renders 24 at a time. The queue above them is deliberately NOT paged.
    */
-  const [counts, settings] = await Promise.all([
-    prisma.bookingRequest.groupBy({ by: ["status"], _count: { _all: true } }),
-    getSettings(),
-  ]);
+  const [counts, settings] = await Promise.all([bookingFilterCounts(), getSettings()]);
 
-  const countFor = (status: string) => counts.find((c) => c.status === status)?._count._all ?? 0;
-  const totalCount = counts.reduce((sum, c) => sum + c._count._all, 0);
-  const newCount = countFor("NEW");
+  const newCount = counts.NEW;
 
   /**
-   * How many closed bookings this filter covers, derived from the counts above
-   * rather than a second COUNT query — `groupBy` already knows.
+   * Which of the two buckets this filter reads from, and how much of it there
+   * is. Derived from the counts already fetched rather than a second COUNT —
+   * the `groupBy` behind them already knows.
    */
-  const archiveTotal = statusFilter
-    ? statusFilter === "NEW"
-      ? 0
-      : countFor(statusFilter)
-    : totalCount - newCount;
+  const showQueue = !filter || isActiveFilter(filter);
+  const showArchive = !filter || !isActiveFilter(filter);
+  const archiveTotal = !showArchive
+    ? 0
+    : filter
+      ? counts[filter]
+      : counts.COMPLETED + counts.REJECTED + counts.CANCELLED;
+
   const totalPages = Math.max(1, Math.ceil(archiveTotal / ARCHIVE_PAGE_SIZE));
   // Clamped BEFORE the query. `?page=99` on a two-page archive would otherwise
   // skip past the end and render the "no requests yet" empty state, which reads
   // as data loss rather than as a bad URL.
   const page = pageFromParam(sp.page, totalPages);
 
-  const [pending, history] = await Promise.all([
-    // The pending queue belongs to the first page only. Repeating it above every
-    // page of the archive would re-render the heaviest cards on the screen for
-    // somebody who is browsing history, not draining a queue.
-    (statusFilter && statusFilter !== "NEW") || page > 1
-      ? Promise.resolve([])
-      : prisma.bookingRequest.findMany({
-          where: { status: "NEW" },
-          // Oldest first: the request that has waited longest needs answering.
-          orderBy: { createdAt: "asc" },
+  // The queue belongs to the first page only. Repeating it above every page of
+  // the archive would re-render the heaviest cards on the screen for somebody
+  // who is browsing history, not draining a queue.
+  const queueVisible = showQueue && page === 1;
+
+  const [pending, active, history] = await Promise.all([
+    queueVisible && filter !== "CONFIRMED"
+      ? prisma.bookingRequest.findMany({
+          where: bookingFilterWhere("NEW"),
+          orderBy: BOOKING_ORDER.pending,
           include: WORKFLOW_INCLUDE,
-        }),
-    statusFilter === "NEW"
-      ? Promise.resolve([])
-      : prisma.bookingRequest.findMany({
-          where: statusFilter ? { status: statusFilter } : { status: { not: "NEW" } },
-          orderBy: { createdAt: "desc" },
+        })
+      : Promise.resolve([]),
+    queueVisible && filter !== "NEW"
+      ? prisma.bookingRequest.findMany({
+          where: bookingFilterWhere("CONFIRMED"),
+          orderBy: BOOKING_ORDER.active,
+          include: WORKFLOW_INCLUDE,
+        })
+      : Promise.resolve([]),
+    showArchive
+      ? prisma.bookingRequest.findMany({
+          where: filter ? bookingFilterWhere(filter) : ARCHIVED_BOOKINGS_WHERE,
+          orderBy: BOOKING_ORDER.archive,
           include: WORKFLOW_INCLUDE,
           skip: (page - 1) * ARCHIVE_PAGE_SIZE,
           take: ARCHIVE_PAGE_SIZE,
-        }),
+        })
+      : Promise.resolve([]),
   ]);
 
-  // Pending first (already oldest-first within itself), then this page of the
-  // history. No further sorting needed — each query is already in its order.
-  const ordered = [...pending, ...history];
+  /**
+   * The reading order of the page, and the whole answer to "why is this list
+   * shuffled": unanswered requests first (oldest waiting first), then the
+   * confirmed bookings by how soon the guest arrives, then history.
+   *
+   * No sorting happens here — each query is already in its own order, so the
+   * concatenation is the order.
+   */
+  const ordered = [...pending, ...active, ...history];
 
   const hrefFor = (n: number) => {
     const query = new URLSearchParams();
-    // The active filter has to survive a page change, or page 2 of "CONFIRMED"
+    // The active filter has to survive a page change, or page 2 of "COMPLETED"
     // silently becomes page 2 of everything.
-    if (statusFilter) query.set("status", statusFilter);
+    if (filter) query.set("status", filter);
     if (n > 1) query.set("page", String(n));
     const qs = query.toString();
     return qs ? `/admin/requests?${qs}` : "/admin/requests";
@@ -123,16 +144,16 @@ export default async function AdminRequestsPage({
         {/* Each chip resets to page 1 — a filter change makes the old page
             number meaningless, and landing on an empty page 3 of a filter with
             two pages reads as "nothing here". */}
-        <FilterChip href="/admin/requests" active={!statusFilter}>
-          {t.common.all} ({arNum(totalCount, locale)})
+        <FilterChip href="/admin/requests" active={!filter}>
+          {t.common.all} ({arNum(counts.total, locale)})
         </FilterChip>
-        {BOOKING_STATUSES.map((status) => (
+        {BOOKING_FILTERS.map((f) => (
           <FilterChip
-            key={status}
-            href={`/admin/requests?status=${status}`}
-            active={statusFilter === status}
+            key={f}
+            href={`/admin/requests?status=${f}`}
+            active={filter === f}
           >
-            {t.status[status]} ({arNum(countFor(status), locale)})
+            {t.status[f]} ({arNum(counts[f], locale)})
           </FilterChip>
         ))}
       </div>
