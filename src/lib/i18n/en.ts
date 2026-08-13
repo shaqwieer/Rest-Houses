@@ -581,6 +581,7 @@ export const en: Dictionary = {
     listings: "Rest houses",
     calendar: "Calendar",
     requests: "Requests",
+    insights: "Analytics",
     settings: "Settings",
     owners: "Owners",
     ownerRequests: "Registrations",
@@ -603,27 +604,56 @@ export const en: Dictionary = {
     greetingAfternoon: "Good afternoon",
     greetingEvening: "Good evening",
 
+    // ---- the overview tiles ----
+    // Waiting on this desk (1–4): these carry the indicator dot.
     statNewRequests: "New requests",
     statNewRequestsSub: "awaiting a reply",
-    statConfirmed: "Confirmed bookings",
-    statConfirmedSub: "still in progress",
-    statOccupancy: "Occupancy",
-    statOccupancySub: "next 30 days",
-    statRevenue: "Expected revenue",
-    statRevenueSub: "AED — confirmed bookings",
+    statPendingOwners: "Registrations",
+    statPendingOwnersSub: "awaiting review",
     statCommissionToConfirm: "Commissions to confirm",
     statCommissionToConfirmSub: "Sent by the owner, not yet confirmed",
     statReviewsToModerate: "Reviews to moderate",
     statReviewsToModerateSub: "Nothing appears until you approve",
+
+    // How big the platform is (5–8).
     statOwners: "Owners",
     statOwnersSub: "active",
-    statPendingOwners: "Registrations",
-    statPendingOwnersSub: "awaiting review",
+    statListings: "Rest houses",
+    statListingsSub: (published) => `${published} published`,
+    statConfirmedAll: "Confirmed bookings",
+    statConfirmedAllSub: "in progress + completed",
+    statReviews: "Reviews",
+    statReviewsSub: "live on the site",
 
-    weeklyOccupancy: "Weekly occupancy",
-    nextFourWeeks: "Next four weeks",
-    weekLabel: (n) => `Week ${n}`,
-    addListingFirst: "Add a rest house first to see occupancy.",
+    // Still being worked (9).
+    statConfirmed: "Confirmed bookings",
+    statConfirmedSub: "still in progress",
+
+    // The two months (10–13), and how they compare (14–15).
+    statOccupancy: "Occupancy",
+    statOccupancySub: "next 30 days",
+    statRevenue: "Expected revenue",
+    statRevenueSub: "AED — confirmed bookings",
+    statOccupancyThisMonth: "Occupancy this month",
+    statOccupancyNextMonth: "Occupancy next month",
+    statRevenueThisMonth: "Revenue this month",
+    statRevenueNextMonth: "Revenue next month",
+    /** Says out loud that the month is counted whole — elapsed days included. */
+    statWholeMonth: (month) => `${month} — the whole month`,
+    statRevenueMonthSub: (month) => `AED — confirmed bookings starting in ${month}`,
+    statOccupancyChange: "Occupancy: next vs this month",
+    /** Points, not percent: the gap between two percentages is not a ratio. */
+    statOccupancyChangeSub: "difference in occupancy points",
+    statRevenueChange: "Revenue: next vs this month",
+    statRevenueChangeSub: "relative change on this month",
+
+    // Who is carrying the month (16–17).
+    statTopRevenue: "Top rest house by revenue",
+    statTopBookings: "Top rest house by bookings",
+    statTopRevenueSub: (amount, month) => `${amount} AED · ${month}`,
+    statTopBookingsSub: (count, month) => `${count} bookings · ${month}`,
+    statNoData: "No data yet",
+
     latestRequests: "Latest requests",
     noRequestsYet: "No requests yet.",
     quickAddListing: "Add a rest house",
@@ -974,6 +1004,171 @@ export const en: Dictionary = {
   },
 
   /* -------------------------------------------------------------- calendar */
+  /* ------------------------------------------------------------- analytics */
+  analytics: {
+    title: "Analytics",
+    ownerSubtitle: "How your rest houses are doing, financially and day to day",
+    adminSubtitle: "The numbers for any rest house on the platform",
+    detailedLink: "Detailed analytics",
+    backToDashboard: "Back to the dashboard",
+
+    // ---- period filter ----
+    period: "Period",
+    period7d: "7 days",
+    period30d: "30 days",
+    period3m: "3 months",
+    period6m: "6 months",
+    period1y: "1 year",
+    periodCustom: "Custom range",
+    from: "From",
+    to: "To",
+    apply: "Show",
+    rangeLine: (from, to) => `${from} — ${to}`,
+    comparedTo: (from, to) => `compared with ${from} — ${to}`,
+    exportExcel: "Export to Excel",
+    allListings: "All rest houses",
+    pickListing: "Rest house",
+
+    // ---- headline cards ----
+    revenue: "Total revenue",
+    revenueSub: "AED — value of confirmed bookings",
+    netRevenue: "Net revenue",
+    netRevenueSub: "AED — after the platform's commission",
+    bookings: "Bookings",
+    bookingsSub: "confirmed in this period",
+    occupancy: "Occupancy",
+    occupancySub: "of the days in this period",
+    avgBookingValue: "Average booking value",
+    avgBookingValueSub: "AED per booking",
+    avgDailyRate: "Average daily rate",
+    avgDailyRateSub: "AED per booked day",
+    daysSplit: "Booked and available days",
+    daysSplitValue: (booked, available) => `${booked} / ${available}`,
+    daysSplitSub: "booked / available",
+    cancellation: "Cancellation rate",
+    cancellationSub: "of confirmed and cancelled",
+    /** Appended to a change figure so "+12" is never read as a total. */
+    vsPrevious: "on the previous period",
+    /** The spreadsheet's second value column — the figure itself, not the change. */
+    previousPeriod: "Previous period",
+    pointsUnit: "points",
+
+    // ---- §3 revenue over time ----
+    trendTitle: "Revenue over time",
+    trendSub: "Revenue, bookings and occupancy across the period",
+    trendEmpty: "No revenue recorded in this period.",
+    trendPoint: (label, revenue, bookings, occupancy) =>
+      `${label}: ${revenue} AED · ${bookings} bookings · ${occupancy} occupancy`,
+    legendRevenue: "Revenue",
+    legendBookings: "Bookings",
+    legendOccupancy: "Occupancy",
+
+    // ---- §4 occupancy ----
+    occupancyTitle: "Occupancy breakdown",
+    occupancyBreakdownSub: "How the days in this period were spent",
+    bookedDays: "Booked days",
+    availableDays: "Available days",
+    blockedDays: "Days you closed",
+    capacityDays: "Total bookable days",
+    weekdayOccupancy: "Weekday occupancy",
+    weekendOccupancy: "Weekend occupancy",
+    dayUnit: "days",
+
+    // ---- §5 days of the week ----
+    dowTitle: "Days of the week",
+    dowSub: "Occupancy and revenue for each day of the week",
+    dowRow: (day, occupancy, revenue) => `${day}: ${occupancy} occupancy · ${revenue} AED`,
+
+    // ---- §6 with and without an overnight stay ----
+    stayTypeTitle: "Overnight vs day use",
+    stayTypeSub: "The two kinds of booking, side by side",
+    overnight: "Overnight stays",
+    dayUse: "Day-use bookings",
+
+    // ---- §7 sources ----
+    sourcesTitle: "Booking sources",
+    sourcesSub: "What closed the days on your calendar",
+    sourceRihla: "Rihla",
+    sourceDirect: "Direct",
+    sourceDaysCol: "Days",
+    sourceBookingsCol: "Bookings",
+    sourceRevenueCol: "Revenue",
+    revenueUnknown: "unknown",
+    /** The imported half of a channel, shown beside the recorded half. */
+    plusImported: (n) => `+${n} imported`,
+    /** The same figure as its own spreadsheet column, where "+9" cannot be summed. */
+    importedDaysCol: "Imported days",
+    /** Said once, plainly, instead of inventing a number for the feeds. */
+    sourcesNote:
+      "These figures come from recorded bookings — whether they arrived through the platform or you entered them yourself from WhatsApp, Airbnb or Booking.com. “Imported” days are days an external calendar closed with no booking recorded behind them, so their revenue is unknown — record the booking and its amount appears here.",
+    sourcesEmpty: "No bookings or booked days in this period.",
+
+    // ---- §8 pricing ----
+    pricingTitle: "Pricing",
+    pricingSub: "What the days actually went for, not what they were listed at",
+    weekdayRate: "Average weekday price",
+    weekendRate: "Average weekend price",
+    actualRate: "Average booking price",
+
+    // ---- per rest house ----
+    listingsTitle: "By rest house",
+    colListing: "Rest house",
+    colBookings: "Bookings",
+    colRevenue: "Revenue",
+    colOccupancy: "Occupancy",
+    hiddenListing: "unpublished",
+
+    // ---- §9 alerts ----
+    alertsTitle: "Signals and alerts",
+    alertBestDay: (day, pct) => `Busiest day: ${day} — ${pct} occupancy`,
+    alertWorstDay: (day, pct) => `Quietest day: ${day} — ${pct} occupancy`,
+    alertRaisePrice: (pct) =>
+      `Room to raise the price: weekend occupancy is ${pct} and the weekend still costs what a weekday does.`,
+    alertEmptyDays: (n) => `${n} days went unbooked during this period.`,
+    // Says "if every one of them sold" out loud: this is a ceiling, not a
+    // forecast, and reads as a projection unless the assumption is on screen.
+    alertPotentialRevenue: (amount, n) =>
+      `If all ${n} available days sold, that would be about ${amount} AED at the rate you actually achieved this period.`,
+    alertNoData: "Not enough data in this period yet.",
+
+    // ---- states ----
+    noListings: "No rest houses in this scope yet.",
+    truncatedNote:
+      "This period is large and only part of the data was read — choose a shorter period for exact figures.",
+  },
+
+  /* --------------------------------------------------------- record booking */
+  recordBooking: {
+    open: "Record an outside booking",
+    title: "Record an outside booking",
+    intro:
+      "Record a booking that came from outside the platform — over WhatsApp, on the phone, or from another site — so it shows on your calendar and in your revenue.",
+    listing: "Rest house",
+    source: "Where it came from",
+    sourceDirect: "Direct (WhatsApp or phone)",
+    guestName: "Guest name",
+    guestPhone: "Guest number",
+    dayUse: "Day use — no overnight stay",
+    checkIn: "Check-in",
+    checkOut: "Check-out",
+    theDay: "Day",
+    guests: "Guests",
+    amount: "Amount received",
+    amountHint: "In AED — what you actually received for this booking, not the list price",
+    notes: "Notes",
+    notesPlaceholder: "Optional",
+    submit: "Record booking",
+    submitting: "Recording…",
+    // Both notices are on screen BEFORE submitting, not discovered afterwards
+    // in the figures — see the header comment in actions/manual-booking.ts.
+    commissionNote:
+      "No platform commission is charged on a booking you record yourself — the amount is entirely yours.",
+    pastNote:
+      "If every day of the stay has already passed, the calendar is left alone and the booking is recorded for the revenue only. A future booking closes its days on your calendar.",
+    backToBookings: "Back to bookings",
+    noListings: "Add a rest house first to record bookings against it.",
+  },
+
   calendar: {
     title: "Connect platform calendars",
     introOwner:
@@ -1108,6 +1303,8 @@ export const en: Dictionary = {
     weekendBelowWeekdayShort: "Lower than the weekday rate",
     depositRange: "The deposit percentage must be between 0 and 100",
     freeCancelRange: "The free-cancellation window must be between 0 and 720 hours",
+    invalidSource: "Choose a valid booking source",
+    bookingRecorded: "Booking recorded",
     invalidCheckIn: "That check-in date isn't valid",
     invalidCheckOut: "That check-out date isn't valid",
     checkOutBeforeCheckIn: "The check-out date must be after the check-in date",
@@ -1299,6 +1496,7 @@ export const en: Dictionary = {
     BOOKING_STAGE_ADVANCED: "Booking step completed",
     BOOKING_STAGE_REVERTED: "Booking step undone",
     BOOKING_COMMISSION_CONFIRMED: "Commission confirmed",
+    BOOKING_RECORDED: "Outside booking recorded",
     REVIEW_INVITED: "Review link issued",
     REVIEW_APPROVED: "Review approved",
     REVIEW_REJECTED: "Review rejected",

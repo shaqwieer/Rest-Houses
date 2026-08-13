@@ -940,6 +940,35 @@ model BookingRequest {
   // which every one of them was.
   dayUse   Boolean @default(false)
 
+  // ---------------------------------------------------------------------
+  // Where the booking came from — one of BOOKING_SOURCES in
+  // src/lib/constants.ts:
+  //
+  //   "RIHLA"   — booked through this platform's own flow
+  //   "DIRECT"  — the owner took it themselves: WhatsApp, a phone call, a
+  //               returning guest who just turned up
+  //   "AIRBNB" | "BOOKING" | "OTHER" — taken on another platform and recorded
+  //               here so the owner's figures are complete
+  //
+  // ─── Why a column and not an inference ────────────────────────────────
+  // Before this existed, the dashboard could report the *nights* another
+  // platform had closed — an imported iCal feed carries dates — but never the
+  // money, because nothing in this schema could hold it. So "how much did
+  // Airbnb earn me" had no answer, and a direct booking taken over WhatsApp
+  // was invisible unless the owner blocked the days by hand, where it read as
+  // maintenance rather than revenue.
+  //
+  // ─── What writes it ───────────────────────────────────────────────────
+  // Only the public flow writes "RIHLA". Everything else arrives through
+  // `recordBooking` (src/app/actions/manual-booking.ts), which is also the only
+  // path where the amount is TYPED rather than computed by `quote()` — the
+  // owner knows what Airbnb paid out or what they settled on over WhatsApp, and
+  // this platform's own price list has nothing to say about it.
+  //
+  // Defaults to "RIHLA" because that is precisely what every row predating this
+  // column is: the public booking flow was the only thing that could create one.
+  source String @default("RIHLA")
+
   // Price snapshot at request time. Stored so a later price change on the
   // listing does not silently rewrite the history of what was quoted.
   subtotal     Int

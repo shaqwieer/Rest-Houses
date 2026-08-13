@@ -396,6 +396,53 @@ export const CALENDAR_FEED_KINDS = ["ICAL"] as const;
 export type CalendarFeedKind = (typeof CALENDAR_FEED_KINDS)[number];
 
 /* --------------------------------------------------------------------------
+ * Where a booking came from — BookingRequest.source
+ *
+ * A SUPERSET of CALENDAR_PLATFORMS above, and deliberately its own array rather
+ * than that one extended. The two answer different questions and are written by
+ * different things:
+ *
+ *   CALENDAR_PLATFORMS  is what kind of .ics feed a URL points at. It is a
+ *                       property of a *feed*, and only ever three values
+ *                       because only three shapes of feed exist.
+ *   BOOKING_SOURCES     is which channel produced a *booking*. It has to carry
+ *                       two values a feed never can: "RIHLA" (this platform's
+ *                       own flow, which has no feed) and "DIRECT" (the owner's
+ *                       phone, which has no feed either).
+ *
+ * Merging them would put "RIHLA" in the platform dropdown of the calendar-feed
+ * form, where it would mean "paste the iCal URL of the site you are already on".
+ *
+ * The three shared values are spelled identically on purpose: a rest house
+ * whose Airbnb feed is synced AND whose Airbnb bookings are recorded by hand
+ * shows both under one name, which is the whole point of §7 of the dashboard.
+ * -------------------------------------------------------------------------- */
+
+export const BOOKING_SOURCES = ["RIHLA", "DIRECT", "AIRBNB", "BOOKING", "OTHER"] as const;
+export type BookingSource = (typeof BOOKING_SOURCES)[number];
+
+export function isBookingSource(v: unknown): v is BookingSource {
+  return typeof v === "string" && (BOOKING_SOURCES as readonly string[]).includes(v);
+}
+
+/** Any stored value → a source safe to group by. */
+export function toBookingSource(v: unknown): BookingSource {
+  return isBookingSource(v) ? v : "OTHER";
+}
+
+/**
+ * The sources an owner may record by hand — everything except "RIHLA".
+ *
+ * A booking made on this platform is created by the public flow and cannot be
+ * typed in: offering it here would let an owner invent a Rihla booking that the
+ * platform has no record of taking, and the commission column would then say
+ * this platform is owed nothing on a booking it claims to have brokered.
+ */
+export const RECORDABLE_SOURCES = BOOKING_SOURCES.filter(
+  (s) => s !== "RIHLA",
+) as readonly Exclude<BookingSource, "RIHLA">[];
+
+/* --------------------------------------------------------------------------
  * Roles and owner lifecycle
  * -------------------------------------------------------------------------- */
 
@@ -478,6 +525,12 @@ export const AUDIT_ACTIONS = [
   "BOOKING_STAGE_ADVANCED",
   "BOOKING_STAGE_REVERTED",
   "BOOKING_COMMISSION_CONFIRMED",
+  // A stay taken somewhere else — the owner's phone, Airbnb, Booking.com —
+  // entered by hand. Its own action because it is the one path on which a human
+  // STATES the amount instead of `quote()` computing it from the price list, so
+  // "who entered this figure, and when" is a question the log has to answer.
+  // The source and the amount travel in `metadata`.
+  "BOOKING_RECORDED",
   "REVIEW_INVITED",
   "REVIEW_APPROVED",
   "REVIEW_REJECTED",

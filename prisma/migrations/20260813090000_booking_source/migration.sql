@@ -1,0 +1,34 @@
+-- ---------------------------------------------------------------------------
+-- Where a booking came from.
+--
+-- One column, no data movement, nothing dropped. `BookingRequest.source` names
+-- the channel that produced the booking — this platform, the owner's own phone,
+-- or another site the rest house is also listed on. See the note on the column
+-- in prisma/schema.prisma for the vocabulary.
+--
+-- ─── Why the default backfills correctly ───────────────────────────────────
+-- 'RIHLA' is not a guess about existing rows: until this release the ONLY thing
+-- that could write to this table was the public booking flow at
+-- src/app/actions/booking.ts. Every row that predates this column therefore came
+-- through this platform, which is exactly what 'RIHLA' means. No UPDATE is
+-- needed and none is run.
+--
+-- (Contrast the trap this repo has already been bitten by: a defaulted *copy*
+-- column backfills a sample brand's wording onto a live site. That risk is
+-- specific to text a human wrote; a channel name that is definitionally true of
+-- every existing row is not the same case.)
+--
+-- ─── Why NOT NULL with a default rather than nullable ──────────────────────
+-- A NULL here would mean "we do not know where this came from", and there is no
+-- such booking: the set of rows this touches is precisely the set the public
+-- flow created. Making it nullable would push a `?? "RIHLA"` into every reader
+-- to re-derive a fact the column could simply state.
+--
+-- ─── No index ──────────────────────────────────────────────────────────────
+-- Nothing filters on this column. The analytics read selects a listing's
+-- bookings by date and groups the sources in memory (src/lib/analytics.ts), so
+-- an index here would cost every insert and serve no query.
+-- ---------------------------------------------------------------------------
+
+-- AlterTable
+ALTER TABLE "BookingRequest" ADD COLUMN     "source" TEXT NOT NULL DEFAULT 'RIHLA';

@@ -54,6 +54,7 @@ type AdminTabKey =
   | "customers"
   | "payments"
   | "reviews"
+  | "insights"
   | "auditLog"
   | "settings"
   | "account";
@@ -74,6 +75,10 @@ const TABS: {
   { href: "/admin/customers", labelKey: "customers", icon: "contact_phone" },
   { href: "/admin/payments", labelKey: "payments", icon: "payments" },
   { href: "/admin/reviews", labelKey: "reviews", icon: "rate_review" },
+  // Not `primary`: the phone bar's four slots are the daily queue, and this is
+  // a page an operator opens on purpose rather than one they live in. It sits
+  // in the pill bar from `md:` up and in the "More" sheet below it.
+  { href: "/admin/insights", labelKey: "insights", icon: "donut_large" },
   { href: "/admin/audit", labelKey: "auditLog", icon: "history" },
   { href: "/admin/settings", labelKey: "settings", icon: "tune" },
   // The operator's own credentials, deliberately its own page rather than a

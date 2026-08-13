@@ -1,87 +1,99 @@
 import Link from "next/link";
+import clsx from "clsx";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
-import { hiddenByOwnerStateCount, ownerCounts } from "@/lib/admin-queries";
+import { hiddenByOwnerStateCount, monthPerformance, ownerCounts } from "@/lib/admin-queries";
 import { bookingFilterWhere } from "@/lib/booking-view";
 import { bookingDisplayStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
-import { arNum, arPercent } from "@/lib/format";
-import { addDays, arDayMonth, arFullDate, todayISO } from "@/lib/dates";
+import { localized } from "@/lib/i18n/config";
+import { arDelta, arDeltaPercent, arNum, arPercent } from "@/lib/format";
+import { arDayMonth, arFullDate, arMonthLabel, monthRange, todayISO } from "@/lib/dates";
+import type { TopListing } from "@/lib/admin-queries";
 import type { Dictionary } from "@/lib/i18n";
 
 /**
  * Dashboard overview.
  *
- * Answers the questions an operator opens the app to ask: what needs a reply,
- * who is waiting to be approved, what is confirmed, how full is the platform,
- * and what came in last. Everything is a real query.
+ * ─── The tile order is a specification, not a layout choice ──────────────────
+ * The operator wrote the seventeen figures out in the order they wanted to read
+ * them, and asked for one continuous sequence with everything awaiting a
+ * decision at the top. So `TILES` below is that list, in that order, and it
+ * reads as the numbered list it came from:
+ *
+ *    1–4   waiting on this desk — and only these carry the indicator dot,
+ *          which disappears entirely at zero. A dot that is always lit is a dot
+ *          nobody looks at, which is the whole reason it is conditional.
+ *    5–8   how big the platform is: owners, rest houses, confirmed bookings,
+ *          reviews.
+ *    9     of those confirmed bookings, the ones still being worked.
+ *    10–13 this calendar month and the next: how full, and what it is worth.
+ *    14–15 next month against this one.
+ *    16–17 which rest house is carrying the month.
+ *
+ * Renumbering means moving an entry in that array and nothing else.
+ *
+ * ─── Why every month here is a CALENDAR month ────────────────────────────────
+ * The operator asked for 1/8–31/8 and 1/9–30/9 explicitly, and they were right
+ * to: a rolling thirty-day window starting on the 12th compares two arbitrary
+ * stretches and gets the denominator wrong as well, since August has 31 nights
+ * to sell and September 30. `monthRange` supplies both boundaries and the day
+ * count; `monthPerformance` does the counting. Neither is fooled by an operator
+ * opening the page on the 31st.
+ *
+ * The weekly-occupancy chart that used to sit under these tiles is gone. It
+ * measured the next four weeks from today, which after this change would put a
+ * second, differently-based occupancy figure on the same screen as tiles 10–13
+ * — the page disagreeing with itself, which is the one thing a dashboard cannot
+ * do and stay trusted.
  */
+
+/** What one tile needs to render. */
+type Tile = {
+  label: string;
+  value: string;
+  sub: string;
+  icon: IconName;
+  href?: string;
+  /**
+   * True on the four tiles that represent work waiting on this desk. The dot is
+   * drawn only when the figure is also non-zero — see the note above.
+   */
+  attention?: boolean;
+  /** Colours a period-over-period change. */
+  tone?: "up" | "down";
+  /**
+   * The value is a rest house name rather than a figure, so it is set smaller
+   * and allowed to wrap instead of being clipped at the tile's edge.
+   */
+  isName?: boolean;
+};
+
 export default async function AdminOverviewPage() {
   const admin = await requireAdminPage();
   const { t, locale } = await getI18n();
 
   const today = todayISO();
-  const monthAhead = addDays(today, 30);
+  const thisMonth = monthRange(today);
+  const nextMonth = monthRange(today, 1);
 
   const [
     newCount,
-    confirmedCount,
-    listingCount,
-    recent,
-    occupancy,
-    revenue,
     owners,
-    hiddenCount,
     commissionToConfirm,
     pendingReviews,
+    listingCount,
+    publishedCount,
+    confirmedAll,
+    reviewCount,
+    confirmedActive,
+    recent,
+    hiddenCount,
   ] = await Promise.all([
     prisma.bookingRequest.count({ where: { status: "NEW" } }),
-    // Confirmed and NOT yet finished, matching the "مؤكد" chip this tile links
-    // to. Counting every confirmed booking here would have the tile say 11 and
-    // the page it opens show 4, with no way to tell which number was wrong.
-    // The completed ones have their own chip on that page.
-    prisma.bookingRequest.count({ where: bookingFilterWhere("CONFIRMED") }),
-    prisma.listing.count(),
-    prisma.bookingRequest.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: { listing: { select: { name: true } } },
-    }),
-    // Occupancy = sold nights ÷ (listings × 30 nights) over the coming month.
-    //
-    // "Sold" counts a confirmed booking here AND a night imported from
-    // Airbnb/Booking.com: both are nights the rest house cannot be let for, and
-    // an owner who takes half their business on Airbnb would otherwise read
-    // this figure as half-empty. Owner blocks stay out — a day closed for
-    // maintenance is not demand.
-    //
-    // `distinct` and not `count`, because a row here is now a *reason* a day is
-    // closed rather than the day itself: a night booked on this platform while
-    // also appearing in an imported feed is two rows and one night, and
-    // counting rows would push occupancy over 100%. See the note on
-    // `Availability` in prisma/schema.prisma.
-    Promise.all([
-      prisma.availability
-        .findMany({
-          where: {
-            status: { in: ["BOOKED", "EXTERNAL"] },
-            date: { gte: today, lt: monthAhead },
-          },
-          select: { listingId: true, date: true },
-          distinct: ["listingId", "date"],
-        })
-        .then((rows) => rows.length),
-      prisma.listing.count({ where: { published: true } }),
-    ]),
-    // Confirmed revenue for stays starting in the next 30 days.
-    prisma.bookingRequest.aggregate({
-      where: { status: "CONFIRMED", checkIn: { gte: today, lt: monthAhead } },
-      _sum: { total: true },
-    }),
     ownerCounts(),
-    hiddenByOwnerStateCount(),
     // Step 6, waiting on this desk: the owner says the transfer went out and
     // nobody has confirmed it arrived.
     prisma.bookingRequest.count({
@@ -92,48 +104,61 @@ export default async function AdminOverviewPage() {
       },
     }),
     prisma.review.count({ where: { status: "PENDING" } }),
+    prisma.listing.count(),
+    prisma.listing.count({ where: { published: true } }),
+    // Tile 7: every confirmed booking, whatever stage it has reached — the ones
+    // still being worked AND the ones finished. Tile 9 below is the subset that
+    // still needs somebody, and the two are deliberately different queries.
+    prisma.bookingRequest.count({ where: { status: "CONFIRMED" } }),
+    // What a visitor can actually read. `published` is the column every public
+    // query filters on, so this tile and the catalogue agree.
+    prisma.review.count({ where: { published: true } }),
+    // The same predicate as the "مؤكد" chip this tile links to, so the figure
+    // here and the number of rows on the page it opens are the same figure.
+    prisma.bookingRequest.count({ where: bookingFilterWhere("CONFIRMED") }),
+    prisma.bookingRequest.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      include: { listing: { select: { name: true } } },
+    }),
+    hiddenByOwnerStateCount(),
   ]);
 
-  const [bookedNights, publishedCount] = occupancy;
-  const capacityNights = publishedCount * 30;
-  const occupancyPct =
-    capacityNights > 0 ? Math.round((bookedNights / capacityNights) * 100) : 0;
+  // Sequential rather than inside the Promise.all above: both need
+  // `publishedCount` for their denominator, and computing occupancy against a
+  // capacity read in a different transaction is how the two silently disagree.
+  const [current, ahead] = await Promise.all([
+    monthPerformance(thisMonth, publishedCount),
+    monthPerformance(nextMonth, publishedCount),
+  ]);
 
-  const revenueTotal = revenue._sum.total ?? 0;
+  const thisMonthLabel = arMonthLabel(thisMonth.year, thisMonth.month, locale);
+  const nextMonthLabel = arMonthLabel(nextMonth.year, nextMonth.month, locale);
 
-  // Weekly occupancy bars for the next four weeks.
-  const weeks = await Promise.all(
-    [0, 1, 2, 3].map(async (w) => {
-      const from = addDays(today, w * 7);
-      const to = addDays(today, (w + 1) * 7);
-      // Same two rules as the headline figure above: imported nights count as
-      // sold, and days are counted once however many sources closed them.
-      const booked = (
-        await prisma.availability.findMany({
-          where: { status: { in: ["BOOKED", "EXTERNAL"] }, date: { gte: from, lt: to } },
-          select: { listingId: true, date: true },
-          distinct: ["listingId", "date"],
-        })
-      ).length;
-      const total = publishedCount * 7;
-      const pct = total > 0 ? Math.round((booked / total) * 100) : 0;
-      return { label: t.admin.weekLabel(arNum(w + 1, locale)), pct };
-    }),
-  );
+  // Occupancy is compared in POINTS. Both figures are already percentages, and
+  // the ratio of two percentages ("occupancy rose 40%") is a sentence nobody
+  // can act on — the gap between them is the thing an operator reads.
+  const occupancyPoints = ahead.occupancyPct - current.occupancyPct;
 
-  const stats: {
-    label: string;
-    value: string;
-    sub: string;
-    icon: IconName;
-    href?: string;
-  }[] = [
+  // Revenue is compared RELATIVELY, which needs a non-zero base. A month with
+  // no confirmed bookings yet has no percentage to be up from, so the tile says
+  // so rather than rendering an Infinity.
+  const revenueChange =
+    current.revenue > 0
+      ? Math.round(((ahead.revenue - current.revenue) / current.revenue) * 100)
+      : null;
+
+  const listingName = (top: TopListing) => localized(top.name, top.nameEn, locale);
+
+  const tiles: Tile[] = [
+    /* ---- 1–4 · waiting on this desk ------------------------------------- */
     {
       label: t.admin.statNewRequests,
       value: arNum(newCount, locale),
       sub: t.admin.statNewRequestsSub,
       icon: "mark_email_unread",
       href: "/admin/requests?status=NEW",
+      attention: newCount > 0,
     },
     {
       label: t.admin.statPendingOwners,
@@ -141,7 +166,26 @@ export default async function AdminOverviewPage() {
       sub: t.admin.statPendingOwnersSub,
       icon: "badge",
       href: "/admin/owner-requests",
+      attention: owners.pending > 0,
     },
+    {
+      label: t.admin.statCommissionToConfirm,
+      value: arNum(commissionToConfirm, locale),
+      sub: t.admin.statCommissionToConfirmSub,
+      icon: "receipt_long",
+      href: "/admin/payments",
+      attention: commissionToConfirm > 0,
+    },
+    {
+      label: t.admin.statReviewsToModerate,
+      value: arNum(pendingReviews, locale),
+      sub: t.admin.statReviewsToModerateSub,
+      icon: "rate_review",
+      href: "/admin/reviews",
+      attention: pendingReviews > 0,
+    },
+
+    /* ---- 5–8 · the size of the platform --------------------------------- */
     {
       label: t.admin.statOwners,
       value: arNum(owners.active, locale),
@@ -150,43 +194,111 @@ export default async function AdminOverviewPage() {
       href: "/admin/owners",
     },
     {
-      label: t.admin.statConfirmed,
-      value: arNum(confirmedCount, locale),
-      sub: t.admin.statConfirmedSub,
-      icon: "task_alt",
-      href: "/admin/requests?status=CONFIRMED",
+      label: t.admin.statListings,
+      value: arNum(listingCount, locale),
+      sub: t.admin.statListingsSub(arNum(publishedCount, locale)),
+      icon: "holiday_village",
+      href: "/admin/listings",
     },
     {
-      label: t.admin.statOccupancy,
-      value: arPercent(occupancyPct, locale),
-      sub: t.admin.statOccupancySub,
+      // No link, deliberately. This counts two filter chips at once and the
+      // requests page has no view that shows exactly this number — a tile
+      // reading 11 that opens a list of 4 is worse than one that does not open.
+      label: t.admin.statConfirmedAll,
+      value: arNum(confirmedAll, locale),
+      sub: t.admin.statConfirmedAllSub,
+      icon: "task_alt",
+    },
+    {
+      label: t.admin.statReviews,
+      value: arNum(reviewCount, locale),
+      sub: t.admin.statReviewsSub,
+      icon: "star",
+      href: "/admin/reviews",
+    },
+
+    /* ---- 9 · still being worked ----------------------------------------- */
+    {
+      label: t.admin.statConfirmed,
+      value: arNum(confirmedActive, locale),
+      sub: t.admin.statConfirmedSub,
+      icon: "schedule",
+      href: "/admin/requests?status=CONFIRMED",
+    },
+
+    /* ---- 10–13 · this month and the next -------------------------------- */
+    {
+      label: t.admin.statOccupancyThisMonth,
+      value: arPercent(current.occupancyPct, locale),
+      sub: t.admin.statWholeMonth(thisMonthLabel),
       icon: "donut_large",
     },
     {
-      label: t.admin.statRevenue,
-      value: arNum(revenueTotal, locale),
-      sub: t.admin.statRevenueSub,
+      label: t.admin.statRevenueThisMonth,
+      value: arNum(current.revenue, locale),
+      sub: t.admin.statRevenueMonthSub(thisMonthLabel),
       icon: "payments",
       href: "/admin/payments",
     },
-    // The two things the workflow puts on the OPERATOR's desk. Both are the
-    // last step of somebody else's work waiting on a decision here, so they
-    // belong on the page the operator opens first — a commission transfer the
-    // owner has declared and a review the guest has written are otherwise
-    // invisible until someone thinks to go looking.
     {
-      label: t.admin.statCommissionToConfirm,
-      value: arNum(commissionToConfirm, locale),
-      sub: t.admin.statCommissionToConfirmSub,
-      icon: "receipt_long",
-      href: "/admin/payments",
+      label: t.admin.statOccupancyNextMonth,
+      value: arPercent(ahead.occupancyPct, locale),
+      sub: t.admin.statWholeMonth(nextMonthLabel),
+      icon: "donut_large",
     },
     {
-      label: t.admin.statReviewsToModerate,
-      value: arNum(pendingReviews, locale),
-      sub: t.admin.statReviewsToModerateSub,
-      icon: "rate_review",
-      href: "/admin/reviews",
+      label: t.admin.statRevenueNextMonth,
+      value: arNum(ahead.revenue, locale),
+      sub: t.admin.statRevenueMonthSub(nextMonthLabel),
+      icon: "payments",
+      href: "/admin/payments",
+    },
+
+    /* ---- 14–15 · next month against this one ---------------------------- */
+    {
+      label: t.admin.statOccupancyChange,
+      value: arDelta(occupancyPoints, locale),
+      sub: t.admin.statOccupancyChangeSub,
+      // `swap_vert` rather than a directional arrow: the icon set has no
+      // trending pair, and an arrow that points left or right means opposite
+      // things in the two languages this site renders in. The sign on the
+      // figure and its colour carry the direction instead.
+      icon: "swap_vert",
+      tone: occupancyPoints === 0 ? undefined : occupancyPoints > 0 ? "up" : "down",
+    },
+    {
+      label: t.admin.statRevenueChange,
+      value: revenueChange === null ? t.common.none : arDeltaPercent(revenueChange, locale),
+      sub: t.admin.statRevenueChangeSub,
+      icon: "swap_vert",
+      tone:
+        revenueChange === null || revenueChange === 0
+          ? undefined
+          : revenueChange > 0
+            ? "up"
+            : "down",
+    },
+
+    /* ---- 16–17 · who is carrying the month ------------------------------ */
+    {
+      label: t.admin.statTopRevenue,
+      value: current.topByRevenue ? listingName(current.topByRevenue) : t.admin.statNoData,
+      sub: current.topByRevenue
+        ? t.admin.statTopRevenueSub(arNum(current.topByRevenue.value, locale), thisMonthLabel)
+        : t.admin.statWholeMonth(thisMonthLabel),
+      icon: "diamond",
+      href: current.topByRevenue ? `/admin/listings/${current.topByRevenue.id}` : undefined,
+      isName: true,
+    },
+    {
+      label: t.admin.statTopBookings,
+      value: current.topByBookings ? listingName(current.topByBookings) : t.admin.statNoData,
+      sub: current.topByBookings
+        ? t.admin.statTopBookingsSub(arNum(current.topByBookings.value, locale), thisMonthLabel)
+        : t.admin.statWholeMonth(thisMonthLabel),
+      icon: "local_fire_department",
+      href: current.topByBookings ? `/admin/listings/${current.topByBookings.id}` : undefined,
+      isName: true,
     },
   ];
 
@@ -206,18 +318,9 @@ export default async function AdminOverviewPage() {
         </p>
       </div>
 
-      {/* Two things an operator must not miss: owners waiting on a decision, and
-          listings that are live-but-invisible because an owner lapsed. Both are
-          money sitting still, and neither is visible anywhere else. */}
-      {owners.pending > 0 && (
-        <Link
-          href="/admin/owner-requests"
-          className="flex items-center gap-2 rounded-xl bg-gold-100 px-3.5 py-2.5 text-[12.5px] font-semibold text-bronze no-underline hover:no-underline"
-        >
-          <Icon name="badge" size={16} />
-          {t.admin.ownerRequestsSubtitle(arNum(owners.pending, locale))}
-        </Link>
-      )}
+      {/* Listings that are live-but-invisible because their owner lapsed. Money
+          sitting still, and the only thing on this page with no tile of its own
+          — every other alert an operator needs is one of the first four. */}
       {hiddenCount > 0 && (
         <Link
           href="/admin/owners"
@@ -228,70 +331,11 @@ export default async function AdminOverviewPage() {
         </Link>
       )}
 
-      {/* ---- stat tiles ---- */}
+      {/* ---- the seventeen tiles, in order ---- */}
       <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-3">
-        {stats.map((s) => {
-          const body = (
-            <>
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <span className="text-[12px] font-semibold text-muted">{s.label}</span>
-                <Icon name={s.icon} size={20} className="text-gold-600" />
-              </div>
-              <div className="font-display text-[26px] font-extrabold leading-none text-ink">
-                {s.value}
-              </div>
-              <div className="mt-1 text-[11.5px] text-muted">{s.sub}</div>
-            </>
-          );
-          const className =
-            "rounded-[20px] border border-line bg-surface p-4 shadow-e1 no-underline transition hover:border-gold-500 hover:no-underline";
-          return s.href ? (
-            <Link key={s.label} href={s.href} className={className}>
-              {body}
-            </Link>
-          ) : (
-            <div key={s.label} className={className}>
-              {body}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* ---- occupancy ---- */}
-      <div className="rounded-[20px] border border-line bg-surface p-4.5 shadow-e1">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="m-0 font-display text-[15.5px] font-extrabold text-ink">
-            {t.admin.weeklyOccupancy}
-          </h2>
-          <span className="text-[11.5px] text-muted">{t.admin.nextFourWeeks}</span>
-        </div>
-
-        {publishedCount === 0 ? (
-          <p className="m-0 text-[13px] text-muted">{t.admin.addListingFirst}</p>
-        ) : (
-          <div className="flex h-30 items-end gap-2">
-            {weeks.map((w) => (
-              <div
-                key={w.label}
-                className="flex h-full flex-1 flex-col items-center justify-end gap-1.5"
-              >
-                <span className="text-[11px] font-bold text-bronze">
-                  {arPercent(w.pct, locale)}
-                </span>
-                <div
-                  className="w-full rounded-t-[10px] rounded-b bg-gold-500 transition-all"
-                  // A zero-height bar reads as a rendering bug; keep a 3% stub so
-                  // an empty week is visibly empty rather than missing.
-                  style={{
-                    height: `${Math.max(3, w.pct)}%`,
-                    background: w.pct >= 70 ? "var(--gold-500)" : "var(--sand-300)",
-                  }}
-                />
-                <span className="text-[11px] text-muted">{w.label}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {tiles.map((tile) => (
+          <StatTile key={tile.label} tile={tile} />
+        ))}
       </div>
 
       {/* ---- recent requests ---- */}
@@ -374,6 +418,70 @@ export default async function AdminOverviewPage() {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One tile.
+ *
+ * The dot sits on the tile's own corner rather than beside the figure, matching
+ * the badges already on the navigation tabs — an operator learns one signal for
+ * "something here needs you" and it means the same thing everywhere.
+ */
+function StatTile({ tile }: { tile: Tile }) {
+  const body = (
+    <>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[12px] font-semibold text-muted">{tile.label}</span>
+        <Icon
+          name={tile.icon}
+          size={20}
+          className={clsx(
+            tile.attention
+              ? "text-busy"
+              : tile.tone === "up"
+                ? "text-ok"
+                : tile.tone === "down"
+                  ? "text-busy"
+                  : "text-gold-600",
+          )}
+        />
+      </div>
+      <div
+        className={clsx(
+          "font-display font-extrabold text-ink",
+          tile.isName
+            ? "line-clamp-2 text-[15px] leading-snug"
+            : "text-[26px] leading-none",
+          tile.tone === "up" && "text-ok",
+          tile.tone === "down" && "text-busy",
+        )}
+      >
+        {tile.value}
+      </div>
+      <div className="mt-1 text-[11.5px] text-muted">{tile.sub}</div>
+
+      {tile.attention && (
+        <span
+          className="absolute top-3 end-3 size-2 rounded-full bg-busy"
+          aria-hidden
+        />
+      )}
+    </>
+  );
+
+  const className = clsx(
+    "relative rounded-[20px] border bg-surface p-4 shadow-e1 no-underline transition hover:no-underline",
+    tile.attention ? "border-busy/35" : "border-line",
+    tile.href && "hover:border-gold-500",
+  );
+
+  return tile.href ? (
+    <Link href={tile.href} className={className}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 

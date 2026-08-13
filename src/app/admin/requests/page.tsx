@@ -130,14 +130,26 @@ export default async function AdminRequestsPage({
 
   return (
     <div className="animate-fade-up">
-      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
-        {t.admin.bookingsTitle}
-      </h1>
-      <p className="m-0 mb-3.5 text-[13.5px] text-muted">
-        {newCount > 0
-          ? t.admin.pendingRequestsLine(arNum(newCount, locale))
-          : t.admin.noPendingRequests}
-      </p>
+      <div className="mb-3.5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
+            {t.admin.bookingsTitle}
+          </h1>
+          <p className="m-0 text-[13.5px] text-muted">
+            {newCount > 0
+              ? t.admin.pendingRequestsLine(arNum(newCount, locale))
+              : t.admin.noPendingRequests}
+          </p>
+        </div>
+
+        <Link
+          href="/admin/requests/new"
+          className="inline-flex items-center gap-1.5 rounded-full bg-night-900 px-4 py-2.5 text-[12.5px] font-bold text-sand-50 no-underline transition hover:bg-night-700 hover:no-underline"
+        >
+          <Icon name="add" size={16} className="text-gold-300" />
+          {t.recordBooking.open}
+        </Link>
+      </div>
 
       {/* status filter chips */}
       <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto pb-1">

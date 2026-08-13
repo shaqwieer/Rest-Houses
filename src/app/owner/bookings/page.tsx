@@ -114,14 +114,30 @@ export default async function OwnerBookingsPage({
 
   return (
     <div className="animate-fade-up">
-      <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
-        {t.owner.myBookings}
-      </h1>
-      <p className="m-0 mb-3.5 text-[13.5px] text-muted">
-        {newCount > 0
-          ? t.admin.pendingRequestsLine(arNum(newCount, locale))
-          : t.admin.noPendingRequests}
-      </p>
+      <div className="mb-3.5 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="m-0 mb-1 font-display text-[20px] font-extrabold text-ink">
+            {t.owner.myBookings}
+          </h1>
+          <p className="m-0 text-[13.5px] text-muted">
+            {newCount > 0
+              ? t.admin.pendingRequestsLine(arNum(newCount, locale))
+              : t.admin.noPendingRequests}
+          </p>
+        </div>
+
+        {/* The way in for a stay taken over WhatsApp or on another site. It
+            belongs here rather than on the calendar: what is being recorded is
+            a booking with a guest and a price, and blocking the days is a
+            consequence of that rather than the point of it. */}
+        <Link
+          href="/owner/bookings/new"
+          className="inline-flex items-center gap-1.5 rounded-full bg-night-900 px-4 py-2.5 text-[12.5px] font-bold text-sand-50 no-underline transition hover:bg-night-700 hover:no-underline"
+        >
+          <Icon name="add" size={16} className="text-gold-300" />
+          {t.recordBooking.open}
+        </Link>
+      </div>
 
       <div className="no-scrollbar mb-4 flex gap-1.5 overflow-x-auto pb-1">
         <FilterChip href="/owner/bookings" active={!filter}>

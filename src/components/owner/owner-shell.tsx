@@ -32,6 +32,18 @@ const TABS: { href: string; labelKey: keyof TabLabels; icon: IconName; exact?: b
   { href: "/owner/listings", labelKey: "listings", icon: "holiday_village" },
   { href: "/owner/calendar", labelKey: "calendar", icon: "calendar_month" },
   { href: "/owner/bookings", labelKey: "bookings", icon: "inbox" },
+  // Sixth, and the last one that fits.
+  //
+  // The bar divides its width evenly, so every tab added narrows all of them.
+  // Measured in Tajawal at the 10.5px this bar actually renders, on a 390px
+  // phone: six tabs leave 52.7px of label room, and the longest Arabic label
+  // ("نظرة عامة") is 45px. Arabic — the default locale and the audience — fits
+  // with room to spare. English "My bookings" is 56px and truncates, which is
+  // the trade this sixth tab costs; "My rest houses" was already truncating at
+  // five. A seventh would start clipping Arabic too, and at that point this
+  // bar needs the "More" sheet the admin shell already has rather than another
+  // squeeze.
+  { href: "/owner/insights", labelKey: "insights", icon: "donut_large" },
   { href: "/owner/profile", labelKey: "profile", icon: "person" },
 ];
 
@@ -40,6 +52,7 @@ type TabLabels = {
   listings: string;
   calendar: string;
   bookings: string;
+  insights: string;
   profile: string;
 };
 
@@ -70,6 +83,7 @@ export function OwnerShell({
     listings: t.owner.myListings,
     calendar: t.owner.myCalendar,
     bookings: t.owner.myBookings,
+    insights: t.analytics.title,
     profile: t.owner.myProfile,
   };
 

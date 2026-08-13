@@ -671,6 +671,7 @@ export const ar = {
     listings: "الاستراحات",
     calendar: "التقويم",
     requests: "الطلبات",
+    insights: "التحليلات",
     settings: "الإعدادات",
     owners: "المُلّاك",
     ownerRequests: "طلبات التسجيل",
@@ -693,27 +694,56 @@ export const ar = {
     greetingAfternoon: "طاب يومك",
     greetingEvening: "مساء الخير",
 
+    // ---- the overview tiles ----
+    // Waiting on this desk (1–4): these carry the indicator dot.
     statNewRequests: "طلبات جديدة",
     statNewRequestsSub: "بانتظار الرد",
-    statConfirmed: "حجوزات مؤكدة",
-    statConfirmedSub: "قيد المتابعة",
-    statOccupancy: "نسبة الإشغال",
-    statOccupancySub: "٣٠ يومًا القادمة",
-    statRevenue: "الإيراد المتوقّع",
-    statRevenueSub: "درهم — حجوزات مؤكدة",
+    statPendingOwners: "طلبات تسجيل",
+    statPendingOwnersSub: "بانتظار المراجعة",
     statCommissionToConfirm: "عمولات بانتظار التأكيد",
     statCommissionToConfirmSub: "حوّلها المالك ولم تُؤكَّد",
     statReviewsToModerate: "تقييمات بانتظار المراجعة",
     statReviewsToModerateSub: "لن تظهر قبل موافقتك",
+
+    // How big the platform is (5–8).
     statOwners: "المُلّاك",
     statOwnersSub: "نشط",
-    statPendingOwners: "طلبات تسجيل",
-    statPendingOwnersSub: "بانتظار المراجعة",
+    statListings: "الاستراحات",
+    statListingsSub: (published: string) => `${published} منشورة`,
+    statConfirmedAll: "حجوزات مؤكدة",
+    statConfirmedAllSub: "قيد المتابعة + مكتملة",
+    statReviews: "عدد التقييمات",
+    statReviewsSub: "منشورة على الموقع",
 
-    weeklyOccupancy: "الإشغال الأسبوعي",
-    nextFourWeeks: "الأسابيع الأربعة القادمة",
-    weekLabel: (n: string) => `الأسبوع ${n}`,
-    addListingFirst: "أضف استراحة أولًا لعرض الإشغال.",
+    // Still being worked (9).
+    statConfirmed: "حجوزات مؤكدة",
+    statConfirmedSub: "قيد المتابعة",
+
+    // The two months (10–13), and how they compare (14–15).
+    statOccupancy: "نسبة الإشغال",
+    statOccupancySub: "٣٠ يومًا القادمة",
+    statRevenue: "الإيراد المتوقّع",
+    statRevenueSub: "درهم — حجوزات مؤكدة",
+    statOccupancyThisMonth: "إشغال الشهر الحالي",
+    statOccupancyNextMonth: "إشغال الشهر القادم",
+    statRevenueThisMonth: "إيراد الشهر الحالي",
+    statRevenueNextMonth: "إيراد الشهر القادم",
+    /** Says out loud that the month is counted whole — elapsed days included. */
+    statWholeMonth: (month: string) => `${month} — الشهر كاملًا`,
+    statRevenueMonthSub: (month: string) => `درهم — حجوزات مؤكدة في ${month}`,
+    statOccupancyChange: "الإشغال: القادم مقابل الحالي",
+    /** Points, not percent: the gap between two percentages is not a ratio. */
+    statOccupancyChangeSub: "فرق نقاط الإشغال",
+    statRevenueChange: "الإيراد: القادم مقابل الحالي",
+    statRevenueChangeSub: "تغيّر نسبي عن الشهر الحالي",
+
+    // Who is carrying the month (16–17).
+    statTopRevenue: "أعلى استراحة إيرادًا",
+    statTopBookings: "أعلى استراحة حجوزًا",
+    statTopRevenueSub: (amount: string, month: string) => `${amount} د.إ · ${month}`,
+    statTopBookingsSub: (count: string, month: string) => `${count} حجز · ${month}`,
+    statNoData: "لا بيانات بعد",
+
     latestRequests: "أحدث الطلبات",
     noRequestsYet: "لا توجد طلبات بعد.",
     quickAddListing: "إضافة استراحة",
@@ -1084,6 +1114,177 @@ export const ar = {
    * /admin/calendar والمالك من صفحة استراحته — فوضعها تحت `admin` كان سيجعل
    * صفحة المالك تقرأ من قاموس ليس لها.
    */
+  /* ------------------------------------------------------------- analytics */
+  // The performance dashboard, shared by the owner and the operator. One group
+  // rather than entries split across `owner` and `admin`, because both read the
+  // very same panels and a duplicated label is a label that drifts.
+  analytics: {
+    title: "التحليلات",
+    ownerSubtitle: "أداء استراحاتك ماليًا وتشغيليًا",
+    adminSubtitle: "أرقام أي استراحة على المنصة",
+    detailedLink: "تحليلات مفصّلة",
+    backToDashboard: "رجوع للوحة التحكم",
+
+    // ---- period filter ----
+    period: "الفترة",
+    period7d: "٧ أيام",
+    period30d: "٣٠ يوم",
+    period3m: "٣ أشهر",
+    period6m: "٦ أشهر",
+    period1y: "سنة",
+    periodCustom: "فترة مخصصة",
+    from: "من",
+    to: "إلى",
+    apply: "عرض",
+    rangeLine: (from: string, to: string) => `${from} — ${to}`,
+    comparedTo: (from: string, to: string) => `مقارنةً بالفترة ${from} — ${to}`,
+    exportExcel: "تصدير Excel",
+    allListings: "كل الاستراحات",
+    pickListing: "الاستراحة",
+
+    // ---- headline cards ----
+    revenue: "إجمالي الإيرادات",
+    revenueSub: "درهم — قيمة الحجوزات المؤكدة",
+    netRevenue: "صافي الإيرادات",
+    netRevenueSub: "درهم — بعد عمولة المنصة",
+    bookings: "عدد الحجوزات",
+    bookingsSub: "حجوزات مؤكدة في الفترة",
+    occupancy: "معدل الإشغال",
+    occupancySub: "من أيام الفترة",
+    avgBookingValue: "متوسط قيمة الحجز",
+    avgBookingValueSub: "درهم لكل حجز",
+    avgDailyRate: "متوسط السعر اليومي",
+    avgDailyRateSub: "درهم لكل يوم محجوز",
+    daysSplit: "الأيام المحجوزة والمتاحة",
+    daysSplitValue: (booked: string, available: string) => `${booked} / ${available}`,
+    daysSplitSub: "محجوزة / متاحة",
+    cancellation: "معدل الإلغاء",
+    cancellationSub: "من المؤكدة والملغاة",
+    /** Appended to a change figure so "+١٢" is never read as a total. */
+    vsPrevious: "عن الفترة السابقة",
+    /** The spreadsheet's second value column — the figure itself, not the change. */
+    previousPeriod: "الفترة السابقة",
+    pointsUnit: "نقطة",
+
+    // ---- §3 revenue over time ----
+    trendTitle: "تحليل الإيرادات",
+    trendSub: "الإيراد وعدد الحجوزات ومعدل الإشغال عبر الفترة",
+    trendEmpty: "لا توجد إيرادات مسجّلة في هذه الفترة.",
+    trendPoint: (label: string, revenue: string, bookings: string, occupancy: string) =>
+      `${label}: ${revenue} د.إ · ${bookings} حجز · إشغال ${occupancy}`,
+    legendRevenue: "الإيراد",
+    legendBookings: "الحجوزات",
+    legendOccupancy: "الإشغال",
+
+    // ---- §4 occupancy ----
+    occupancyTitle: "تحليل الإشغال",
+    occupancyBreakdownSub: "كيف مرّت أيام الفترة",
+    bookedDays: "الأيام المحجوزة",
+    availableDays: "الأيام المتاحة",
+    blockedDays: "الأيام المغلقة من المالك",
+    capacityDays: "إجمالي الأيام القابلة للحجز",
+    weekdayOccupancy: "إشغال أيام الأسبوع",
+    weekendOccupancy: "إشغال نهاية الأسبوع",
+    dayUnit: "يوم",
+
+    // ---- §5 days of the week ----
+    dowTitle: "تحليل أيام الأسبوع",
+    dowSub: "الإشغال والإيراد لكل يوم من أيام الأسبوع",
+    dowRow: (day: string, occupancy: string, revenue: string) =>
+      `${day}: إشغال ${occupancy} · ${revenue} د.إ`,
+
+    // ---- §6 with and without an overnight stay ----
+    stayTypeTitle: "المبيت وبدون مبيت",
+    stayTypeSub: "مقارنة بين نوعَي الحجز",
+    overnight: "حجوزات بمبيت",
+    dayUse: "حجوزات بدون مبيت",
+
+    // ---- §7 sources ----
+    sourcesTitle: "مصادر الحجوزات",
+    sourcesSub: "من أين أُغلقت أيام التقويم",
+    sourceRihla: "رحلة",
+    sourceDirect: "حجز مباشر",
+    sourceDaysCol: "الأيام",
+    sourceBookingsCol: "الحجوزات",
+    sourceRevenueCol: "الإيراد",
+    revenueUnknown: "غير معروف",
+    /** The imported half of a channel, shown beside the recorded half. */
+    plusImported: (n: string) => `+${n} مستوردة`,
+    /** The same figure as its own spreadsheet column, where "+٩" cannot be summed. */
+    importedDaysCol: "أيام مستوردة",
+    /** Said once, plainly, instead of inventing a number for the feeds. */
+    sourcesNote:
+      "الأرقام هنا من الحجوزات المسجّلة، سواء وصلت عبر المنصة أو سجّلتها بنفسك من واتساب أو Airbnb أو Booking.com. الأيام «المستوردة» هي أيام أغلقها تقويم خارجي دون حجز مسجّل، ولذلك لا يُعرف إيرادها — سجّل الحجز ليظهر مبلغه.",
+    sourcesEmpty: "لا توجد حجوزات أو أيام محجوزة في هذه الفترة.",
+
+    // ---- §8 pricing ----
+    pricingTitle: "تحليل الأسعار",
+    pricingSub: "الأسعار التي تحقّقت فعلًا، لا الأسعار المعروضة",
+    weekdayRate: "متوسط سعر أيام الأسبوع",
+    weekendRate: "متوسط سعر نهاية الأسبوع",
+    actualRate: "متوسط سعر الحجز الفعلي",
+
+    // ---- per rest house ----
+    listingsTitle: "أداء الاستراحات",
+    colListing: "الاستراحة",
+    colBookings: "الحجوزات",
+    colRevenue: "الإيراد",
+    colOccupancy: "الإشغال",
+    hiddenListing: "غير منشورة",
+
+    // ---- §9 alerts ----
+    alertsTitle: "مؤشرات وتنبيهات",
+    alertBestDay: (day: string, pct: string) => `أعلى يوم طلبًا: ${day} — إشغال ${pct}`,
+    alertWorstDay: (day: string, pct: string) => `أقل يوم طلبًا: ${day} — إشغال ${pct}`,
+    alertRaisePrice: (pct: string) =>
+      `فرصة لرفع السعر: إشغال نهاية الأسبوع ${pct} وسعرها لا يزال كسعر أيام الأسبوع.`,
+    alertEmptyDays: (n: string) => `لديك ${n} يومًا متاحًا لم تُحجز خلال الفترة.`,
+    // Says "if every one of them sold" out loud: this is a ceiling, not a
+    // forecast, and reads as a projection unless the assumption is on screen.
+    alertPotentialRevenue: (amount: string, n: string) =>
+      `الإيراد المحتمل لو حُجزت كل الأيام المتاحة البالغة ${n} يومًا: نحو ${amount} د.إ بمتوسط سعرك الفعلي في هذه الفترة.`,
+    alertNoData: "لا توجد بيانات كافية في هذه الفترة بعد.",
+
+    // ---- states ----
+    noListings: "لا توجد استراحات في هذا النطاق بعد.",
+    truncatedNote: "الفترة كبيرة جدًا وعُرض جزء من البيانات فقط — اختر فترة أقصر لأرقام دقيقة.",
+  },
+
+  /* --------------------------------------------------------- record booking */
+  // Recording a stay taken somewhere else — the owner's phone, Airbnb,
+  // Booking.com. One group, because the operator and the owner fill in the
+  // very same form.
+  recordBooking: {
+    open: "تسجيل حجز خارجي",
+    title: "تسجيل حجز خارجي",
+    intro:
+      "سجّل حجزًا وصلك من خارج المنصة — عبر الواتساب أو الهاتف أو من موقع آخر — ليظهر في تقويمك وفي أرقام إيراداتك.",
+    listing: "الاستراحة",
+    source: "مصدر الحجز",
+    sourceDirect: "حجز مباشر (واتساب أو هاتف)",
+    guestName: "اسم الضيف",
+    guestPhone: "رقم الضيف",
+    dayUse: "حجز بدون مبيت (يوم واحد)",
+    checkIn: "تاريخ الوصول",
+    checkOut: "تاريخ المغادرة",
+    theDay: "اليوم",
+    guests: "عدد الضيوف",
+    amount: "المبلغ المستلم",
+    amountHint: "بالدرهم — المبلغ الذي وصلك فعلًا عن هذا الحجز، لا سعر القائمة",
+    notes: "ملاحظات",
+    notesPlaceholder: "اختياري",
+    submit: "تسجيل الحجز",
+    submitting: "جارٍ التسجيل…",
+    // Both notices are on screen BEFORE submitting, not discovered afterwards
+    // in the figures — see the header comment in actions/manual-booking.ts.
+    commissionNote:
+      "لا تُحتسب عمولة للمنصة على الحجوزات المسجّلة يدويًا — المبلغ كامل لك.",
+    pastNote:
+      "إذا كانت كل أيام الحجز قد مضت فلن يُعدَّل التقويم، ويُسجَّل الحجز للإيراد فقط. أما الحجوزات القادمة فتُغلق أيامها في تقويمك.",
+    backToBookings: "رجوع للحجوزات",
+    noListings: "أضف استراحة أولًا لتتمكن من تسجيل الحجوزات.",
+  },
+
   calendar: {
     title: "ربط التقويم مع المنصات",
     introOwner:
@@ -1230,6 +1431,8 @@ export const ar = {
     weekendBelowWeekdayShort: "أقل من السعر العادي",
     depositRange: "نسبة العربون يجب أن تكون بين ٠ و ١٠٠",
     freeCancelRange: "مهلة الإلغاء المجاني يجب أن تكون بين ٠ و ٧٢٠ ساعة",
+    invalidSource: "اختر مصدر حجز صحيح",
+    bookingRecorded: "تم تسجيل الحجز",
     invalidCheckIn: "تاريخ وصول غير صالح",
     invalidCheckOut: "تاريخ مغادرة غير صالح",
     checkOutBeforeCheckIn: "يجب أن يكون تاريخ المغادرة بعد تاريخ الوصول",
@@ -1432,6 +1635,7 @@ export const ar = {
     BOOKING_STAGE_ADVANCED: "إكمال خطوة في حجز",
     BOOKING_STAGE_REVERTED: "تراجع عن خطوة في حجز",
     BOOKING_COMMISSION_CONFIRMED: "تأكيد استلام عمولة",
+    BOOKING_RECORDED: "تسجيل حجز خارجي",
     REVIEW_INVITED: "إنشاء رابط تقييم",
     REVIEW_APPROVED: "الموافقة على تقييم",
     REVIEW_REJECTED: "رفض تقييم",

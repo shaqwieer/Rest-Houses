@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { normalizePhone } from "./phone";
 import { isOwnerActive } from "./owners";
+import type { MonthRange } from "./dates";
 
 /**
  * Read queries for the admin dashboard.
@@ -352,6 +353,148 @@ export async function revenueTotals() {
     // against a booking that was later cancelled can never render a negative.
     commissionOutstanding: Math.max(0, commissionConfirmed - commissionCollected),
   };
+}
+
+/* -------------------------------------------------------------------------- */
+/* One calendar month, across the whole platform                              */
+/* -------------------------------------------------------------------------- */
+
+export type TopListing = {
+  id: string;
+  name: string;
+  nameEn: string | null;
+  /** Gross booking value, or a booking count — whichever list this topped. */
+  value: number;
+};
+
+export type MonthPerformance = {
+  range: MonthRange;
+  /** Nights sold across published listings. */
+  bookedNights: number;
+  /** Nights there were to sell: published listings × days in the month. */
+  capacityNights: number;
+  occupancyPct: number;
+  /** Gross value of confirmed stays *starting* in this month. */
+  revenue: number;
+  bookings: number;
+  topByRevenue: TopListing | null;
+  topByBookings: TopListing | null;
+};
+
+/**
+ * How one calendar month looks across the whole platform: how full it is, what
+ * it is worth, and which rest house is carrying it.
+ *
+ * ─── The two rules the occupancy figure obeys ────────────────────────────────
+ * Both are the same ones `getOwnerInsights` obeys, restated here only because
+ * this query is scoped to the platform rather than to an owner — the reasoning
+ * behind them lives in src/lib/owner-insights.ts and must not drift from it.
+ *
+ *  1. A night imported from Airbnb or Booking.com (`EXTERNAL`) counts as sold.
+ *     It is a night the rest house cannot be let for. Owner *blocks* stay out:
+ *     a day closed for maintenance is not demand.
+ *  2. `distinct` on (listingId, date), not a row count. Since imported
+ *     calendars arrived, a row is a *reason* a day is closed rather than the day
+ *     itself — a night booked here and also present in a feed is two rows and
+ *     one night, and counting rows would push occupancy past 100%.
+ *
+ * ─── Numerator and denominator are scoped identically ────────────────────────
+ * Both sides count PUBLISHED listings only. An unpublished rest house is not
+ * being offered, so its nights belong in neither; letting them into the
+ * numerator while the denominator excludes them is the other way an occupancy
+ * figure quietly exceeds 100%.
+ *
+ * ─── "Revenue" here is gross booking value ───────────────────────────────────
+ * `total` — what the guest pays, the value the platform is handling — matching
+ * the tile this replaces and /admin/payments beside it. NOT the platform's own
+ * income, which is `commissionDue` and has its own page. And a month is the
+ * month a stay *starts* in, the same convention the owner dashboard uses.
+ */
+export async function monthPerformance(
+  range: MonthRange,
+  publishedCount: number,
+): Promise<MonthPerformance> {
+  const [bookedDays, byListing] = await Promise.all([
+    prisma.availability.findMany({
+      where: {
+        status: { in: ["BOOKED", "EXTERNAL"] },
+        date: { gte: range.from, lt: range.to },
+        listing: { published: true },
+      },
+      select: { listingId: true, date: true },
+      distinct: ["listingId", "date"],
+    }),
+    // Grouped in SQL rather than read and summed: unlike the owner dashboard —
+    // which needs one window of rows for a dozen different slices — this wants
+    // two aggregates and a maximum, and the platform's whole booking table is
+    // the input rather than one owner's slice of it.
+    prisma.bookingRequest.groupBy({
+      by: ["listingId"],
+      where: { status: "CONFIRMED", checkIn: { gte: range.from, lt: range.to } },
+      _sum: { total: true },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const capacityNights = publishedCount * range.days;
+  const bookedNights = bookedDays.length;
+
+  const revenue = byListing.reduce((sum, row) => sum + (row._sum.total ?? 0), 0);
+  const bookings = byListing.reduce((sum, row) => sum + row._count._all, 0);
+
+  const bestRevenue = pickTop(byListing, (row) => row._sum.total ?? 0);
+  const bestBookings = pickTop(byListing, (row) => row._count._all);
+
+  // One read for both winners, and often for the same listing twice — which is
+  // the common case on a platform this size, not an edge case worth a branch.
+  const ids = [...new Set([bestRevenue?.listingId, bestBookings?.listingId])].filter(
+    (id): id is string => Boolean(id),
+  );
+  const names =
+    ids.length === 0
+      ? []
+      : await prisma.listing.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, name: true, nameEn: true },
+        });
+  const nameById = new Map(names.map((l) => [l.id, l]));
+
+  const decorate = (
+    row: (typeof byListing)[number] | null,
+    value: (row: (typeof byListing)[number]) => number,
+  ): TopListing | null => {
+    if (!row) return null;
+    const listing = nameById.get(row.listingId);
+    if (!listing) return null; // deleted between the two reads
+    return { id: listing.id, name: listing.name, nameEn: listing.nameEn, value: value(row) };
+  };
+
+  return {
+    range,
+    bookedNights,
+    capacityNights,
+    occupancyPct: capacityNights > 0 ? Math.round((bookedNights / capacityNights) * 100) : 0,
+    revenue,
+    bookings,
+    topByRevenue: decorate(bestRevenue, (row) => row._sum.total ?? 0),
+    topByBookings: decorate(bestBookings, (row) => row._count._all),
+  };
+}
+
+/**
+ * The highest-scoring row, or null when there are none or every score is zero.
+ *
+ * Zero is excluded deliberately: "the top rest house earned 0 د.إ" is not a
+ * fact worth a tile, and picking an arbitrary listing out of a dozen tied at
+ * nothing would name one of them for no reason.
+ */
+function pickTop<T>(rows: T[], score: (row: T) => number): T | null {
+  let best: T | null = null;
+  for (const row of rows) {
+    if (score(row) <= 0) continue;
+    if (best === null || score(row) > score(best)) best = row;
+  }
+  return best;
 }
 
 /* -------------------------------------------------------------------------- */

@@ -141,6 +141,55 @@ export function occupiedDays(
   return nightsInRange(checkIn, checkOut);
 }
 
+/* --------------------------------------------------------------------------
+ * Calendar months.
+ *
+ * A *calendar* month — 1 August to 31 August — not thirty rolling days from
+ * today. The distinction is the whole point: an operator comparing August with
+ * September is comparing two months as a calendar shows them, and a rolling
+ * window that starts on the 12th answers a question nobody asked. It also gets
+ * the denominator wrong, because August has 31 nights to sell and September 30.
+ *
+ * `to` is EXCLUSIVE — the first day of the following month — so it drops
+ * straight into the `{ gte: from, lt: to }` shape every date query in this
+ * codebase already uses, with no off-by-one on the last day of the month.
+ * -------------------------------------------------------------------------- */
+
+export type MonthRange = {
+  /** First day of the month, "YYYY-MM-01". */
+  from: ISODate;
+  /** First day of the NEXT month. Exclusive. */
+  to: ISODate;
+  /** Days in the month: 28, 29, 30 or 31. The occupancy denominator. */
+  days: number;
+  year: number;
+  /** 0-indexed, ready for `monthNames` / `arMonthLabel`. */
+  month: number;
+};
+
+/**
+ * The calendar month `iso` falls in, or one `offset` months away from it.
+ *
+ * Built with `Date.UTC(y, m + offset, 1)`, which normalises an out-of-range
+ * month by itself: December + 1 is January of the next year, with no wrapping
+ * arithmetic here to get wrong.
+ */
+export function monthRange(iso: ISODate, offset = 0): MonthRange {
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7)) - 1; // 0-indexed
+
+  const start = new Date(Date.UTC(year, month + offset, 1));
+  const end = new Date(Date.UTC(year, month + offset + 1, 1));
+
+  return {
+    from: toISODate(start),
+    to: toISODate(end),
+    days: Math.round((end.getTime() - start.getTime()) / 86_400_000),
+    year: start.getUTCFullYear(),
+    month: start.getUTCMonth(),
+  };
+}
+
 /** 0 = Sunday … 6 = Saturday, for the given calendar day. */
 export function dayOfWeek(iso: ISODate): number {
   return parseISODate(iso).getUTCDay();

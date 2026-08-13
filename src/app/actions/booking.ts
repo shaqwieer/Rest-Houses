@@ -12,6 +12,7 @@ import {
   resolveDepositPercent,
 } from "@/lib/pricing";
 import { isISODate, nightsBetween, todayISO, toWeekendMode } from "@/lib/dates";
+import { nextReference } from "@/lib/booking-reference";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
 import { guardSubmission } from "@/lib/security";
@@ -72,25 +73,6 @@ function bookingSchema(t: Dictionary) {
 export type CreateBookingResult =
   | { ok: true; reference: string }
   | { ok: false; error: string; fieldErrors?: Record<string, string> };
-
-/** Human-friendly, sequential-ish reference: RQ-2419. */
-async function nextReference(): Promise<string> {
-  const count = await prisma.bookingRequest.count();
-  // Start above the seeded sample references so demo data and real requests
-  // never collide on a fresh install.
-  const n = 2420 + count;
-  // Guard against the (rare) race where two submissions land on the same number.
-  for (let attempt = 0; attempt < 25; attempt++) {
-    const reference = `RQ-${n + attempt}`;
-    const exists = await prisma.bookingRequest.findUnique({
-      where: { reference },
-      select: { id: true },
-    });
-    if (!exists) return reference;
-  }
-  // Fall back to something guaranteed unique rather than failing the booking.
-  return `RQ-${Date.now().toString().slice(-8)}`;
-}
 
 export async function createBookingRequest(
   formData: FormData,

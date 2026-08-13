@@ -95,6 +95,48 @@ export function percentSign(locale: Locale = DEFAULT_LOCALE): string {
   return PERCENT[locale];
 }
 
+/* --------------------------------------------------------------------------
+ * Changes against a previous period.
+ *
+ * A delta has to carry its sign to mean anything — "12" beside last month's
+ * figure could be a rise or a fall. `signDisplay: "exceptZero"` puts a + on
+ * gains and a − on losses and leaves a flat period as a bare "٠", which is the
+ * reading: nothing changed.
+ *
+ * Separate formatters rather than prefixing `arNum` with a "+" by hand: in an
+ * RTL document the sign has to sit on the correct side of the digits, and Intl
+ * is the only thing that knows which side that is for each locale.
+ * -------------------------------------------------------------------------- */
+
+const deltaFormatters: Record<Locale, Intl.NumberFormat> = {
+  ar: new Intl.NumberFormat(LOCALE_TAG.ar, {
+    maximumFractionDigits: 0,
+    signDisplay: "exceptZero",
+  }),
+  en: new Intl.NumberFormat(LOCALE_TAG.en, {
+    maximumFractionDigits: 0,
+    signDisplay: "exceptZero",
+  }),
+};
+
+/** 12 → "+١٢" / "+12";  -5 → "؜-٥" / "-5";  0 → "٠" / "0" */
+export function arDelta(n: number, locale: Locale = DEFAULT_LOCALE): string {
+  if (!Number.isFinite(n)) return locale === "ar" ? "٠" : "0";
+  return deltaFormatters[locale].format(n);
+}
+
+/**
+ * A signed percentage: "+١٢٪" / "+12%".
+ *
+ * Used for two different things that must not be confused in the copy beside
+ * them — a *relative* change in a quantity (revenue up 12%), and a difference
+ * between two percentages (occupancy up 12 points). This function only formats;
+ * saying which one it is belongs to the label.
+ */
+export function arDeltaPercent(n: number, locale: Locale = DEFAULT_LOCALE): string {
+  return `${arDelta(n, locale)}${PERCENT[locale]}`;
+}
+
 /** Just the currency unit for the active language. */
 export function currencyUnit(locale: Locale = DEFAULT_LOCALE): string {
   return CURRENCY[locale];
