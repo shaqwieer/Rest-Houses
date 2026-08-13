@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth";
 import { getI18n } from "@/lib/i18n/server";
 import { getAnalytics, resolvePeriod } from "@/lib/analytics";
-import { analyticsCsv, analyticsFilename, csvResponse } from "@/lib/analytics-export";
+import { analyticsWorkbook, analyticsFilename, workbookResponse } from "@/lib/analytics-export";
 import { localized } from "@/lib/i18n/config";
 import { prisma } from "@/lib/prisma";
 
@@ -46,5 +46,5 @@ export async function GET(request: Request) {
     ? localized(scoped.name, scoped.nameEn, locale)
     : t.analytics.allListings;
 
-  return csvResponse(analyticsCsv(data, t, locale, scopeLabel), analyticsFilename(data));
+  return workbookResponse(analyticsWorkbook(data, t, locale, scopeLabel), analyticsFilename(data));
 }

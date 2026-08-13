@@ -1,7 +1,8 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
 import { createListing, createOwner, ensureSchema, prisma, resetDatabase, seedSettings } from "./db";
 import { change, getAnalytics, resolvePeriod, MAX_CUSTOM_DAYS } from "@/lib/analytics";
-import { analyticsCsv } from "@/lib/analytics-export";
+import { analyticsWorkbook, analyticsFilename, workbookResponse } from "@/lib/analytics-export";
+import { cellAt, readSheet, rowOf } from "./xlsx-read";
 import { ar } from "@/lib/i18n/ar";
 import { addDays, todayISO } from "@/lib/dates";
 
@@ -593,34 +594,76 @@ describe("change against the previous period", () => {
 /* -------------------------------------------------------------------------- */
 
 describe("the export", () => {
-  it("writes Latin digits, so Excel gets numbers rather than text", async () => {
+  it("writes figures as numbers, so Excel can sum them", async () => {
     const { owner } = await createOwner({ email: "csv@test.ae" });
     const listing = await createListing({ ownerId: owner.id });
     await booking(listing.id, { subtotal: 1_800 });
 
     const data = await getAnalytics({ ownerId: owner.id }, period30());
-    const csv = analyticsCsv(data, ar, "ar", "كل الاستراحات");
+    const sheet = readSheet(analyticsWorkbook(data, ar, "ar", "كل الاستراحات"));
 
-    expect(csv).toContain("1800");
+    const revenue = rowOf(sheet, ar.analytics.revenue);
+    expect(revenue[1]).toMatchObject({ kind: "number", value: "1800" });
     // "١٬٨٠٠" is a string as far as a spreadsheet is concerned: unsortable,
     // unsummable, and the export exists so those things can be done.
-    expect(csv).not.toContain("١٬٨٠٠");
+    expect(sheet.xml).not.toContain("١٬٨٠٠");
   });
 
-  it("carries the hints Excel needs to open it correctly", async () => {
+  it("is a workbook Excel opens, with the Arabic intact", async () => {
     const { owner } = await createOwner({ email: "csv2@test.ae" });
     await createListing({ ownerId: owner.id });
 
     const data = await getAnalytics({ ownerId: owner.id }, period30());
-    const csv = analyticsCsv(data, ar, "ar", "كل الاستراحات");
+    const workbook = analyticsWorkbook(data, ar, "ar", "كل الاستراحات");
+    const sheet = readSheet(workbook);
 
-    // A BOM, or Excel on Windows decodes the Arabic headings in the system
-    // codepage and renders mojibake.
-    expect(csv.startsWith("﻿")).toBe(true);
-    // And an explicit delimiter, or a machine whose regional list separator is
-    // a semicolon drops the whole sheet into column A.
-    expect(csv).toContain("sep=,");
-    expect(csv).toContain("\r\n");
+    expect(analyticsFilename(data).endsWith(".xlsx")).toBe(true);
+    // A zip, whose first part is the one naming all the others. `readSheet`
+    // verifies every CRC on the way in.
+    expect([...workbook.subarray(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(sheet.parts).toEqual([
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/styles.xml",
+      "xl/worksheets/sheet1.xml",
+    ]);
+
+    // The whole reason this is not a CSV: the headings arrive as Arabic rather
+    // than as "Ø§Ù„...", because the part states its own encoding and nothing
+    // downstream has to guess it.
+    expect(cellAt(sheet, "A1")?.value).toBe(ar.analytics.title);
+    expect(cellAt(sheet, "B1")?.value).toBe("كل الاستراحات");
+    expect(rowOf(sheet, ar.analytics.netRevenue)[0].value).toBe(ar.analytics.netRevenue);
+    // Arabic reads right to left, and so does the sheet.
+    expect(sheet.rightToLeft).toBe(true);
+
+    // The period is a real date — a serial carrying a date format — and not the
+    // text "2026-08-13", which nothing could plot against time.
+    const period = rowOf(sheet, ar.analytics.period);
+    expect(period[1].kind).toBe("number");
+    expect(period[1].style).toBe(2);
+  });
+
+  it("hands the workbook to the browser as bytes, unmangled", async () => {
+    const { owner } = await createOwner({ email: "csv4@test.ae" });
+    await createListing({ ownerId: owner.id });
+
+    const data = await getAnalytics({ ownerId: owner.id }, period30());
+    const workbook = analyticsWorkbook(data, ar, "ar", "كل الاستراحات");
+    const response = workbookResponse(workbook, analyticsFilename(data));
+
+    // The generator is tested above; this is the step that turns it into a
+    // download, and a binary body is exactly the kind that arrives re-encoded,
+    // truncated or declared as something a browser tries to render.
+    const body = Buffer.from(await response.arrayBuffer());
+    expect(body.length).toBe(workbook.length);
+    expect(readSheet(body).name).toBe(ar.analytics.title);
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    expect(response.headers.get("Content-Disposition")).toContain(".xlsx");
   });
 
   it("leaves the imported platforms' revenue blank rather than zero", async () => {
@@ -640,13 +683,21 @@ describe("the export", () => {
     });
 
     const data = await getAnalytics({ ownerId: owner.id }, period30());
-    const csv = analyticsCsv(data, ar, "ar", "كل الاستراحات");
+    const sheet = readSheet(analyticsWorkbook(data, ar, "ar", "كل الاستراحات"));
 
     // Columns are: source, recorded days, bookings, revenue, imported days.
     // The word rather than a 0 in the revenue cell — a 0 would sum into a total
     // and quietly claim the platform earned nothing, which is a different
     // statement from "we cannot know".
-    expect(csv).toContain(`Booking.com,0,0,${ar.analytics.revenueUnknown},1`);
+    const row = rowOf(sheet, "Booking.com");
+    expect(row.map((cell) => cell.value)).toEqual([
+      "Booking.com",
+      "0",
+      "0",
+      ar.analytics.revenueUnknown,
+      "1",
+    ]);
+    expect(row[3].kind).toBe("text");
   });
 });
 

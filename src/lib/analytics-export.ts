@@ -1,62 +1,50 @@
 import type { Analytics } from "./analytics";
 import { CALENDAR_PLATFORM_NAMES, dayNames } from "./constants";
-import { arMonthLabel, parseISODate } from "./dates";
 import { localized, type Locale } from "./i18n/config";
 import type { Dictionary } from "./i18n";
+import { buildXlsx, date, head, maybeNum, num, text, type Row } from "./xlsx";
 
 /**
  * The dashboard, as a spreadsheet.
  *
- * ─── Why CSV and not a real .xlsx ────────────────────────────────────────────
- * A genuine xlsx is a zip of XML parts and needs a library; CSV is thirty lines
- * here, opens in Excel by double-click, and imports into Numbers, Sheets and
- * every accounting package the owner's bookkeeper might use. The three things
- * that usually make a CSV open badly in Excel are all handled below.
- *
- * ─── The three things ────────────────────────────────────────────────────────
- *  1. A UTF-8 BOM. Without it Excel on Windows decodes the file in the system
- *     codepage and every Arabic heading arrives as mojibake.
- *  2. A leading `sep=,` line. Excel picks its delimiter from the machine's
- *     regional settings, and on a good many of them that is a semicolon — the
- *     whole sheet then lands in column A. This line overrides it, and Excel
- *     consumes it rather than showing it.
- *  3. CRLF line endings, which is what Excel writes and what its importer is
- *     least surprised by.
+ * ─── Why .xlsx and not a CSV ─────────────────────────────────────────────────
+ * This started as a CSV, which is thirty lines and opens everywhere. It came
+ * back from a phone with every Arabic heading rendered as "Ø§Ù„ØªØ­Ù„ÙŠÙ„Ø§Øª".
+ * A CSV carries no statement of its own encoding, so each reader guesses, and
+ * the two hints that are supposed to steer Excel cancel each other out — see
+ * the header of `xlsx.ts` for the detail. An .xlsx says what it is, so there is
+ * nothing left to guess wrong.
  *
  * ─── Numbers stay in Latin digits ────────────────────────────────────────────
  * Every figure on screen renders through `arNum` as "١٬٨٠٠". Written into a
  * spreadsheet that is TEXT: it cannot be summed, sorted or charted, and the
  * export exists precisely so those things can be done. So the values here are
- * raw and only the headings are translated.
+ * real numeric cells and only the headings are translated. Dates are real dates
+ * for the same reason — a trend cannot be plotted against a column of strings.
  */
 
-/** Escapes one field. Quotes anything that could break a row. */
-function cell(value: string | number): string {
-  const text = String(value ?? "");
-  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
+/** Column A carries Arabic labels and rest house names; the rest carry figures. */
+const WIDTHS = [34, 18, 18, 18, 18];
 
-function row(...values: (string | number)[]): string {
-  return values.map(cell).join(",");
-}
-
-export function analyticsCsv(
+export function analyticsWorkbook(
   data: Analytics,
   t: Dictionary,
   locale: Locale,
   /** Which rest house the figures cover, for the header block. */
   scopeLabel: string,
-): string {
+): Buffer {
   const days = dayNames(locale);
-  const lines: string[] = [];
+  const rows: Row[] = [];
 
   /* ---- what this file is ------------------------------------------------- */
-  lines.push(row(t.analytics.title, scopeLabel));
-  lines.push(row(t.analytics.period, `${data.range.from} → ${data.range.lastDay}`));
-  lines.push(
-    row(t.analytics.previousPeriod, `${data.previous.from} → ${data.previous.lastDay}`),
-  );
-  lines.push("");
+  rows.push([head(t.analytics.title), text(scopeLabel)]);
+  rows.push([text(t.analytics.period), date(data.range.from), date(data.range.lastDay)]);
+  rows.push([
+    text(t.analytics.previousPeriod),
+    date(data.previous.from),
+    date(data.previous.lastDay),
+  ]);
+  rows.push([]);
 
   /* ---- §1 headline figures ----------------------------------------------- */
   // Two value columns rather than one, so the reader can see the movement the
@@ -64,9 +52,9 @@ export function analyticsCsv(
   // column holds the previous period's FIGURE, not the change between them —
   // hence `previousPeriod` and not the `vsPrevious` wording used on screen,
   // which would label a value as if it were a delta.
-  lines.push(row(t.analytics.title, t.analytics.period, t.analytics.previousPeriod));
+  rows.push([head(t.analytics.title), head(t.analytics.period), head(t.analytics.previousPeriod)]);
   const pair = (label: string, now: number | null, before: number | null) =>
-    lines.push(row(label, now ?? "", before ?? ""));
+    rows.push([text(label), maybeNum(now), maybeNum(before)]);
 
   pair(t.analytics.revenue, data.kpis.revenue, data.priorKpis.revenue);
   pair(t.analytics.netRevenue, data.kpis.netRevenue, data.priorKpis.netRevenue);
@@ -83,88 +71,78 @@ export function analyticsCsv(
   pair(t.analytics.weekendOccupancy, data.weekendOccupancyPct, null);
   pair(t.analytics.weekdayRate, data.pricing.weekdayRate, null);
   pair(t.analytics.weekendRate, data.pricing.weekendRate, null);
-  lines.push("");
+  rows.push([]);
 
   /* ---- §3 the series ------------------------------------------------------ */
-  lines.push(
-    row(
-      t.analytics.trendTitle,
-      t.analytics.legendRevenue,
-      t.analytics.legendBookings,
-      t.analytics.legendOccupancy,
-    ),
-  );
+  rows.push([
+    head(t.analytics.trendTitle),
+    head(t.analytics.legendRevenue),
+    head(t.analytics.legendBookings),
+    head(t.analytics.legendOccupancy),
+  ]);
   for (const point of data.trend) {
-    // The bucket's first day, as a plain ISO date: a spreadsheet can parse that
-    // into a real date, which "١ أغسطس" is not.
-    lines.push(
-      row(
-        data.bucket === "month"
-          ? arMonthLabel(
-              parseISODate(point.key).getUTCFullYear(),
-              parseISODate(point.key).getUTCMonth(),
-              "en",
-            )
-          : point.key,
-        point.revenue,
-        point.bookings,
-        point.occupancyPct,
-      ),
-    );
+    rows.push([
+      // The bucket's first day as a real date, so the series can be charted
+      // against time. A monthly bucket is shown as "Aug 2026" rather than the
+      // 1st of the month, which is the same value read more honestly.
+      date(point.key, data.bucket === "month"),
+      num(point.revenue),
+      num(point.bookings),
+      num(point.occupancyPct),
+    ]);
   }
-  lines.push("");
+  rows.push([]);
 
   /* ---- §5 days of the week ------------------------------------------------ */
-  lines.push(
-    row(
-      t.analytics.dowTitle,
-      t.analytics.legendOccupancy,
-      t.analytics.legendRevenue,
-      t.analytics.bookedDays,
-      t.analytics.capacityDays,
-    ),
-  );
+  rows.push([
+    head(t.analytics.dowTitle),
+    head(t.analytics.legendOccupancy),
+    head(t.analytics.legendRevenue),
+    head(t.analytics.bookedDays),
+    head(t.analytics.capacityDays),
+  ]);
   for (const point of data.byDayOfWeek) {
-    lines.push(
-      row(days[point.day], point.occupancyPct, point.revenue, point.bookedDays, point.capacityDays),
-    );
+    rows.push([
+      text(days[point.day]),
+      num(point.occupancyPct),
+      num(point.revenue),
+      num(point.bookedDays),
+      num(point.capacityDays),
+    ]);
   }
-  lines.push("");
+  rows.push([]);
 
   /* ---- §6 with and without an overnight stay ------------------------------ */
-  lines.push(
-    row(
-      t.analytics.stayTypeTitle,
-      t.analytics.bookings,
-      t.analytics.colRevenue,
-      t.analytics.avgBookingValue,
-    ),
-  );
-  lines.push(
-    row(
-      t.analytics.overnight,
-      data.overnight.bookings,
-      data.overnight.revenue,
-      data.overnight.avgValue ?? "",
-    ),
-  );
-  lines.push(
-    row(t.analytics.dayUse, data.dayUse.bookings, data.dayUse.revenue, data.dayUse.avgValue ?? ""),
-  );
-  lines.push("");
+  rows.push([
+    head(t.analytics.stayTypeTitle),
+    head(t.analytics.bookings),
+    head(t.analytics.colRevenue),
+    head(t.analytics.avgBookingValue),
+  ]);
+  rows.push([
+    text(t.analytics.overnight),
+    num(data.overnight.bookings),
+    num(data.overnight.revenue),
+    maybeNum(data.overnight.avgValue),
+  ]);
+  rows.push([
+    text(t.analytics.dayUse),
+    num(data.dayUse.bookings),
+    num(data.dayUse.revenue),
+    maybeNum(data.dayUse.avgValue),
+  ]);
+  rows.push([]);
 
   /* ---- §7 sources --------------------------------------------------------- */
-  lines.push(
-    row(
-      t.analytics.sourcesTitle,
-      t.analytics.sourceDaysCol,
-      t.analytics.sourceBookingsCol,
-      t.analytics.sourceRevenueCol,
-      // Its own column here rather than the "+N" suffix the screen uses: a
-      // spreadsheet wants one number per cell so it can be summed.
-      t.analytics.importedDaysCol,
-    ),
-  );
+  rows.push([
+    head(t.analytics.sourcesTitle),
+    head(t.analytics.sourceDaysCol),
+    head(t.analytics.sourceBookingsCol),
+    head(t.analytics.sourceRevenueCol),
+    // Its own column here rather than the "+N" suffix the screen uses: a
+    // spreadsheet wants one number per cell so it can be summed.
+    head(t.analytics.importedDaysCol),
+  ]);
   for (const source of data.sources) {
     const name =
       source.key === "RIHLA"
@@ -172,57 +150,64 @@ export function analyticsCsv(
         : source.key === "DIRECT"
           ? t.analytics.sourceDirect
           : CALENDAR_PLATFORM_NAMES[source.key] || t.calendar.platformOther;
-    lines.push(
-      row(
-        name,
-        source.days,
-        source.bookings,
-        // A channel with imported days and no recorded booking has no revenue
-        // to state. Left as the word rather than a 0 that would sum into a
-        // total and quietly claim the platform earned nothing.
-        source.bookings > 0 ? source.revenue : t.analytics.revenueUnknown,
-        source.unrecordedDays,
-      ),
-    );
+    rows.push([
+      text(name),
+      num(source.days),
+      num(source.bookings),
+      // A channel with imported days and no recorded booking has no revenue
+      // to state. Left as the word rather than a 0 that would sum into a
+      // total and quietly claim the platform earned nothing.
+      source.bookings > 0 ? num(source.revenue) : text(t.analytics.revenueUnknown),
+      num(source.unrecordedDays),
+    ]);
   }
-  lines.push("");
+  rows.push([]);
 
   /* ---- per rest house ----------------------------------------------------- */
-  lines.push(
-    row(
-      t.analytics.colListing,
-      t.analytics.colBookings,
-      t.analytics.colRevenue,
-      t.analytics.colOccupancy,
-      t.analytics.bookedDays,
-    ),
-  );
+  rows.push([
+    head(t.analytics.colListing),
+    head(t.analytics.colBookings),
+    head(t.analytics.colRevenue),
+    head(t.analytics.colOccupancy),
+    head(t.analytics.bookedDays),
+  ]);
   for (const listing of data.listings) {
-    lines.push(
-      row(
-        localized(listing.name, listing.nameEn, locale),
-        listing.bookings,
-        listing.revenue,
-        listing.occupancyPct,
-        listing.bookedDays,
-      ),
-    );
+    rows.push([
+      text(localized(listing.name, listing.nameEn, locale)),
+      num(listing.bookings),
+      num(listing.revenue),
+      num(listing.occupancyPct),
+      num(listing.bookedDays),
+    ]);
   }
 
-  return `﻿sep=,\r\n${lines.join("\r\n")}\r\n`;
+  return buildXlsx({
+    name: t.analytics.title,
+    rows,
+    widths: WIDTHS,
+    // Arabic reads right to left, and so should the sheet — column A on the
+    // right, where the labels belong.
+    rightToLeft: locale === "ar",
+  });
 }
 
-/** `rihla-analytics-2026-08-01-2026-08-31.csv` */
+/** `rihla-analytics-2026-08-01-2026-08-31.xlsx` */
 export function analyticsFilename(data: Analytics): string {
-  return `rihla-analytics-${data.range.from}-${data.range.lastDay}.csv`;
+  return `rihla-analytics-${data.range.from}-${data.range.lastDay}.xlsx`;
 }
 
 /** The response every export route returns, so the headers are written once. */
-export function csvResponse(body: string, filename: string): Response {
-  return new Response(body, {
+export function workbookResponse(body: Buffer, filename: string): Response {
+  // Copied into a plain Uint8Array rather than handed over as a Buffer: a small
+  // Buffer is a window onto a shared pool, and a runtime that reaches for its
+  // backing `.buffer` would send the neighbouring allocations along with it.
+  return new Response(new Uint8Array(body), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      // No hand-written Content-Length. `Response` derives it, and a stale one
+      // survives into a proxy that re-encodes the body and truncates the file.
       // A dashboard export is a snapshot of live figures; a cached copy served
       // tomorrow would be silently wrong.
       "Cache-Control": "no-store",
