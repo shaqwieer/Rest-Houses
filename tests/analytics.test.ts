@@ -454,8 +454,10 @@ describe("the trend", () => {
     await createListing({ ownerId: owner.id });
 
     const data = await getAnalytics({ ownerId: owner.id }, period30());
-    expect(data.bucket).toBe("day");
-    expect(data.trend).toHaveLength(30);
+    // Thirty days is four whole weeks and two days over, and the remainder is
+    // still charted rather than dropped.
+    expect(data.bucket).toBe("week");
+    expect(data.trend).toHaveLength(5);
   });
 
   it("widens the bucket as the period grows", async () => {
@@ -464,7 +466,7 @@ describe("the trend", () => {
 
     for (const [period, bucket] of [
       ["7d", "day"],
-      ["30d", "day"],
+      ["30d", "week"],
       ["3m", "week"],
       ["6m", "month"],
       ["1y", "month"],
@@ -474,9 +476,31 @@ describe("the trend", () => {
         resolvePeriod({ period }, today),
       );
       expect(data.bucket).toBe(bucket);
-      // Never so many marks that a phone cannot draw them.
-      expect(data.trend.length).toBeLessThanOrEqual(31);
+      // Few enough that every bar can be seen on a phone, and enough of them
+      // that the period still has a shape.
+      expect(data.trend.length).toBeLessThanOrEqual(14);
+      expect(data.trend.length).toBeGreaterThanOrEqual(5);
     }
+  });
+
+  /**
+   * The chart cannot silently drop a day, and it cannot silently stretch one.
+   * A bucket that is short says so through `days`, which is what its label
+   * reads — see `pointLabelLong` in the analytics panels.
+   */
+  it("covers every day of the range, with the short bucket at the oldest end", async () => {
+    const { owner } = await createOwner({ email: "shortbucket@test.ae" });
+    await createListing({ ownerId: owner.id });
+
+    const data = await getAnalytics({ ownerId: owner.id }, period30());
+    const charted = data.trend.reduce((total, point) => total + point.days, 0);
+    expect(charted).toBe(30);
+
+    // The remainder lands on the oldest bar; every bar after it is a whole week,
+    // so the most recent one — the one an owner acts on — is never a stub.
+    expect(data.trend[0].days).toBe(2);
+    expect(data.trend.slice(1).every((point) => point.days === 7)).toBe(true);
+    expect(data.trend[data.trend.length - 1].key).toBe(addDays(data.range.lastDay, -6));
   });
 });
 

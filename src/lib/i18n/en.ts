@@ -1055,7 +1055,11 @@ export const en: Dictionary = {
 
     // ---- §3 revenue over time ----
     trendTitle: "Revenue over time",
-    trendSub: "Revenue, bookings and occupancy across the period",
+    trendSub: {
+      day: "Revenue for each day in the period",
+      week: "Revenue for each week in the period",
+      month: "Revenue for each month in the period",
+    },
     trendEmpty: "No revenue recorded in this period.",
     trendPoint: (label, revenue, bookings, occupancy) =>
       `${label}: ${revenue} AED · ${bookings} bookings · ${occupancy} occupancy`,

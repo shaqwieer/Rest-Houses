@@ -216,6 +216,15 @@ export type TimePoint = {
   /** The first day of the bucket, for the key and the tooltip. */
   key: ISODate;
   label: string;
+  /**
+   * How many calendar days this bucket actually covers.
+   *
+   * Usually the full width of the bucket, but a range rarely divides into whole
+   * weeks or months, so one bucket at the oldest end is short. The chart reads
+   * this to say the bucket's real span rather than letting a two-day bar be
+   * compared with a seven-day one in silence.
+   */
+  days: number;
   revenue: number;
   bookings: number;
   occupancyPct: number;
@@ -655,11 +664,17 @@ function computeKpis(bookings: BookingRow[], calendar: Calendar): Kpis {
 
 /**
  * Bucket width, chosen from the span so a chart never has to draw 365 bars.
- * Daily up to a month, weekly up to a quarter, monthly beyond — which puts
- * between 7 and 30 marks on the plot at every preset the filter offers.
+ * Daily up to a fortnight, weekly up to a quarter, monthly beyond — which puts
+ * between 5 and 14 marks on the plot at every preset the filter offers.
+ *
+ * The daily threshold is deliberately well short of a month. Thirty daily bars
+ * on a phone are thin enough that most of them cannot carry a label or a value,
+ * and a rest house with eight bookings in a month reads as twenty-two days of
+ * failure rather than as two thousand dirhams a week. The same month in five
+ * weekly bars is the same money, legible.
  */
 function bucketFor(days: number): TrendBucket {
-  if (days <= 31) return "day";
+  if (days <= 14) return "day";
   if (days <= 92) return "week";
   return "month";
 }
@@ -678,12 +693,13 @@ function buildTrend(
   const order: ISODate[] = [];
 
   for (let day = range.from; day < range.to; day = addDays(day, 1)) {
-    const key = bucketKey(day, bucket, range.from);
+    const key = bucketKey(day, bucket, range);
     let point = buckets.get(key);
     if (!point) {
       point = {
         key,
         label: key,
+        days: 0,
         revenue: 0,
         bookings: 0,
         occupancyPct: 0,
@@ -693,6 +709,7 @@ function buildTrend(
       buckets.set(key, point);
       order.push(key);
     }
+    point.days += 1;
     point.capacity += listings.length;
   }
 
@@ -704,14 +721,14 @@ function buildTrend(
     const key = `${row.listingId}|${row.date}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const point = buckets.get(bucketKey(row.date, bucket, range.from));
+    const point = buckets.get(bucketKey(row.date, bucket, range));
     if (point) point.booked += 1;
   }
 
   // Revenue and count go in by CHECK-IN, the convention stated at the top —
   // so the bars on this chart sum to the revenue on the headline tile.
   for (const booking of confirmed) {
-    const point = buckets.get(bucketKey(booking.checkIn, bucket, range.from));
+    const point = buckets.get(bucketKey(booking.checkIn, bucket, range));
     if (!point) continue;
     point.revenue += booking.subtotal;
     point.bookings += 1;
@@ -722,6 +739,7 @@ function buildTrend(
     return {
       key,
       label: key,
+      days: point.days,
       revenue: point.revenue,
       bookings: point.bookings,
       occupancyPct: pct(point.booked, point.capacity),
@@ -734,18 +752,27 @@ function buildTrend(
 /**
  * Which bucket a day falls in, named by the bucket's first day.
  *
- * Weeks are counted from the start of the RANGE rather than from a Sunday, so
- * the first bar is always a full bucket. Aligning to calendar weeks would open
- * and close the chart with stubs of one or two days, which read as a collapse
- * in demand at both ends.
+ * Weeks are counted BACK from the last day of the range rather than from a
+ * Sunday or from the range's start. Thirty days is four weeks and two days over,
+ * and that remainder has to land somewhere: counting forward puts it on the
+ * newest bar, so "the last two days" is drawn beside four full weeks and the
+ * period ends on what looks like a collapse in demand. Counting back makes every
+ * recent bucket a whole week — the ones an owner actually acts on — and leaves
+ * the short one at the oldest end, where it is furthest from that reading and
+ * where `TimePoint.days` names its real span.
+ *
+ * Calendar weeks would open AND close the chart with stubs, which is worse than
+ * either.
  */
-function bucketKey(day: ISODate, bucket: TrendBucket, rangeStart: ISODate): ISODate {
+function bucketKey(day: ISODate, bucket: TrendBucket, range: DateRange): ISODate {
   if (bucket === "day") return day;
   if (bucket === "month") return `${day.slice(0, 7)}-01`;
-  const offset = Math.floor(
-    (Date.parse(`${day}T00:00:00Z`) - Date.parse(`${rangeStart}T00:00:00Z`)) / 86_400_000,
+  const fromEnd = Math.floor(
+    (Date.parse(`${range.lastDay}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000,
   );
-  return addDays(rangeStart, Math.floor(offset / 7) * 7);
+  const first = addDays(range.lastDay, -7 * Math.floor(fromEnd / 7) - 6);
+  // The oldest bucket starts where the range does, not seven days before it.
+  return first < range.from ? range.from : first;
 }
 
 /* -------------------------------------------------------------------------- */

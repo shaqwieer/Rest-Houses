@@ -1168,7 +1168,12 @@ export const ar = {
 
     // ---- §3 revenue over time ----
     trendTitle: "تحليل الإيرادات",
-    trendSub: "الإيراد وعدد الحجوزات ومعدل الإشغال عبر الفترة",
+    /** One line per bucket width, because "عبر الفترة" hides what a bar is. */
+    trendSub: {
+      day: "الإيراد في كل يوم من الفترة",
+      week: "الإيراد في كل أسبوع من الفترة",
+      month: "الإيراد في كل شهر من الفترة",
+    },
     trendEmpty: "لا توجد إيرادات مسجّلة في هذه الفترة.",
     trendPoint: (label: string, revenue: string, bookings: string, occupancy: string) =>
       `${label}: ${revenue} د.إ · ${bookings} حجز · إشغال ${occupancy}`,

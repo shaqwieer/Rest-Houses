@@ -2,7 +2,7 @@ import Link from "next/link";
 import clsx from "clsx";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { arDelta, arDeltaPercent, arNum, arPercent } from "@/lib/format";
-import { arDayMonth, arMonthLabel, parseISODate } from "@/lib/dates";
+import { addDays, arDayMonth, arMonthLabel, parseISODate } from "@/lib/dates";
 import { CALENDAR_PLATFORM_NAMES, dayNames, monthNames } from "@/lib/constants";
 import { change, type Change } from "@/lib/analytics";
 import { localized, type Locale } from "@/lib/i18n/config";
@@ -29,9 +29,9 @@ import type {
  * mobile data would be a poor trade for what these draw.
  *
  * ─── Chart conventions, inherited from the owner panels ──────────────────────
- * • One measure per plot. Money and counts never share an axis; where a chart
- *   has to carry three measures (§3), the second gets its own short track under
- *   the first and the third travels as text.
+ * • One measure per plot, and where a second measure was tempting (§3) the
+ *   answer is a card rather than a second track: money and counts cannot share
+ *   an axis, and stacking their scales only moves the problem into the reader.
  * • One hue per measure, taken from the accent the operator sets in
  *   /admin/settings, so a rebrand carries the charts with it.
  * • Direction is never mirrored by hand. A flex row in an RTL document already
@@ -93,27 +93,53 @@ function ChangeLine({
   );
 }
 
+/**
+ * One figure, in one of two weights.
+ *
+ * `primary` is the three an owner came to the page for — how much, how many, how
+ * full. The other five are the same card at a smaller size: still there for the
+ * operator, who reads this looking for a margin or a cancellation rate, but no
+ * longer competing with the three for the first glance. Eight cards of equal
+ * weight is eight things to read and no answer.
+ */
 function KpiCard({
   label,
   value,
   sub,
   icon,
+  primary = false,
+  className,
   children,
 }: {
   label: string;
   value: string;
   sub: string;
   icon: IconName;
+  primary?: boolean;
+  className?: string;
   children?: React.ReactNode;
 }) {
   return (
-    <div className={CARD}>
+    <div className={clsx(CARD, primary && "sm:p-5", className)}>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[12px] font-semibold text-muted">{label}</span>
-        <Icon name={icon} size={19} className="text-gold-600" />
+        <span
+          className={clsx("font-semibold text-muted", primary ? "text-[12.5px]" : "text-[11.5px]")}
+        >
+          {label}
+        </span>
+        <Icon name={icon} size={primary ? 21 : 17} className="text-gold-600" />
       </div>
-      <div className="font-display text-[23px] font-extrabold leading-none text-ink">{value}</div>
-      <div className="mt-1 text-[11px] text-muted">{sub}</div>
+      <div
+        className={clsx(
+          "font-display font-extrabold leading-none text-ink",
+          primary ? "text-[27px] sm:text-[31px]" : "text-[19px]",
+        )}
+      >
+        {value}
+      </div>
+      <div className={clsx("mt-1 text-muted", primary ? "text-[11.5px]" : "text-[10.5px]")}>
+        {sub}
+      </div>
       {children}
     </div>
   );
@@ -134,123 +160,136 @@ export function KpiGrid({
   const money = (n: number | null) => (n === null ? dash : arNum(n, locale));
 
   return (
-    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-      <KpiCard
-        label={t.analytics.revenue}
-        value={arNum(kpis.revenue, locale)}
-        sub={t.analytics.revenueSub}
-        icon="payments"
-      >
-        <ChangeLine
-          delta={change(kpis.revenue, prior.revenue)}
-          mode="pct"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+    <div className="flex flex-col gap-2.5">
+      {/* ---- the three an owner opens the page for ----
+          On a phone the money gets the full width and the other two share the
+          row under it, rather than three columns of 120px where the figure an
+          owner came for is the same size as everything else. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        <KpiCard
+          label={t.analytics.revenue}
+          value={arNum(kpis.revenue, locale)}
+          sub={t.analytics.revenueSub}
+          icon="payments"
+          className="col-span-2 sm:col-span-1"
+          primary
+        >
+          <ChangeLine
+            delta={change(kpis.revenue, prior.revenue)}
+            mode="pct"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
 
-      <KpiCard
-        label={t.analytics.netRevenue}
-        value={arNum(kpis.netRevenue, locale)}
-        sub={t.analytics.netRevenueSub}
-        icon="savings"
-      >
-        <ChangeLine
-          delta={change(kpis.netRevenue, prior.netRevenue)}
-          mode="pct"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+        <KpiCard
+          label={t.analytics.bookings}
+          value={arNum(kpis.bookings, locale)}
+          sub={t.analytics.bookingsSub}
+          icon="task_alt"
+          primary
+        >
+          <ChangeLine
+            delta={change(kpis.bookings, prior.bookings)}
+            mode="pct"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
 
-      <KpiCard
-        label={t.analytics.bookings}
-        value={arNum(kpis.bookings, locale)}
-        sub={t.analytics.bookingsSub}
-        icon="task_alt"
-      >
-        <ChangeLine
-          delta={change(kpis.bookings, prior.bookings)}
-          mode="pct"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+        <KpiCard
+          label={t.analytics.occupancy}
+          value={arPercent(kpis.occupancyPct, locale)}
+          sub={t.analytics.occupancySub}
+          icon="donut_large"
+          primary
+        >
+          {/* Points, not percent — the gap between two percentages is not a ratio. */}
+          <ChangeLine
+            delta={change(kpis.occupancyPct, prior.occupancyPct)}
+            mode="points"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
+      </div>
 
-      <KpiCard
-        label={t.analytics.occupancy}
-        value={arPercent(kpis.occupancyPct, locale)}
-        sub={t.analytics.occupancySub}
-        icon="donut_large"
-      >
-        {/* Points, not percent — the gap between two percentages is not a ratio. */}
-        <ChangeLine
-          delta={change(kpis.occupancyPct, prior.occupancyPct)}
-          mode="points"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+      {/* ---- the five behind them ---- */}
+      <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+        <KpiCard
+          label={t.analytics.netRevenue}
+          value={arNum(kpis.netRevenue, locale)}
+          sub={t.analytics.netRevenueSub}
+          icon="savings"
+        >
+          <ChangeLine
+            delta={change(kpis.netRevenue, prior.netRevenue)}
+            mode="pct"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
 
-      <KpiCard
-        label={t.analytics.avgBookingValue}
-        value={money(kpis.avgBookingValue)}
-        sub={t.analytics.avgBookingValueSub}
-        icon="confirmation_number"
-      >
-        <ChangeLine
-          delta={change(kpis.avgBookingValue ?? 0, prior.avgBookingValue ?? 0)}
-          mode="pct"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+        <KpiCard
+          label={t.analytics.avgBookingValue}
+          value={money(kpis.avgBookingValue)}
+          sub={t.analytics.avgBookingValueSub}
+          icon="confirmation_number"
+        >
+          <ChangeLine
+            delta={change(kpis.avgBookingValue ?? 0, prior.avgBookingValue ?? 0)}
+            mode="pct"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
 
-      <KpiCard
-        label={t.analytics.avgDailyRate}
-        value={money(kpis.avgDailyRate)}
-        sub={t.analytics.avgDailyRateSub}
-        icon="credit_card"
-      >
-        <ChangeLine
-          delta={change(kpis.avgDailyRate ?? 0, prior.avgDailyRate ?? 0)}
-          mode="pct"
-          t={t}
-          locale={locale}
-        />
-      </KpiCard>
+        <KpiCard
+          label={t.analytics.avgDailyRate}
+          value={money(kpis.avgDailyRate)}
+          sub={t.analytics.avgDailyRateSub}
+          icon="credit_card"
+        >
+          <ChangeLine
+            delta={change(kpis.avgDailyRate ?? 0, prior.avgDailyRate ?? 0)}
+            mode="pct"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
 
-      <KpiCard
-        label={t.analytics.daysSplit}
-        value={t.analytics.daysSplitValue(
-          arNum(kpis.bookedDays, locale),
-          arNum(kpis.availableDays, locale),
-        )}
-        sub={t.analytics.daysSplitSub}
-        icon="calendar_month"
-      />
-
-      <KpiCard
-        label={t.analytics.cancellation}
-        value={kpis.cancellationPct === null ? dash : arPercent(kpis.cancellationPct, locale)}
-        sub={t.analytics.cancellationSub}
-        icon="event_busy"
-      >
-        {/* The one measure where a rise is bad news. */}
-        <ChangeLine
-          delta={change(kpis.cancellationPct ?? 0, prior.cancellationPct ?? 0)}
-          mode="points"
-          goodDirection="down"
-          t={t}
-          locale={locale}
+        <KpiCard
+          label={t.analytics.daysSplit}
+          value={t.analytics.daysSplitValue(
+            arNum(kpis.bookedDays, locale),
+            arNum(kpis.availableDays, locale),
+          )}
+          sub={t.analytics.daysSplitSub}
+          icon="calendar_month"
         />
-      </KpiCard>
+
+        <KpiCard
+          label={t.analytics.cancellation}
+          value={kpis.cancellationPct === null ? dash : arPercent(kpis.cancellationPct, locale)}
+          sub={t.analytics.cancellationSub}
+          icon="event_busy"
+        >
+          {/* The one measure where a rise is bad news. */}
+          <ChangeLine
+            delta={change(kpis.cancellationPct ?? 0, prior.cancellationPct ?? 0)}
+            mode="points"
+            goodDirection="down"
+            t={t}
+            locale={locale}
+          />
+        </KpiCard>
+      </div>
     </div>
   );
 }
 
 /* -------------------------------------------------------------------------- */
-/* §3 — revenue, bookings and occupancy over the period                       */
+/* §3 — revenue over the period                                               */
 /* -------------------------------------------------------------------------- */
 
 /** What one bucket is called on the axis. */
@@ -263,6 +302,18 @@ function pointLabel(key: string, bucket: TrendBucket, locale: Locale): string {
   return arNum(Number(key.slice(8, 10)), locale);
 }
 
+/**
+ * Revenue per bucket, and nothing else.
+ *
+ * ─── Why one measure and not three ───────────────────────────────────────────
+ * This drew revenue, occupancy on a second track and the booking count in the
+ * legend. Three measures is three readings, and an owner opening this on a phone
+ * wants one: how much did I make, and is it going up. Bookings and occupancy did
+ * not leave the page — they are headline cards above, where a single number is
+ * read faster than a shape. What each bar is worth in every measure is still in
+ * its `title` and `aria-label`, and the spreadsheet export still carries all
+ * three columns, so nothing here is information that went missing.
+ */
 export function RevenueTrend({
   trend,
   bucket,
@@ -277,13 +328,15 @@ export function RevenueTrend({
   const peak = Math.max(...trend.map((p) => p.revenue), 0);
   const hasRevenue = peak > 0;
 
-  // With thirty daily bars there is no room for thirty labels. Every label is
-  // still in the `aria-label` and the tooltip; this only thins what is printed.
-  const stride = Math.max(1, Math.ceil(trend.length / 8));
+  // Whether every bar can carry its own value and its own label. Five weekly
+  // bars can; fourteen daily bars cannot, so those print the peak alone and thin
+  // the axis. Every reading stays in the `aria-label` either way.
+  const roomy = trend.length <= 8;
+  const stride = roomy ? 1 : Math.max(1, Math.ceil(trend.length / 7));
 
   const reading = (point: TimePoint) =>
     t.analytics.trendPoint(
-      pointLabelLong(point.key, bucket, locale),
+      pointLabelLong(point, bucket, t, locale),
       arNum(point.revenue, locale),
       arNum(point.bookings, locale),
       arPercent(point.occupancyPct, locale),
@@ -295,32 +348,39 @@ export function RevenueTrend({
         <h2 className={HEADING}>{t.analytics.trendTitle}</h2>
         <span className="text-[11px] text-muted">{t.common.aed}</span>
       </div>
-      <p className={SUB}>{t.analytics.trendSub}</p>
+      <p className={SUB}>{t.analytics.trendSub[bucket]}</p>
 
       {trend.length === 0 || !hasRevenue ? (
         <p className="m-0 py-6 text-center text-[13px] text-muted">{t.analytics.trendEmpty}</p>
       ) : (
         <>
-          {/* ---- revenue ---- */}
-          <div className="flex h-[132px] items-stretch gap-[3px]">
+          <div className="flex h-[150px] items-stretch gap-[3px]">
             {trend.map((point) => {
               const share = (point.revenue / peak) * 100;
-              const isPeak = point.revenue === peak;
+              // An empty bucket is left unlabelled: a printed "٠" over a flat
+              // bar is a number to read for something the track already says.
+              const printed = roomy ? point.revenue > 0 : point.revenue === peak;
               return (
                 <div key={point.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-                  <span className="h-3.5 text-[9px] font-bold text-bronze">
-                    {isPeak ? arNum(point.revenue, locale) : ""}
+                  <span
+                    className={clsx(
+                      "h-4 font-bold text-bronze",
+                      roomy ? "text-[10.5px]" : "text-[9px]",
+                    )}
+                  >
+                    {printed ? arNum(point.revenue, locale) : ""}
                   </span>
                   {/* A full-height track, so an empty bucket reads as empty
-                      rather than as a very small value. */}
+                      rather than as a very small value. Capped in width so five
+                      bars on a desktop card are bars and not slabs. */}
                   <div
-                    className="relative w-full flex-1 overflow-hidden rounded-[5px] bg-sand-100"
+                    className="relative w-full max-w-[72px] flex-1 overflow-hidden rounded-[6px] bg-sand-100"
                     title={reading(point)}
                   >
                     <div
                       role="img"
                       aria-label={reading(point)}
-                      className="absolute inset-x-0 bottom-0 rounded-[5px] bg-gold-500"
+                      className="absolute inset-x-0 bottom-0 rounded-[6px] bg-gold-500"
                       style={{ height: `${share}%` }}
                     />
                   </div>
@@ -329,50 +389,15 @@ export function RevenueTrend({
             })}
           </div>
 
-          {/* ---- occupancy, on its own short track ----
-              A second scale rather than a second series on the first: money and
-              a percentage cannot share an axis without one of them lying about
-              the other. Sharing the x positions is what makes them comparable. */}
-          <div className="mt-2 flex h-[34px] items-stretch gap-[3px]">
-            {trend.map((point) => (
-              <div
-                key={point.key}
-                className="relative min-w-0 flex-1 overflow-hidden rounded-[4px] bg-sand-100"
-                title={reading(point)}
-              >
-                <div
-                  role="img"
-                  aria-label={reading(point)}
-                  className="absolute inset-x-0 bottom-0 rounded-[4px] bg-bronze/55"
-                  style={{ height: `${Math.min(100, point.occupancyPct)}%` }}
-                />
-              </div>
-            ))}
-          </div>
-
           <div className="mt-1.5 flex gap-[3px]">
             {trend.map((point, index) => (
               <span
                 key={point.key}
-                className="min-w-0 flex-1 truncate text-center text-[9.5px] text-muted"
+                className="min-w-0 flex-1 truncate text-center text-[10px] text-muted"
               >
                 {index % stride === 0 ? pointLabel(point.key, bucket, locale) : ""}
               </span>
             ))}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
-            <LegendKey className="bg-gold-500" label={t.analytics.legendRevenue} />
-            <LegendKey className="bg-bronze/55" label={t.analytics.legendOccupancy} />
-            <span>
-              {t.analytics.legendBookings}:{" "}
-              <b className="text-ink">
-                {arNum(
-                  trend.reduce((total, p) => total + p.bookings, 0),
-                  locale,
-                )}
-              </b>
-            </span>
           </div>
         </>
       )}
@@ -380,21 +405,32 @@ export function RevenueTrend({
   );
 }
 
-/** The long form used in tooltips and screen-reader labels. */
-function pointLabelLong(key: string, bucket: TrendBucket, locale: Locale): string {
+/**
+ * The long form used in tooltips and screen-reader labels.
+ *
+ * A week says the days it covers, which is what keeps the short bucket at the
+ * oldest end of a range honest: a two-day bar beside four week-long ones reads
+ * as a collapse until its label says it is two days.
+ *
+ * A month is named instead, even when the range clips it. A monthly bucket is
+ * keyed by the 1st whether or not the range starts there, so the span arithmetic
+ * that works for a week would announce a February clipped to its last eleven
+ * days as "1 – 11 February". The month's name is the reading that stays true.
+ */
+function pointLabelLong(
+  point: TimePoint,
+  bucket: TrendBucket,
+  t: Dictionary,
+  locale: Locale,
+): string {
+  if (bucket === "day") return arDayMonth(point.key, locale);
   if (bucket === "month") {
-    const date = parseISODate(key);
+    const date = parseISODate(point.key);
     return arMonthLabel(date.getUTCFullYear(), date.getUTCMonth(), locale);
   }
-  return arDayMonth(key, locale);
-}
-
-function LegendKey({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={clsx("inline-block size-2.5 rounded-[3px]", className)} aria-hidden />
-      {label}
-    </span>
+  return t.analytics.rangeLine(
+    arDayMonth(point.key, locale),
+    arDayMonth(addDays(point.key, point.days - 1), locale),
   );
 }
 
