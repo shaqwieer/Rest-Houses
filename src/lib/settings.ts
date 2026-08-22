@@ -72,6 +72,11 @@ const FALLBACK = {
   seoDescription:
     "استراحات وشاليهات صحراوية موثّقة في دبي وأبوظبي والعين وليوا والشارقة — أسعار واضحة وتقويم متاح لحظيًا وتأكيد مباشر عبر الواتساب.",
   ogImageUrl: null,
+  // No Google tag until an operator types one into /admin/settings. An
+  // unseeded install must report to nobody rather than to whichever account the
+  // sample data happened to name.
+  googleTagId: "",
+  googleAdsConversionLabel: "",
   heroTitle: "استراحتك في قلب الصحراء",
   heroTitleAlt: "تبدأ بحجز واحد",
   heroSubtitle:
@@ -152,6 +157,21 @@ export function bankDetails(settings: Settings) {
     bankAccountNumber: settings.bankAccountNumber,
     bankIban: settings.bankIban,
   };
+}
+
+/**
+ * Google Ads' `send_to` value — "AW-950802645/dVoECJ30sOQcENWxsMUD" — or "" when
+ * the conversion is not fully configured.
+ *
+ * The two halves are stored separately so the tag ID is written once and the
+ * conversion label cannot drift away from it. Joining them belongs here rather
+ * than at the call site: "" from *either* half means no conversion is reported,
+ * and a page that assembled the string itself would happily send "AW-950802645/"
+ * — a `send_to` Google accepts and silently attributes to nothing.
+ */
+export function googleAdsSendTo(settings: Settings): string {
+  if (!settings.googleTagId || !settings.googleAdsConversionLabel) return "";
+  return `${settings.googleTagId}/${settings.googleAdsConversionLabel}`;
 }
 
 export const getSettings = cache(async (): Promise<Settings> => {

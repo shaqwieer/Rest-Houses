@@ -86,6 +86,8 @@ const settings = {
   heroTitleAltEn: "",
   heroSubtitleEn: "",
   footerAboutEn: "",
+  googleTagId: "",
+  googleAdsConversionLabel: "",
   updatedAt: new Date(),
 } satisfies Settings;
 

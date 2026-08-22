@@ -998,6 +998,18 @@ export const en: Dictionary = {
     fieldSeoTitleHint: "Shown in search results",
     fieldSeoDescription: "SEO description",
     seoDescriptionHint: (n) => `Best between 120 and 160 characters — currently ${n}`,
+    googleTagCard: "Google tag & tracking",
+    googleTagHint:
+      "Paste the identifiers exactly as they appear in your Google account — the site builds the snippets itself and puts them where they belong. Leave both blank to switch tracking off entirely.",
+    fieldGoogleTagId: "Google tag ID",
+    fieldGoogleTagIdHint:
+      "e.g. AW-950802645 for Google Ads, or G-XXXXXXX for Google Analytics (GA4). GT- and DC- are accepted too; GTM- containers are not. Loads on the public site only — the dashboard is never tracked.",
+    fieldConversionLabel: "Conversion label (confirmed booking)",
+    fieldConversionLabelHint:
+      "The half after the slash in send_to, e.g. dVoECJ30sOQcENWxsMUD. Reported once when the booking confirmation page is shown, with the booking total in AED.",
+    googleTagLiveOn: "Tracking is live",
+    googleTagLiveOff: "Tracking is off",
+    googleTagConversionOff: "The tag loads, but no conversion is reported",
     settingsTitle: "Site settings",
     settingsSubtitle:
       "Everything you change here appears on the site immediately — no code change, no redeploy.",
@@ -1351,6 +1363,10 @@ export const en: Dictionary = {
     siteNameRequired: "A site name is required",
     whatsappIncomplete: "That WhatsApp number is incomplete",
     invalidUrl: "That link isn't valid",
+    invalidGoogleTagId:
+      "That tag ID isn't valid — it starts with AW-, G-, GT- or DC-, e.g. AW-950802645. Google Tag Manager containers (GTM-) are not supported here.",
+    invalidConversionLabel:
+      "That conversion label isn't valid — copy the value after the slash in send_to",
     invalidCoordinates: "Those coordinates aren't valid — use the form: 24.7614, 55.3340",
     invalidFormat: "Wrong format",
     checkTheFields: "Please check the fields",

@@ -44,6 +44,45 @@ function settingsSchema(t: Dictionary) {
     .trim()
     .regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, t.validation.invalidColor);
 
+  // ---- Google tag ------------------------------------------------------
+  //
+  // Identifiers, not code. What the operator pastes is checked against the
+  // shape Google actually issues, so a half-copied line or a stray fragment of
+  // the <script> tag is refused at the form rather than silently rendered into
+  // every page as a tag that never fires.
+  //
+  // "" is always allowed and is what turns tracking off.
+  const googleTagId = z
+    .string()
+    .trim()
+    // Google prints these upper-case; accepting a lower-case paste and
+    // normalising it is friendlier than rejecting "aw-950802645" as invalid.
+    // Safe because the whole identifier is [A-Z0-9] — unlike the conversion
+    // label below, which is case-sensitive and must never be touched.
+    .transform((v) => v.toUpperCase())
+    // The four prefixes gtag.js itself accepts as a tag ID: Ads, GA4, a Google
+    // Tag, and Campaign Manager. Deliberately NOT "GTM-": a Tag Manager
+    // container is loaded by gtm.js, not by gtag/js?id=, so accepting one here
+    // would render a script that quietly does nothing. The error message names
+    // all four and says so, rather than leaving a GTM operator guessing.
+    .refine(
+      (v) => v === "" || /^(?:AW|G|GT|DC)-[A-Z0-9]+$/.test(v),
+      t.validation.invalidGoogleTagId,
+    );
+
+  const googleAdsConversionLabel = z
+    .string()
+    .trim()
+    // Google shows the conversion as "AW-950802645/dVoECJ30sOQcENWxsMUD" and an
+    // operator will reasonably paste the whole thing. Keep only the half after
+    // the slash: the id is already stored in its own field, and holding it
+    // twice is how the two drift apart.
+    .transform((v) => (v.includes("/") ? v.slice(v.lastIndexOf("/") + 1).trim() : v))
+    .refine(
+      (v) => v === "" || /^[A-Za-z0-9_-]{4,64}$/.test(v),
+      t.validation.invalidConversionLabel,
+    );
+
   return z.object({
   // identity
     siteName: z.string().trim().min(2, t.validation.siteNameRequired).max(80),
@@ -122,6 +161,10 @@ function settingsSchema(t: Dictionary) {
   footerAbout: z.string().trim().max(400).default(""),
     seoTitle: z.string().trim().max(120).default(""),
     seoDescription: z.string().trim().max(320).default(""),
+
+    // ---- Google tag ----
+    googleTagId,
+    googleAdsConversionLabel,
 
     // ---- English copy ----------------------------------------------------
     // All optional. Blank means "fall back to the Arabic value" — see
@@ -230,6 +273,9 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     footerAbout: formData.get("footerAbout") ?? "",
     seoTitle: formData.get("seoTitle") ?? "",
     seoDescription: formData.get("seoDescription") ?? "",
+
+    googleTagId: formData.get("googleTagId") ?? "",
+    googleAdsConversionLabel: formData.get("googleAdsConversionLabel") ?? "",
 
     siteNameEn: formData.get("siteNameEn") ?? "",
     taglineEn: formData.get("taglineEn") ?? "",

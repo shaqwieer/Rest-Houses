@@ -81,6 +81,9 @@ export type SettingsFormValues = {
   footerAbout: string;
   seoTitle: string;
   seoDescription: string;
+  /** Google tag identifiers. Both "" means no tracking script is rendered. */
+  googleTagId: string;
+  googleAdsConversionLabel: string;
 };
 
 /** Preset accent pairs, so the owner can rebrand in one tap instead of picking
@@ -728,6 +731,66 @@ export function SettingsForm({
           >
             <TextArea name="seoDescription" rows={3} defaultValue={values.seoDescription} maxLength={320} />
           </Field>
+        </Card>
+
+        {/* =============== Google tag ===============
+            Two identifiers, not a code box. The operator pastes what Google
+            shows them — "AW-950802645" and the label out of
+            "AW-950802645/dVoECJ30sOQcENWxsMUD" — and the site assembles the
+            snippet itself, mounts it on the public pages only, and fires the
+            conversion once on the booking confirmation screen.
+
+            Deliberately not a free-text <head> box: this form is the one place
+            in the product where a paste becomes a <script> on every page, and
+            an identifier that is validated against Google's own shape cannot
+            break the site or be turned into an injection vector if an admin
+            account is ever taken over. See src/components/site/google-tag.tsx. */}
+        <Card icon="donut_large" title={t.admin.googleTagCard}>
+          <p className="m-0 text-[12px] leading-relaxed text-muted">{t.admin.googleTagHint}</p>
+
+          <Field
+            label={t.admin.fieldGoogleTagId}
+            hint={t.admin.fieldGoogleTagIdHint}
+            error={errors.googleTagId}
+          >
+            <TextInput
+              name="googleTagId"
+              dir="ltr"
+              placeholder="AW-950802645"
+              defaultValue={values.googleTagId}
+              maxLength={40}
+            />
+          </Field>
+
+          <Field
+            label={t.admin.fieldConversionLabel}
+            hint={t.admin.fieldConversionLabelHint}
+            error={errors.googleAdsConversionLabel}
+          >
+            <TextInput
+              name="googleAdsConversionLabel"
+              dir="ltr"
+              placeholder="dVoECJ30sOQcENWxsMUD"
+              defaultValue={values.googleAdsConversionLabel}
+              maxLength={80}
+            />
+          </Field>
+
+          {/* Reads the saved row, not the inputs: it answers "what is the site
+              doing right now", which is the question an operator who just came
+              back from Google Ads is actually asking. */}
+          <p className="m-0 flex items-center gap-1.5 text-[12px] font-bold text-muted">
+            <Icon
+              name={values.googleTagId ? "check_circle" : "info"}
+              size={16}
+              className={values.googleTagId ? "text-ok" : "text-muted"}
+            />
+            {!values.googleTagId
+              ? t.admin.googleTagLiveOff
+              : values.googleAdsConversionLabel
+                ? t.admin.googleTagLiveOn
+                : t.admin.googleTagConversionOff}
+          </p>
         </Card>
 
         {/* =============== English copy ===============

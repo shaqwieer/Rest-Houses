@@ -1102,6 +1102,18 @@ export const ar = {
     fieldSeoTitleHint: "يظهر في نتائج البحث",
     fieldSeoDescription: "وصف SEO",
     seoDescriptionHint: (n: string) => `الأفضل بين ١٢٠ و ١٦٠ حرفًا — حاليًا ${n}`,
+    googleTagCard: "وسم جوجل والتتبّع",
+    googleTagHint:
+      "الصق المعرّفات كما تظهر في حساب جوجل — الموقع يبني الأكواد بنفسه ويضعها في مكانها الصحيح. اترك الحقول فارغة لإيقاف التتبّع تمامًا.",
+    fieldGoogleTagId: "معرّف وسم جوجل",
+    fieldGoogleTagIdHint:
+      "مثل AW-950802645 لإعلانات جوجل، أو G-XXXXXXX لتحليلات جوجل ‎(GA4)‎. يقبل أيضًا ‎GT-‎ و‎DC-‎، ولا يقبل حاويات ‎GTM-‎. يعمل على صفحات الموقع العامة فقط — لوحة التحكم غير متتبّعة.",
+    fieldConversionLabel: "تسمية التحويل (حجز مؤكَّد)",
+    fieldConversionLabelHint:
+      "النصف الذي بعد الشرطة المائلة في send_to، مثل dVoECJ30sOQcENWxsMUD. يُحتسب التحويل مرة واحدة عند ظهور صفحة تأكيد الحجز، بقيمة الحجز بالدرهم.",
+    googleTagLiveOn: "التتبّع مفعّل",
+    googleTagLiveOff: "التتبّع متوقّف",
+    googleTagConversionOff: "الوسم يعمل، لكن لا يوجد تحويل مسجَّل",
     settingsTitle: "إعدادات الموقع",
     settingsSubtitle: "كل ما تعدّله هنا يظهر على الموقع فورًا — لا حاجة لتعديل الكود أو إعادة النشر.",
   },
@@ -1479,6 +1491,10 @@ export const ar = {
     siteNameRequired: "اسم الموقع مطلوب",
     whatsappIncomplete: "رقم واتساب غير مكتمل",
     invalidUrl: "رابط غير صالح",
+    invalidGoogleTagId:
+      "معرّف وسم غير صالح — يبدأ بـ ‎AW-‎ أو ‎G-‎ أو ‎GT-‎ أو ‎DC-‎، مثل AW-950802645. حاويات Google Tag Manager (‎GTM-‎) غير مدعومة هنا.",
+    invalidConversionLabel:
+      "تسمية تحويل غير صالحة — انسخ القيمة التي بعد الشرطة المائلة في send_to",
     invalidCoordinates: "الإحداثيات غير صحيحة — اكتبها بالصيغة: 24.7614, 55.3340",
     invalidFormat: "صيغة غير صحيحة",
     checkTheFields: "الرجاء التحقّق من الحقول",

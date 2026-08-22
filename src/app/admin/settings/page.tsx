@@ -56,6 +56,10 @@ export default async function AdminSettingsPage() {
         seoTitle: settings.seoTitle ?? "",
         seoDescription: settings.seoDescription ?? "",
 
+        // Google tag — both non-null in the schema, so no ?? needed.
+        googleTagId: settings.googleTagId,
+        googleAdsConversionLabel: settings.googleAdsConversionLabel,
+
         // English copy — blank means "fall back to the Arabic value".
         siteNameEn: settings.siteNameEn ?? "",
         taglineEn: settings.taglineEn ?? "",

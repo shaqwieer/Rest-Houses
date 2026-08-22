@@ -56,7 +56,7 @@ typography, spacing and components match it.
 | `/admin/listings/new`, `/admin/listings/[id]` | Full editor: name, description, city, area, prices, capacity, amenities, categories, coordinates, images, owner contact, flags |
 | `/admin/calendar` | Tap any day to block/free it; bulk block or free the rest of a month |
 | `/admin/requests` | Confirm / reject / cancel requests, filter by status, one-tap WhatsApp reply |
-| `/admin/settings` | Site name, logo, colours, WhatsApp number, contacts, socials, map location, fees, hero copy, SEO |
+| `/admin/settings` | Site name, logo, colours, WhatsApp number, contacts, socials, map location, fees, hero copy, SEO, Google tag |
 
 Navigation is a thumb-reachable bottom tab bar on phones (clearing the iOS home
 indicator) and a pill bar on desktop. Every admin action is confirmed with a
@@ -235,8 +235,48 @@ Go to **/admin/settings**. You can change:
   check-in/out times
 - **Home page + SEO** — hero title, subtitle, hero image, footer text, SEO title
   and description
+- **Google tag & tracking** — the Google tag ID and one Ads conversion label
 
 Saving takes effect immediately across the whole site.
+
+### Connecting Google Ads or Google Analytics
+
+Google gives you a block of `<script>` and tells you to paste it before
+`</head>`. Don't — **/admin/settings** → **وسم جوجل والتتبّع** takes the two
+identifiers out of that block instead, and the site writes the snippet itself:
+
+| Field | What Google calls it | Example |
+|---|---|---|
+| Google tag ID | the `id=` in the gtag.js line, or `config` | `AW-950802645`, `G-ABC123XYZ` |
+| Conversion label | the half of `send_to` after the slash | `dVoECJ30sOQcENWxsMUD` |
+
+Pasting the whole `AW-950802645/dVoECJ30sOQcENWxsMUD` into the second field
+works — only the label is kept.
+
+Accepted prefixes are `AW-`, `G-`, `GT-` and `DC-` — the four `gtag.js` itself
+takes. A Google **Tag Manager** container (`GTM-…`) is loaded by `gtm.js`, not by
+this tag, so it is refused rather than rendered as a script that does nothing.
+
+Three things follow from storing identifiers rather than markup, and they are
+the reason there is no "paste your head code here" box:
+
+- **The tag loads on the public site only.** It is mounted in
+  `src/app/(site)/layout.tsx`, and `/admin`, `/owner` and `/login` sit outside
+  that route group — so your own working day never lands in the ad account's
+  traffic, or in its conversion counts.
+- **The conversion fires once per booking**, on `/booking/[reference]`, carrying
+  the reference as `transaction_id` and the booking total as `value` in AED. A
+  reload, or a return from WhatsApp with the back button, does not count a
+  second time. See `src/components/booking/google-ads-conversion.tsx`.
+- **A mistyped paste cannot reach the page.** The IDs are validated against the
+  shape Google issues, so a half-copied `<script>` line is refused at the form
+  rather than rendered into every page as a tag that never fires.
+
+Clearing the tag ID switches tracking off completely: no script, no `dataLayer`,
+no request to Google.
+
+> Adding a Google tag means the site starts sending visitor data to Google.
+> Check that `/privacy` says so before you turn it on.
 
 ### Arabic and English: what translates itself and what you type twice
 

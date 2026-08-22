@@ -4,8 +4,9 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { WhatsappAutoSend } from "@/components/booking/whatsapp-auto-send";
+import { GoogleAdsConversion } from "@/components/booking/google-ads-conversion";
 import { prisma } from "@/lib/prisma";
-import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { getSettings, absoluteUrl, googleAdsSendTo, localizeSettings } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
 import { DAY_USE_SELECT, localizeListing } from "@/lib/listings";
 import { publicOwnerFields } from "@/lib/owners";
@@ -126,6 +127,21 @@ export default async function BookingConfirmationPage({
 
   return (
     <div className="min-h-[70vh] bg-sand-50">
+      {/* ---- the Google Ads conversion ----
+          This is the page Google's "Purchase conversion page" snippet is meant
+          for: the request exists, it has a reference, and the totals are the
+          stored snapshot rather than a form value.
+
+          Renders nothing and reports nothing unless /admin/settings holds both
+          a tag ID and a conversion label. Placed above the WhatsApp hand-off
+          because that block navigates away after five seconds — see the
+          component for how it fires exactly once per booking. */}
+      <GoogleAdsConversion
+        sendTo={googleAdsSendTo(settings)}
+        transactionId={booking.reference}
+        value={booking.total}
+      />
+
       <div className="animate-pop-in mx-auto max-w-[620px] px-4 py-10 text-center md:py-15">
         <div className="mx-auto mb-6 grid size-24 place-items-center rounded-full border-2 border-ok/25 bg-ok-bg">
           <Icon name="check_circle" size={52} className="text-ok" />
