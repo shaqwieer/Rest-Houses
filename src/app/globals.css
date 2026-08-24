@@ -348,4 +348,13 @@
     font-size: 11px;
     padding: 4px 8px;
   }
+
+  /* The count badge on a shared spot. `!important` because the badge carries
+     its own inline sizes — without it the pill comes out wider on a phone than
+     on a laptop, which is backwards. */
+  .marker-pill > span > span {
+    min-width: 15px !important;
+    height: 15px !important;
+    font-size: 9.5px !important;
+  }
 }

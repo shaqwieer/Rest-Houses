@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
 import { arNum, currencyUnit } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import type { Dictionary, Locale } from "@/lib/i18n";
+import { groupByCoord, type CoordGroup } from "@/lib/map-groups";
 
 // Leaflet's own stylesheet. Imported statically so the bundler can process it,
 // but because this whole module is only reached through `next/dynamic` (see
@@ -86,50 +88,26 @@ export default function ListingMap({
 
       layer.clearLayers();
 
-      const coords: [number, number][] = [];
-      for (const p of points) {
-        coords.push([p.lat, p.lng]);
+      // One marker per *spot*, not per listing. Rest houses that share a
+      // compound are registered at the same coordinates, and stacked markers
+      // hide one another completely at every zoom level — see map-groups.ts.
+      const groups = groupByCoord(points);
+      const coords: [number, number][] = groups.map((g) => [g.lat, g.lng]);
 
-        const label = p.price ? `${arNum(p.price, locale)} ${currencyUnit(locale)}` : "📍";
-
-        // A gold-outlined night pill instead of Leaflet's default blue teardrop,
-        // matching the design's marker treatment.
-        //
-        // `inline-flex`, not `flex`, and the pairing matters: a block-level flex
-        // box resolves `width: auto` against its container, and Leaflet's
-        // container is the 0×0 box that `iconSize: [0, 0]` asks for — which
-        // collapsed the price to an ellipsis on narrow screens. An inline-level
-        // box is shrink-to-fit, and `.marker-pill` in globals.css overrides
-        // Leaflet's inline `width: 0px` to `max-content` so the parent cannot
-        // squeeze it either. Both halves are needed.
-        //
-        // A `<span>` rather than a `<div>` so the mobile override in globals.css
-        // can target it without matching Leaflet's own wrapper.
-        const html = `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--night-900,#0C1522);color:var(--gold-100,#F5E9CC);border:1px solid var(--gold-500,#C9A44C);border-radius:999px;padding:5px 11px;font-family:var(--font-tajawal),sans-serif;font-weight:700;font-size:12px;line-height:1.2;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);transform:translate(-50%,-50%)">${escapeHtml(label)}</span>`;
-
-        const marker = L.marker([p.lat, p.lng], {
-          icon: L.divIcon({ html, className: "marker-pill", iconSize: [0, 0] }),
-          title: p.name,
+      for (const g of groups) {
+        const marker = L.marker([g.lat, g.lng], {
+          icon: L.divIcon({
+            html: pillHtml(g, t, locale),
+            className: "marker-pill",
+            iconSize: [0, 0],
+          }),
+          title:
+            g.points.length > 1
+              ? t.listing.sameSpot(arNum(g.points.length, locale), g.points.length)
+              : g.points[0].name,
         }).addTo(layer);
 
-        const detail = [
-      p.area,
-      p.capacity ? t.common.upToGuests(arNum(p.capacity, locale), p.capacity) : null,
-    ]
-          .filter(Boolean)
-          .join(" · ");
-
-        marker.bindPopup(
-          `<div style="direction:rtl;text-align:right;font-family:var(--font-tajawal),sans-serif">
-             <b style="font-size:13px">${escapeHtml(p.name)}</b>
-             ${detail ? `<br><span style="color:#6E6A60;font-size:12px">${escapeHtml(detail)}</span>` : ""}
-             ${
-            p.href
-              ? `<br><a href="${p.href}" style="font-size:12px;color:#A8873A">${t.listing.viewDetailsArrow}</a>`
-              : ""
-          }
-           </div>`,
-        );
+        marker.bindPopup(popupHtml(g, t, locale));
       }
 
       if (coords.length === 1) map.setView(coords[0], zoom);
@@ -143,7 +121,7 @@ export default function ListingMap({
     return () => {
       cancelled = true;
     };
-  }, [points, zoom]);
+  }, [points, zoom, t, locale]);
 
   // Tear the map down only on unmount, so re-filtering the results list reuses
   // the existing instance instead of rebuilding it.
@@ -156,6 +134,94 @@ export default function ListingMap({
   }, []);
 
   return <div ref={containerRef} className={className ?? "size-full"} />;
+}
+
+/**
+ * The marker: a gold-outlined night pill instead of Leaflet's default blue
+ * teardrop, matching the design's marker treatment. A shared spot shows the
+ * cheapest of its rest houses plus a count badge, so three of them never look
+ * like one.
+ *
+ * `inline-flex`, not `flex`, and the pairing matters: a block-level flex box
+ * resolves `width: auto` against its container, and Leaflet's container is the
+ * 0×0 box that `iconSize: [0, 0]` asks for — which collapsed the price to an
+ * ellipsis on narrow screens. An inline-level box is shrink-to-fit, and
+ * `.marker-pill` in globals.css overrides Leaflet's inline `width: 0px` to
+ * `max-content` so the parent cannot squeeze it either. Both halves are needed.
+ *
+ * A `<span>` rather than a `<div>` so the mobile override in globals.css can
+ * target it without matching Leaflet's own wrapper.
+ */
+function pillHtml(g: CoordGroup<MapPoint>, t: Dictionary, locale: Locale): string {
+  const prices = g.points
+    .map((p) => p.price)
+    .filter((n): n is number => typeof n === "number" && n > 0);
+  const cheapest = prices.length > 0 ? Math.min(...prices) : 0;
+  const money = cheapest ? `${arNum(cheapest, locale)} ${currencyUnit(locale)}` : "";
+
+  // "from 1,500" only when the members are not all the same price — otherwise
+  // the bare figure is exact, and shorter on a phone.
+  const label = money
+    ? prices.some((n) => n !== cheapest)
+      ? t.listing.priceFrom(money)
+      : money
+    : "📍";
+
+  const badge =
+    g.points.length > 1
+      ? `<span style="display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:var(--gold-500,#C9A44C);color:var(--night-900,#0C1522);font-size:10.5px;font-weight:800;line-height:1">${escapeHtml(arNum(g.points.length, locale))}</span>`
+      : "";
+
+  return `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--night-900,#0C1522);color:var(--gold-100,#F5E9CC);border:1px solid var(--gold-500,#C9A44C);border-radius:999px;padding:5px 11px;font-family:var(--font-tajawal),sans-serif;font-weight:700;font-size:12px;line-height:1.2;white-space:nowrap;box-shadow:0 6px 18px rgba(0,0,0,.35);transform:translate(-50%,-50%)">${badge}${escapeHtml(label)}</span>`;
+}
+
+/**
+ * The popup. For one listing it is the name, its area and a link; for a shared
+ * spot it is the whole list — and that list is the only place the second and
+ * third rest house at a coordinate can be told apart, so every row carries its
+ * own price too.
+ */
+function popupHtml(g: CoordGroup<MapPoint>, t: Dictionary, locale: Locale): string {
+  const rtl = locale === "ar";
+  const open = `<div style="direction:${rtl ? "rtl" : "ltr"};text-align:${rtl ? "right" : "left"};font-family:var(--font-tajawal),sans-serif">`;
+
+  // The pill beside it already carries the price, so a lone row omits it.
+  if (g.points.length === 1) return `${open}${entryHtml(g.points[0], t, locale, false)}</div>`;
+
+  const rows = g.points
+    .map(
+      (p) =>
+        `<li style="border-top:1px solid #EFE7D8;padding:8px 0">${entryHtml(p, t, locale, true)}</li>`,
+    )
+    .join("");
+
+  return `${open}
+       <b style="font-size:13px">${escapeHtml(t.listing.sameSpot(arNum(g.points.length, locale), g.points.length))}</b>
+       <ul style="list-style:none;margin:2px 0 0;padding:0;max-height:222px;overflow-y:auto">${rows}</ul>
+     </div>`;
+}
+
+/** One rest house inside a popup. */
+function entryHtml(p: MapPoint, t: Dictionary, locale: Locale, withPrice: boolean): string {
+  const detail = [
+    p.area,
+    p.capacity ? t.common.upToGuests(arNum(p.capacity, locale), p.capacity) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const price = withPrice && p.price ? `${arNum(p.price, locale)} ${currencyUnit(locale)}` : "";
+  const link = p.href
+    ? `<a href="${escapeHtml(p.href)}" style="font-size:12px;color:#A8873A">${t.listing.viewDetailsArrow}</a>`
+    : "";
+
+  return `<b style="font-size:13px">${escapeHtml(p.name)}</b>
+     ${detail ? `<br><span style="color:#6E6A60;font-size:12px">${escapeHtml(detail)}</span>` : ""}
+     ${
+       price || link
+         ? `<br>${price ? `<span style="font-size:12px;font-weight:700;color:#0C1522">${escapeHtml(price)}</span>` : ""}${price && link ? " · " : ""}${link}`
+         : ""
+     }`;
 }
 
 /** Popups are built as HTML strings, so listing names must be escaped. */

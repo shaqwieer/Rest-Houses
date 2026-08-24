@@ -391,6 +391,17 @@ export const ar = {
     pickCheckOutNow: "اخترت تاريخ الوصول — اختر الآن تاريخ المغادرة.",
     loadingMap: "جارٍ تحميل الخريطة…",
     viewDetailsArrow: "عرض التفاصيل ←",
+    /* The whole phrase per form, not a number plus a noun: Arabic carries "two"
+       in the dual itself, so "٢ استراحتان" reads as a stutter. */
+    sameSpot: (n: string, count: number) =>
+      plural("ar", count, {
+        one: "استراحة في نفس الموقع",
+        two: "استراحتان في نفس الموقع",
+        few: `${n} استراحات في نفس الموقع`,
+        many: `${n} استراحة في نفس الموقع`,
+        other: `${n} استراحة في نفس الموقع`,
+      }),
+    priceFrom: (price: string) => `من ${price}`,
   },
 
   /* --------------------------------------------------------------- booking */

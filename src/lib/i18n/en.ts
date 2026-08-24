@@ -322,6 +322,9 @@ export const en: Dictionary = {
     pickCheckOutNow: "Check-in chosen — now pick your check-out date.",
     loadingMap: "Loading the map…",
     viewDetailsArrow: "View details →",
+    sameSpot: (n, count) =>
+      `${n} rest ${plural("en", count, { one: "house", other: "houses" })} at this spot`,
+    priceFrom: (price) => `From ${price}`,
   },
 
   /* --------------------------------------------------------------- booking */
