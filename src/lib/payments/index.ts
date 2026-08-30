@@ -1,87 +1,105 @@
+import type { Settings } from "../settings";
+import { availableProviders, onlinePaymentsEnabled } from "./config";
+
 /**
  * ===========================================================================
- * ONLINE DEPOSIT PAYMENTS — DISABLED STUB
+ * PAYMENTS — the entry point
  * ===========================================================================
  *
- * The booking flow today is: save the request → open WhatsApp → the owner
- * collects the deposit off-platform. No money moves through this site.
+ * This module used to be a single disabled stub whose only job was to say "no
+ * gateway is wired". It is now a directory, and the stub's two exported
+ * functions are kept at the bottom of this file with their behaviour intact, so
+ * the two pages that already import them did not have to change.
  *
- * This module is the seam where a gateway plugs in later. It exists now so the
- * booking flow already has the right *shape*: `BookingRequest` carries
- * `depositDue`, `paymentStatus` and `paymentReference` columns, and the confirm
- * page checks `isDepositPaymentEnabled()` before deciding whether to show a
- * "pay deposit" step. Nothing anywhere calls a payment API.
+ * ─── What is where ──────────────────────────────────────────────────────────
+ *   types.ts       the `PaymentProvider` contract every gateway implements
+ *   status.ts      provider vocabularies → the internal lifecycle, and the
+ *                  booking-level roll-up. Pure functions, no database
+ *   config.ts      environment credentials + the three gates. SERVER ONLY
+ *   methods.ts     which payment modes a platform and a listing offer
+ *   service.ts     the only module that writes the payment tables: amounts,
+ *                  idempotency, settlement, refunds
+ *   links.ts       the "semi-self" payment link — token, expiry, single use
+ *   providers/     one file per gateway. Telr, Tabby, Tamara
  *
- * ---------------------------------------------------------------------------
- * TO ENABLE (example: Stripe)
- * ---------------------------------------------------------------------------
- *  1. npm install stripe
- *  2. .env: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
- *           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
- *  3. Replace `createDepositCheckout` below with a real implementation:
+ * ─── The state of play, stated plainly ──────────────────────────────────────
+ * No merchant credentials exist for this platform, for any provider. Every
+ * adapter under providers/ is written to its gateway's documented contract and
+ * NONE of them has been executed against a real account — not in sandbox and
+ * not in production. The architecture is complete; the integrations are not
+ * proven, and this comment is the honest version of that distinction.
  *
- *       const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
- *       const session = await stripe.checkout.sessions.create({
- *         mode: "payment",
- *         currency: "aed",
- *         line_items: [{
- *           quantity: 1,
- *           price_data: {
- *             currency: "aed",
- *             unit_amount: input.amount * 100,          // fils
- *             product_data: { name: `عربون — ${input.listingName}` },
- *           },
- *         }],
- *         metadata: { bookingId: input.bookingId, reference: input.reference },
- *         success_url: `${siteUrl()}/booking/${input.reference}?paid=1`,
- *         cancel_url:  `${siteUrl()}/booking/${input.reference}`,
- *       });
- *       return { ok: true, checkoutUrl: session.url! };
+ * Because `availableProviders()` returns [] without credentials, the whole
+ * subsystem is inert on every deployment today: the booking flow behaves
+ * exactly as it always has — save the request, open WhatsApp, the owner
+ * collects the deposit — and no code path can reach a gateway. Switching one on
+ * later is a credential deployment plus two toggles in /admin/settings, with no
+ * code change.
  *
- *  4. Add a webhook route at src/app/api/payments/webhook/route.ts that
- *     verifies the signature and, on `checkout.session.completed`, sets
- *     `paymentStatus = "PAID"` and `paymentReference = session.id` on the
- *     booking, then flips its `status` to "CONFIRMED" and writes the stay's
- *     nights into `Availability` with status "BOOKED".
+ * ─── To connect Telr, when the merchant account exists ──────────────────────
+ *  1. .env:  TELR_STORE_ID, TELR_AUTH_KEY, TELR_TEST_MODE="true"
+ *  2. /admin/settings → enable online payments, then enable Telr
+ *  3. give Telr the two URLs this platform serves:
+ *       return  https://<site>/api/payments/telr/return
+ *       advice  https://<site>/api/payments/telr/webhook
+ *  4. run one sandbox booking end to end and check the `Payment`,
+ *     `PaymentEvent` and `AuditLog` rows it produces
+ *  5. only then TELR_TEST_MODE="false"
  *
- *  5. Flip `depositPaymentsEnabled` to true in /admin/settings.
- *
- *  A local UAE gateway (Network International, Telr, PayTabs, Ziina) drops into
- *  exactly the same two functions — only the SDK call differs.
+ * Tabby and Tamara follow the same shape and are additionally blocked on
+ * commercial approval — see the header of each adapter.
  * ---------------------------------------------------------------------------
  */
 
-import type { Settings } from "../settings";
+export * from "./types";
+export * from "./status";
+export * from "./config";
+export * from "./methods";
+export * from "./links";
+export {
+  applyCallback,
+  assertChargeable,
+  recordManualPayment,
+  refreshBookingPaymentRollup,
+  refundPayment,
+  resolvePayable,
+  settlePayment,
+  startPayment,
+  type CallbackOutcome,
+  type PaymentFailure,
+  type StartPaymentResult,
+} from "./service";
+export { getProvider } from "./providers";
 
-export type DepositCheckoutInput = {
-  bookingId: string;
-  reference: string;
-  listingName: string;
-  /** Deposit amount in whole dirhams. */
-  amount: number;
-  customerName: string;
-  customerPhone: string;
-};
-
-export type DepositCheckoutResult =
-  | { ok: true; checkoutUrl: string }
-  | { ok: false; reason: string };
+/* --------------------------------------------------------------------------
+ * The two functions the original stub exported.
+ *
+ * Kept at these names and with these signatures because
+ * src/app/(site)/booking/[reference]/page.tsx and
+ * src/app/admin/settings/page.tsx call them, and neither of those pages has any
+ * business knowing that a provider layer appeared underneath.
+ *
+ * What changed is only what they consult: `process.env.STRIPE_SECRET_KEY` — a
+ * gateway this platform never had — has become "is at least one configured
+ * provider enabled". Left as it was, the admin toggle could never turn online
+ * payments on however many providers were connected.
+ * -------------------------------------------------------------------------- */
 
 /**
- * Whether the UI should offer an online deposit step.
+ * Whether the UI should offer an online payment step.
  *
- * Requires BOTH the owner's opt-in in settings AND provider credentials in the
- * environment — so turning the toggle on without configuring a gateway can't
- * strand a guest on a dead checkout button.
+ * Requires BOTH the operator's opt-in in settings AND a provider with
+ * credentials, so ticking the box without deploying keys cannot strand a guest
+ * on a dead checkout button. That was the original contract and it is unchanged
+ * — only the definition of "a gateway is configured" moved.
  */
 export function isDepositPaymentEnabled(settings: Settings): boolean {
-  if (!settings.depositPaymentsEnabled) return false;
-  return Boolean(process.env.STRIPE_SECRET_KEY);
+  if (!onlinePaymentsEnabled(settings)) return false;
+  return availableProviders(settings).length > 0;
 }
 
-/** Human-readable reason the payment step is hidden — surfaced in admin settings. */
 /**
- * Which of three states the deposit gateway is in.
+ * Which of three states the gateway layer is in.
  *
  * Returns a stable code rather than a sentence: this module is imported by
  * server code with no request scope and therefore no locale, so translating
@@ -91,22 +109,7 @@ export function isDepositPaymentEnabled(settings: Settings): boolean {
 export type DepositPaymentState = "DISABLED" | "MISCONFIGURED" | "ENABLED";
 
 export function depositPaymentStatus(settings: Settings): DepositPaymentState {
-  if (!settings.depositPaymentsEnabled) return "DISABLED";
-  if (!process.env.STRIPE_SECRET_KEY) return "MISCONFIGURED";
+  if (!onlinePaymentsEnabled(settings)) return "DISABLED";
+  if (availableProviders(settings).length === 0) return "MISCONFIGURED";
   return "ENABLED";
-}
-
-
-/**
- * Deliberately unimplemented. Never called while
- * `isDepositPaymentEnabled()` returns false, which it always does today.
- */
-export async function createDepositCheckout(
-  _input: DepositCheckoutInput,
-): Promise<DepositCheckoutResult> {
-  return {
-    ok: false,
-    reason:
-      "لم يتم تفعيل بوابة الدفع بعد. راجع src/lib/payments/index.ts لإضافة مزوّد الدفع.",
-  };
 }

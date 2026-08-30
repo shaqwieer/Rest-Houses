@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ListingEditor } from "@/components/admin/listing-editor";
 import { getOwnerListingById } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
+import { parseListingPaymentModes, platformPaymentModes } from "@/lib/payments";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { formatWhatsappDisplay } from "@/lib/whatsapp";
 import { platformPolicyFor } from "@/lib/policies";
@@ -39,6 +40,7 @@ export default async function EditOwnerListingPage({
     <ListingEditor
       scope="owner"
       platformDepositPercent={settings.depositPercent}
+      platformPaymentModes={platformPaymentModes(settings)}
       platformPolicy={platformPolicyFor(settings, locale)}
       ownerWhatsapp={formatWhatsappDisplay(owner.whatsapp)}
       draft={{
@@ -70,6 +72,7 @@ export default async function EditOwnerListingPage({
         lat: listing.lat,
         lng: listing.lng,
         depositPercent: listing.depositPercent,
+        paymentModes: parseListingPaymentModes(listing.paymentModes),
         amenityIds: listing.amenityIds,
         categoryIds: listing.categoryIds,
         verified: listing.verified,

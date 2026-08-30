@@ -39,6 +39,13 @@ export function ensureSchema(): void {
  */
 export async function resetDatabase(): Promise<void> {
   await prisma.auditLog.deleteMany();
+  // Payment tables before the bookings they hang off: PaymentEvent references
+  // Payment, PaymentLink references both Payment and BookingRequest, and the
+  // order here is children-before-parents throughout rather than a reliance on
+  // cascades.
+  await prisma.paymentEvent.deleteMany();
+  await prisma.paymentLink.deleteMany();
+  await prisma.payment.deleteMany();
   await prisma.bookingRequest.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.specialDay.deleteMany();

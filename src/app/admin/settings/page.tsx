@@ -1,6 +1,6 @@
 import { SettingsForm } from "@/components/admin/settings-form";
 import { getSettings } from "@/lib/settings";
-import { depositPaymentStatus } from "@/lib/payments";
+import { depositPaymentStatus, publicPaymentConfig } from "@/lib/payments";
 import { requireAdminPage } from "@/lib/auth";
 
 /** Site settings — the config-driven branding surface. */
@@ -49,6 +49,11 @@ export default async function AdminSettingsPage() {
         checkInTime: settings.checkInTime,
         checkOutTime: settings.checkOutTime,
         depositPaymentsEnabled: settings.depositPaymentsEnabled,
+        telrEnabled: settings.telrEnabled,
+        tabbyEnabled: settings.tabbyEnabled,
+        tamaraEnabled: settings.tamaraEnabled,
+        paymentLinksEnabled: settings.paymentLinksEnabled,
+        paymentLinkDays: settings.paymentLinkDays,
         heroTitle: settings.heroTitle,
         heroTitleAlt: settings.heroTitleAlt,
         heroSubtitle: settings.heroSubtitle,
@@ -74,6 +79,10 @@ export default async function AdminSettingsPage() {
       }}
       // A code, not a sentence — the form resolves it against the dictionary.
       paymentState={depositPaymentStatus(settings)}
+      // Per-gateway verdicts. `publicPaymentConfig` returns state codes and
+      // booleans ONLY — no key, no partial key — which is what makes it safe to
+      // hand to a client component.
+      providerStates={publicPaymentConfig(settings).providers}
     />
   );
 }

@@ -480,12 +480,212 @@ export const OWNER_ACCESS_STATES = [
 ] as const;
 export type OwnerAccessState = (typeof OWNER_ACCESS_STATES)[number];
 
+/**
+ * BookingRequest.paymentStatus — the booking-level ROLL-UP over its Payment
+ * rows, computed by `rollUpPaymentStatus()` in src/lib/payments/status.ts.
+ *
+ * Unchanged, deliberately: this is the vocabulary the admin table, the workflow
+ * stepper and the public confirmation page already read, and the seven-value
+ * lifecycle a single attempt moves through is a different question stored in a
+ * different column. See the PAYMENTS block below.
+ */
 export const PAYMENT_STATUSES = ["NONE", "PENDING", "PAID", "REFUNDED"] as const;
 export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 
 export function isPaymentStatus(v: unknown): v is PaymentStatus {
   return typeof v === "string" && (PAYMENT_STATUSES as readonly string[]).includes(v);
 }
+
+/* --------------------------------------------------------------------------
+ * PAYMENTS
+ *
+ * Four vocabularies, and keeping them apart is the point of this block. Each
+ * answers a different question, is written by different code, and is stored in
+ * a different column:
+ *
+ *   PAYMENT_STATUSES   BookingRequest.paymentStatus — "has this BOOKING been
+ *                      paid?" Four coarse values, unchanged since before any
+ *                      gateway existed, and read by the admin table, the
+ *                      workflow stepper and the confirmation page.
+ *   PAYMENT_LIFECYCLE  Payment.status — "where has this ATTEMPT got to?" Seven
+ *                      values, one row per attempt.
+ *   PAYMENT_PROVIDERS  Payment.provider — who moved the money.
+ *   PAYMENT_MODES      BookingRequest.paymentMode / Listing.paymentModes —
+ *                      which *shape* of payment a guest was offered.
+ *
+ * The first two are deliberately separate arrays rather than one extended, in
+ * exactly the way `BOOKING_STATUSES` and `BOOKING_FILTERS` above are. Folding
+ * the seven lifecycle values into `PAYMENT_STATUSES` would make every one of
+ * them a storable booking status, and `isPaymentStatus` — the guard on what may
+ * be written to that column — would start accepting "PROCESSING" as an answer
+ * to "is this booking paid?". `rollUpPaymentStatus()` in
+ * src/lib/payments/status.ts is the one place that maps between them.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The internal payment lifecycle. Provider vocabularies are mapped ONTO this
+ * and never leak past `src/lib/payments/status.ts`, so the booking domain never
+ * learns that Telr says "A" for authorised while Tabby says "AUTHORIZED".
+ *
+ *   PENDING           a row exists; nothing has been sent to a provider yet
+ *   AWAITING_PAYMENT  the guest has a checkout URL and has not finished
+ *   PROCESSING        the provider has it and has not settled it (3-D Secure,
+ *                     a BNPL underwriting decision, a delayed capture)
+ *   PAID              settled, verified SERVER-SIDE. The only status that may
+ *                     ever be reached from a provider response this platform
+ *                     asked for — never from a browser redirect.
+ *   FAILED            declined or errored. The guest may try again, which is a
+ *                     NEW row, not an edit of this one.
+ *   CANCELLED         abandoned by the guest, or expired unpaid
+ *   REFUNDED          money returned after a PAID
+ *
+ * Order matters here and is used: `isTerminalPayment` below and the roll-up
+ * both read it as a progression.
+ */
+export const PAYMENT_LIFECYCLE = [
+  "PENDING",
+  "AWAITING_PAYMENT",
+  "PROCESSING",
+  "PAID",
+  "FAILED",
+  "CANCELLED",
+  "REFUNDED",
+] as const;
+export type PaymentLifecycle = (typeof PAYMENT_LIFECYCLE)[number];
+
+export function isPaymentLifecycle(v: unknown): v is PaymentLifecycle {
+  return typeof v === "string" && (PAYMENT_LIFECYCLE as readonly string[]).includes(v);
+}
+
+/**
+ * A payment that will not change again on its own.
+ *
+ * Used to decide whether a callback is worth applying: a delivery describing a
+ * payment already in a terminal state is recorded and then ignored, which is
+ * the second half of the idempotency story (the first is the unique index on
+ * `PaymentEvent`). REFUNDED is terminal too — a refund is applied to a PAID
+ * row, and nothing follows it.
+ */
+export function isTerminalPayment(status: string): boolean {
+  return status === "PAID" || status === "FAILED" || status === "CANCELLED" || status === "REFUNDED";
+}
+
+/**
+ * Who can move money.
+ *
+ * "MANUAL" is a first-class provider rather than the absence of one. The owner
+ * collecting a bank transfer and confirming it at step 1 of the handover *is* a
+ * payment: it has an amount, a date, a person who recorded it and a reference
+ * the operator can match against a statement. Modelling it as a `Payment` row
+ * with `provider: "MANUAL"` means the ledger is complete — "what has this
+ * booking been paid" has one answer, whatever route the money took — and it is
+ * why `rollUpPaymentStatus` needs no special case for the off-platform path.
+ *
+ * Telr is the UAE card gateway. Tabby and Tamara are buy-now-pay-later, and are
+ * platform-level: they run on Rihla's own merchant accounts because most rest
+ * house owners here have no commercial registration of their own and could not
+ * hold one. See the note on the provider flags in prisma/schema.prisma.
+ */
+export const PAYMENT_PROVIDERS = ["MANUAL", "TELR", "TABBY", "TAMARA"] as const;
+export type PaymentProviderId = (typeof PAYMENT_PROVIDERS)[number];
+
+export function isPaymentProvider(v: unknown): v is PaymentProviderId {
+  return typeof v === "string" && (PAYMENT_PROVIDERS as readonly string[]).includes(v);
+}
+
+/** The gateways — everything except the off-platform path. */
+export const ONLINE_PAYMENT_PROVIDERS = PAYMENT_PROVIDERS.filter(
+  (p) => p !== "MANUAL",
+) as readonly Exclude<PaymentProviderId, "MANUAL">[];
+
+/**
+ * How a guest pays — the *shape* of the transaction, not the gateway.
+ *
+ *   MANUAL  bank transfer or cash, settled with the owner off-platform. The
+ *           booking stays NEW at stage DEPOSIT until the owner confirms it by
+ *           hand, exactly as every booking on this platform does today.
+ *   ONLINE  a hosted checkout, taken during the booking flow.
+ *   LINK    the owner confirms the request first, and Rihla then issues a link
+ *           bound to that one booking (the "semi-self" flow).
+ *
+ * A separate axis from `PAYMENT_PROVIDERS` because the same gateway serves two
+ * of them: a payment link and an in-flow checkout are both Telr, and an owner
+ * who wants the first but not the second is expressing something the provider
+ * list cannot say.
+ */
+export const PAYMENT_MODES = ["MANUAL", "ONLINE", "LINK"] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
+export function isPaymentMode(v: unknown): v is PaymentMode {
+  return typeof v === "string" && (PAYMENT_MODES as readonly string[]).includes(v);
+}
+
+/** Which part of a booking an attempt is for. */
+export const PAYMENT_KINDS = ["DEPOSIT", "BALANCE", "FULL"] as const;
+export type PaymentKind = (typeof PAYMENT_KINDS)[number];
+
+export function isPaymentKind(v: unknown): v is PaymentKind {
+  return typeof v === "string" && (PAYMENT_KINDS as readonly string[]).includes(v);
+}
+
+/**
+ * What the guest paid with, as the provider reported it.
+ *
+ * Recorded, never requested: this platform does not ask a guest to pick "Apple
+ * Pay" and then tell the gateway so. The gateway's hosted page offers whatever
+ * the merchant account has enabled, the guest chooses there, and the answer
+ * comes back on the verification response. Anything a provider names that is
+ * not in this list is stored as "OTHER" with the raw string kept in
+ * `Payment.metadata`, so an unrecognised wallet is never silently recorded as a
+ * card.
+ */
+export const PAYMENT_METHODS = [
+  "CARD",
+  "APPLE_PAY",
+  "SAMSUNG_PAY",
+  "GOOGLE_PAY",
+  "BNPL",
+  "BANK_TRANSFER",
+  "CASH",
+  "OTHER",
+] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export function isPaymentMethod(v: unknown): v is PaymentMethod {
+  return typeof v === "string" && (PAYMENT_METHODS as readonly string[]).includes(v);
+}
+
+/**
+ * The hidden field the listing editor posts whenever it renders the
+ * payment-mode control.
+ *
+ * It lives HERE rather than beside the mode helpers in
+ * src/lib/payments/methods.ts, and the reason is the module graph: the listing
+ * editor is a client component, and `@/lib/payments` reaches `links.ts`, which
+ * imports `node:crypto`. Pulling that into a browser bundle fails the build.
+ * This file is already imported by client components throughout — it is the
+ * project's home for shared vocabulary with no server dependencies — so the one
+ * string both sides need belongs in it.
+ *
+ * What it is for: `FormData` cannot distinguish an unticked checkbox group from
+ * one that was never rendered, because both post nothing. The save path reads
+ * this field's presence to tell an owner's "none" from the platform's "there was
+ * no choice to offer". See `readPaymentModes` in src/app/actions/listings.ts.
+ */
+export const PAYMENT_MODES_FIELD = "paymentModesPresent";
+
+/**
+ * The one currency this platform quotes, prices and charges in.
+ *
+ * Every stored amount is whole dirhams (see the schema's note on `Payment`), so
+ * a payment in anything else could not be reconciled against a booking total
+ * without a rate nobody has recorded. `assertChargeable()` in
+ * src/lib/payments/service.ts refuses anything else server-side rather than
+ * trusting a provider or a form to have sent the right one.
+ */
+export const PAYMENT_CURRENCY = "AED";
+
+/* -------------------------------------------------------------------------- */
 
 /* --------------------------------------------------------------------------
  * Audit actions — the vocabulary written to AuditLog.action.
@@ -544,6 +744,31 @@ export const AUDIT_ACTIONS = [
   // because both change who can read a listing's calendar.
   "CALENDAR_EXPORT_ENABLED",
   "CALENDAR_EXPORT_DISABLED",
+  // Payments. Every movement of money leaves a line here, whether a gateway or
+  // a person caused it — which is the point: "who confirmed this booking" must
+  // be answerable when the answer is "a Telr webhook did". The actor on a
+  // gateway-driven entry is the named system actor in src/lib/payments/service.ts
+  // rather than a blank, because a blank actor is indistinguishable from a bug
+  // that forgot to record one.
+  //
+  // The metadata carries the amount, the currency, the booking reference and
+  // the provider's reference — never a credential, never a card number, and
+  // never the provider payload verbatim.
+  "PAYMENT_INITIATED",
+  "PAYMENT_SETTLED",
+  "PAYMENT_FAILED",
+  "PAYMENT_REFUNDED",
+  // Issuing a link authorises a payment against one booking, and revoking it
+  // takes that authority back. Both are worth a line for the same reason the
+  // calendar-token actions above are.
+  "PAYMENT_LINK_ISSUED",
+  "PAYMENT_LINK_REVOKED",
+  // A payment verified and settled, but the booking it belongs to could not be
+  // confirmed — almost always because the nights were taken while the guest was
+  // on the provider's page. The guest has paid and has no reservation, so this
+  // is the one payment entry that is a WORK QUEUE rather than a record: an
+  // operator has to refund or rebook. See `confirmBookingForPayment`.
+  "PAYMENT_NEEDS_REVIEW",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

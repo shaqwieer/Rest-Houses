@@ -14,6 +14,7 @@ import {
   revertRequestStage,
   type StageSubmission,
 } from "@/app/actions/requests";
+import { issueBookingPayLink } from "@/app/actions/payments";
 import {
   BOOKING_STAGES,
   isStageComplete,
@@ -119,6 +120,7 @@ export function BookingWorkflow({
   scope,
   reviewInviteDays,
   bank,
+  canIssuePaymentLink = false,
 }: {
   booking: WorkflowBooking;
   scope: "admin" | "owner";
@@ -130,6 +132,15 @@ export function BookingWorkflow({
    * Blank fields render nothing at all — see `BankDetailsPanel`.
    */
   bank?: BankDetails | null;
+  /**
+   * Whether Rihla can issue a payment link for this booking right now.
+   *
+   * Computed server-side, because it depends on gateway credentials a browser
+   * must not be told about — what crosses is the verdict. False on every
+   * deployment today, and the step-2 control renders nothing at all when it is,
+   * so the owner's screen is exactly what it was.
+   */
+  canIssuePaymentLink?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -350,6 +361,7 @@ export function BookingWorkflow({
                       money={money}
                       percent={percent}
                       reviewUrl={reviewUrl}
+                      canIssuePaymentLink={canIssuePaymentLink}
                       onSubmit={submit}
                       onConfirmCommission={onConfirmCommission}
                     />
@@ -392,6 +404,7 @@ function StepPanel({
   money,
   percent,
   reviewUrl,
+  canIssuePaymentLink,
   onSubmit,
   onConfirmCommission,
 }: {
@@ -404,6 +417,7 @@ function StepPanel({
   money: (n: number) => string;
   percent: (n: number) => string;
   reviewUrl: string | null;
+  canIssuePaymentLink: boolean;
   onSubmit: (input: StageSubmission) => void;
   onConfirmCommission: () => void;
 }) {
@@ -480,6 +494,18 @@ function StepPanel({
             hint={money(outstanding)}
           />
         </div>
+        {/* ---- the semi-self payment link ----
+
+            Step 2 is where it belongs: the owner has already confirmed the
+            booking at step 1 — which is the precondition `issuePaymentLink`
+            enforces server-side — and this step is where they are chasing what
+            is still owed. Asking the guest to pay before the dates were agreed
+            would be the wrong way round, commercially and in the code.
+
+            Renders nothing unless the platform can actually issue one, so on
+            every deployment today this step looks exactly as it did. */}
+        {canIssuePaymentLink && <PaymentLinkBox booking={booking} />}
+
         <StepButton
           pending={pending}
           onClick={() => onSubmit({ step, balanceCollected: Number(balance) || 0 })}
@@ -657,6 +683,96 @@ function StepPanel({
 }
 
 /* -------------------------------------------------------------------------- */
+
+/**
+ * "Send the guest a payment link" — the owner-facing half of the semi-self flow.
+ *
+ * Deliberately modelled on `ReviewLinkBox` below rather than invented: both
+ * mint a single-use token for a guest who has no account, both hand it over on
+ * WhatsApp, and an owner who has used one already knows how the other works.
+ *
+ * The link is held in local state as well as returned, so it appears the moment
+ * it exists rather than after a router refresh — same reason `freshLink` exists
+ * for the review invite.
+ *
+ * Nothing about the amount is decided here. `issueBookingPayLink` reads what is
+ * owed from the booking row, and the link the guest opens reads it back from
+ * the `PaymentLink` row; this component never sees a figure it could get wrong.
+ */
+function PaymentLinkBox({ booking }: { booking: WorkflowBooking }) {
+  const { t } = useLocale();
+  const { toast } = useToast();
+  const [pending, startTransition] = useTransition();
+  const [url, setUrl] = useState<string | null>(null);
+
+  const message = `${booking.listingName} — ${booking.reference}\n${url ?? ""}`;
+
+  if (!url) {
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const result = await issueBookingPayLink(booking.id, "BALANCE");
+            if (!result.ok) {
+              toast(result.error, "error");
+              return;
+            }
+            if (result.url) setUrl(result.url);
+            toast(result.message ?? t.payments.linkIssued, "ok");
+          })
+        }
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border border-gold-500 bg-gold-100 px-3 py-2 text-[11.5px] font-bold text-bronze disabled:opacity-60"
+      >
+        <Icon name="link" size={14} />
+        {t.workflow.issuePaymentLink}
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 min-w-0 rounded-xl border border-gold-500 bg-gold-100 p-2.5">
+      <p className="m-0 mb-1.5 text-[11.5px] font-bold text-bronze">
+        {t.workflow.paymentLinkReady}
+      </p>
+      {/* `break-all` + `line-clamp-2` for the reason spelled out on the review
+          link below: a `truncate`d URL still forces its own min-content width
+          onto the whole admin layout and zooms a phone out to fit. */}
+      <p
+        dir="ltr"
+        title={url}
+        className="m-0 mb-2 line-clamp-2 rounded-lg bg-surface px-2 py-1.5 text-[10.5px] break-all text-muted"
+      >
+        {url}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard
+              ?.writeText(url)
+              .then(() => toast(t.workflow.linkCopied, "ok"))
+              .catch(() => toast(t.workflow.copyLink, "error"));
+          }}
+          className="flex min-w-28 flex-1 items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-2 py-2 text-[11.5px] font-bold text-ink"
+        >
+          <Icon name="content_copy" size={14} />
+          {t.workflow.copyLink}
+        </button>
+        <a
+          href={whatsappLink(booking.customerPhone, message)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-w-28 flex-1 items-center justify-center gap-1.5 rounded-lg bg-wa px-2 py-2 text-[11.5px] font-bold text-wa-ink no-underline hover:no-underline"
+        >
+          <Icon name="chat" size={14} />
+          {t.workflow.sendOnWhatsapp}
+        </a>
+      </div>
+    </div>
+  );
+}
 
 function ReviewLinkBox({ url, booking }: { url: string; booking: WorkflowBooking }) {
   const { t, locale } = useLocale();

@@ -16,6 +16,7 @@ import {
 import { occupiedDays, todayISO } from "@/lib/dates";
 import { generateInviteToken, reviewInviteUrl } from "@/lib/reviews";
 import { getSettings } from "@/lib/settings";
+import { recordManualPayment } from "@/lib/payments";
 import { getI18n } from "@/lib/i18n/server";
 import type { Dictionary } from "@/lib/i18n";
 import type { ActionResult } from "./listings";
@@ -292,6 +293,131 @@ async function applyRequestStatus(
   return { ok: true, message: messages[status] };
 }
 
+/**
+ * Confirm a booking because a payment for it has been VERIFIED.
+ *
+ * Called from the payment callback path — see
+ * src/app/api/payments/[provider]/shared.ts — and from nowhere else.
+ *
+ * ─── Why this exists rather than the callback writing the columns ───────────
+ * Confirming is not a status change. It writes the stay's nights into
+ * `Availability` as BOOKED, increments the listing's counter, advances the
+ * handover stage and revalidates both dashboards — and it has to re-check for a
+ * clash first, because somebody else may have been confirmed for overlapping
+ * dates while the guest was on the provider's payment page. All of that already
+ * exists, correctly, in `applyRequestStatus`. A second copy in the payment layer
+ * is precisely the drift this file's header warns about.
+ *
+ * ─── Why it takes no session, and what makes that safe ─────────────────────
+ * Every other path into `applyRequestStatus` is guarded by `requireAdmin` or
+ * `requireApprovedOwner`. This one has no signed-in user at all: the caller is a
+ * gateway callback, and the guest is not an account holder on this platform.
+ *
+ * The authorisation is the VERIFIED PAYMENT — so this function takes a
+ * `paymentId` and re-reads that row itself, rather than accepting a booking and
+ * an amount from whoever called it. That is the difference between a comment
+ * asserting the caller did the right thing and a function that cannot be made to
+ * do the wrong one: it is exported from a `"use server"` module, which makes it
+ * reachable as a POST, and a signature of `(bookingId, amount)` would let anyone
+ * who guessed a booking id confirm a stay and close a calendar.
+ *
+ * What it therefore checks for itself:
+ *   * the payment exists
+ *   * its status is PAID — set only by `settlePayment`, which is reached only
+ *     through a server-side verification against the provider
+ * The booking and the amount are then DERIVED from that row, so they cannot
+ * disagree with the money that was actually taken.
+ *
+ * ─── When the nights have gone ──────────────────────────────────────────────
+ * The guest has paid and the dates are no longer available. This does NOT undo
+ * the payment and does not confirm the booking: it writes an audit row saying so
+ * and returns the failure, leaving a paid, unconfirmed booking for an operator
+ * to refund or rebook. Quietly confirming over the clash would double-sell a
+ * rest house; quietly discarding the payment would lose money that has left the
+ * guest's account. Both are worse than a queue entry.
+ */
+export async function confirmBookingForPayment(
+  paymentId: string,
+): Promise<{ ok: true; confirmed: boolean } | { ok: false; error: string }> {
+  const { t } = await getI18n();
+
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      kind: true,
+      provider: true,
+      providerRef: true,
+      booking: { select: { id: true, reference: true, status: true } },
+    },
+  });
+
+  // No such payment, or one that has not actually settled. Either way there is
+  // no authority here to confirm anything, and saying so is the whole guard.
+  if (!payment) return { ok: false, error: t.validation.requestNotFound };
+  if (payment.status !== "PAID") return { ok: false, error: t.validation.unauthorized };
+
+  const booking = payment.booking;
+
+  // Already confirmed (the payment-link flow always is), or rejected/cancelled.
+  // Not a failure — there is simply nothing to confirm, and a second webhook
+  // for the same payment must not report an error the provider would retry.
+  if (booking.status !== "NEW") return { ok: true, confirmed: false };
+
+  const actor = { id: null, email: "system:payments", role: "SYSTEM" };
+
+  const result = await applyRequestStatus(
+    { id: booking.id },
+    "CONFIRMED",
+    t,
+    {
+      stage: "BALANCE",
+      depositConfirmedAt: new Date(),
+      // What actually arrived, read off the settled payment — the same
+      // distinction step 1 of the workflow draws between `depositDue` and
+      // `depositCollected`.
+      depositCollected: payment.amount,
+    },
+    auditData({
+      actor,
+      action: "BOOKING_STAGE_ADVANCED",
+      entityType: "BookingRequest",
+      entityId: booking.id,
+      summary: `${booking.reference} — confirmed by ${payment.provider} payment`,
+      metadata: {
+        step: "DEPOSIT",
+        scope: "payment",
+        provider: payment.provider,
+        providerRef: payment.providerRef,
+        amount: payment.amount,
+      },
+    }),
+  );
+
+  if (!result.ok) {
+    await prisma.auditLog.create({
+      data: auditData({
+        actor,
+        action: "PAYMENT_NEEDS_REVIEW",
+        entityType: "BookingRequest",
+        entityId: booking.id,
+        summary: `${booking.reference} — paid, but could not be confirmed`,
+        metadata: {
+          provider: payment.provider,
+          providerRef: payment.providerRef,
+          amount: payment.amount,
+          reason: result.error,
+        },
+      }),
+    });
+    return { ok: false, error: result.error };
+  }
+
+  return { ok: true, confirmed: true };
+}
+
 /** Remove a request permanently — for spam or duplicates. */
 export async function deleteRequest(requestId: string): Promise<ActionResult> {
   await requireAdmin();
@@ -535,6 +661,37 @@ async function applyStageAdvance(
         metadata: { step, depositCollected, securityCollected, scope },
       }),
     );
+
+    /**
+     * The ledger entry for money the owner collected off-platform.
+     *
+     * Step 1 has always recorded the deposit on the booking itself
+     * (`depositCollected`), and that column remains what the workflow reads —
+     * nothing about the stepper changes. What is added here is a `Payment` row
+     * with `provider: "MANUAL"`, so that "what has this booking been paid" has
+     * ONE answer whatever route the money took: a bank transfer confirmed by an
+     * owner and a card charged through Telr are two rows in the same ledger,
+     * and `paymentStatus` rolls up over both.
+     *
+     * Deliberately outside the confirmation's transaction, and deliberately not
+     * awaited into the result. The failure mode if this write does not happen
+     * is that `paymentStatus` stays "NONE" on a confirmed booking — which is
+     * *exactly* what this platform did before the payment tables existed, and
+     * is therefore a return to the previous behaviour rather than a corruption
+     * of the new one. Folding it into the transaction would mean a ledger
+     * problem could refuse a confirmation the owner has already taken money
+     * for, which is a far worse trade.
+     *
+     * Skipped entirely when nothing was collected: `assertChargeable` rejects 0,
+     * and a booking with no deposit has no payment to record.
+     */
+    if (result.ok && depositCollected > 0) {
+      await recordManualPayment({
+        bookingId: booking.id,
+        amount: depositCollected,
+        actor,
+      });
+    }
 
     // `applyRequestStatus` already revalidated everything and reported the
     // clash case ("someone else took these nights"), so its answer is final.

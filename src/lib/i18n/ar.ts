@@ -949,6 +949,8 @@ export const ar = {
     dayUseCheckOutHint: "الوقت الذي يغادر فيه الضيف",
     capacityLabel: "السعة (ضيف)",
     descriptionLabel: "الوصف",
+    listingPaymentModes: "طرق الدفع المتاحة لهذه الاستراحة",
+    listingPaymentModesHint: "لا يمكن تفعيل طريقة لم تفعّلها المنصة. إلغاء الكل يعني الاتفاق مع الضيف عبر الواتساب.",
     listingInstagram: "رابط إنستقرام الاستراحة",
     listingInstagramHint: "يظهر كأيقونة إنستقرام في صفحة الاستراحة — اتركه فارغًا إن لم يوجد",
     descriptionPlaceholder: "اكتب وصفًا موجزًا يبرز ما يميّز استراحتك.",
@@ -1101,7 +1103,23 @@ export const ar = {
     fieldFreeCancel: "الإلغاء المجاني (ساعة)",
     fieldCheckIn: "وقت الدخول",
     fieldCheckOut: "وقت الخروج",
-    enableOnlineDeposit: "تفعيل دفع العربون إلكترونيًا",
+    enableOnlinePayments: "تفعيل الدفع الإلكتروني",
+    paymentProviders: "بوابات الدفع",
+    providerTelr: "Telr — بطاقات ومحافظ",
+    providerTelrHint: "فيزا، ماستركارد، Apple Pay و Samsung Pay حسب ما هو مفعّل في حساب التاجر",
+    providerTabby: "Tabby — الدفع بالتقسيط",
+    providerTamara: "Tamara — الدفع بالتقسيط",
+    providerBnplHint: "عبر حساب المنصة التجاري — لا يحتاج المالك إلى سجل تجاري خاص به",
+    providerLive: "جاهزة",
+    providerNoKeys: "بانتظار المفاتيح",
+    providerOffGlobally: "الدفع الإلكتروني موقوف",
+    providerOff: "غير مفعّلة",
+    enablePaymentLinks: "تفعيل روابط الدفع",
+    paymentLinksHint:
+      "يؤكد المالك الحجز أولًا، ثم تُنشئ المنصة رابط دفع مرتبطًا بذلك الحجز وحده",
+    fieldPaymentLinkDays: "صلاحية رابط الدفع (بالأيام)",
+    credentialsInEnv:
+      "تُضاف مفاتيح بوابات الدفع في متغيّرات البيئة على الخادم، ولا تُحفظ ولا تُعرض في هذه الصفحة إطلاقًا.",
     gatewayNotWired: "بوابة الدفع غير مربوطة بعد. الخطوات مكتوبة في",
     fieldHeroTitle: "عنوان الغلاف",
     fieldHeroTitleAlt: "السطر الثاني (بلون مميّز)",
@@ -1536,6 +1554,61 @@ export const ar = {
     waitForCheck: "انتظر اكتمال التحقق الأمني قبل الإرسال",
   },
 
+  /* -------------------------------------------------------------- payments */
+  //
+  // The guest-facing half of the payment layer, plus the operator's switches.
+  //
+  // Every string here is reachable only when online payments are switched on
+  // AND a gateway is configured — which is no deployment today. They exist now
+  // so that connecting a provider later is a credential change rather than a
+  // translation project.
+  payments: {
+    // --- how the guest chooses to pay ---
+    chooseMethod: "طريقة الدفع",
+    modeMANUAL: "تحويل بنكي أو نقدًا",
+    modeMANUALHint: "تتفق مع المالك على العربون عبر الواتساب — الطريقة المعتمدة حاليًا",
+    modeONLINE: "دفع إلكتروني",
+    modeONLINEHint: "بطاقة أو محفظة رقمية عبر بوابة دفع آمنة",
+    modeLINK: "رابط دفع",
+    modeLINKHint: "يؤكد المالك الحجز أولًا ثم يصلك رابط دفع خاص بحجزك",
+
+    // --- the payment link page ---
+    payTitle: "إتمام الدفع",
+    paySubtitle: "ادفع المبلغ المستحق على حجزك بأمان",
+    payNow: "ادفع الآن",
+    payAmount: "المبلغ المستحق",
+    payBooking: "رقم الحجز",
+    payProvider: "اختر وسيلة الدفع",
+    payRedirecting: "جارٍ تحويلك إلى صفحة الدفع الآمنة…",
+    paySecureNote:
+      "تتم عملية الدفع على صفحة مزوّد الخدمة نفسه، ولا تُحفظ بيانات بطاقتك على هذه المنصة إطلاقًا.",
+    payLinkExpiresOn: (date: string) => `صالح حتى ${date}`,
+
+    // --- provider names (proper nouns — same in both languages) ---
+    providerTELR: "بطاقة (Telr)",
+    providerTABBY: "تابي — قسّمها",
+    providerTAMARA: "تمارا — قسّمها",
+
+    // --- outcomes ---
+    paidBanner: "تم استلام دفعتك بنجاح",
+    pendingBanner: "دفعتك قيد المعالجة — سنؤكد الحجز فور اكتمالها",
+    linkIssued: "تم إنشاء رابط الدفع",
+    linkRevoked: "تم إلغاء رابط الدفع",
+
+    // --- errors, resolved from the codes the payment library returns ---
+    errorDisabled: "الدفع الإلكتروني غير مفعّل حاليًا",
+    errorProviderUnavailable: "وسيلة الدفع هذه غير متاحة حاليًا",
+    errorNotPayable: "لا يمكن الدفع لهذا الحجز في وضعه الحالي",
+    errorNothingDue: "لا يوجد مبلغ مستحق على هذا الحجز",
+    errorAlreadyPaid: "تم سداد هذا الحجز بالفعل",
+    errorAmount: "المبلغ غير صالح — تواصل معنا",
+    errorGateway: "تعذّر بدء عملية الدفع — حاول مرة أخرى بعد قليل",
+    errorLinkInvalid: "رابط الدفع غير صحيح",
+    errorLinkExpired: "انتهت صلاحية رابط الدفع — اطلب رابطًا جديدًا من المالك",
+    errorLinkUsed: "تم استخدام رابط الدفع هذا من قبل",
+    errorLinkSpentByFailure: "تعذّر إتمام الدفع ولم يعد هذا الرابط صالحًا — اطلب رابطًا جديدًا من المالك",
+  },
+
   /* --------------------------------------------------------------- statuses */
   status: {
     // booking
@@ -1629,6 +1702,8 @@ export const ar = {
     reviewBody: (days: string) =>
       `أنشئ رابطاً مؤقتاً صالحاً ${days} يوماً ليضيف الضيف تقييمه — ويصل التقييم للإدارة للموافقة عليه قبل نشره.`,
     reviewAction: "إنشاء رابط التقييم",
+    issuePaymentLink: "إنشاء رابط دفع للضيف",
+    paymentLinkReady: "رابط الدفع جاهز — أرسله للضيف",
     reviewLinkReady: "رابط التقييم جاهز — أرسله للضيف",
     copyLink: "نسخ الرابط",
     linkCopied: "تم نسخ الرابط",
@@ -1675,6 +1750,13 @@ export const ar = {
     CALENDAR_FEED_REMOVED: "حذف تقويم خارجي",
     CALENDAR_EXPORT_ENABLED: "تفعيل رابط تصدير التقويم",
     CALENDAR_EXPORT_DISABLED: "إيقاف رابط تصدير التقويم",
+    PAYMENT_INITIATED: "بدء عملية دفع",
+    PAYMENT_SETTLED: "تأكيد استلام دفعة",
+    PAYMENT_FAILED: "فشل عملية دفع",
+    PAYMENT_REFUNDED: "استرجاع دفعة",
+    PAYMENT_LINK_ISSUED: "إصدار رابط دفع",
+    PAYMENT_LINK_REVOKED: "إلغاء رابط دفع",
+    PAYMENT_NEEDS_REVIEW: "دفعة تحتاج مراجعة",
     OWNER_APPROVED: "الموافقة على مالك",
     OWNER_REJECTED: "رفض طلب مالك",
     OWNER_SUSPENDED: "إيقاف مالك",

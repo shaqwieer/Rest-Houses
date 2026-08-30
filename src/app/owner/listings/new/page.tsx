@@ -1,5 +1,6 @@
 import { ListingEditor } from "@/components/admin/listing-editor";
 import { getSettings } from "@/lib/settings";
+import { platformPaymentModes } from "@/lib/payments";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { formatWhatsappDisplay } from "@/lib/whatsapp";
 import { platformPolicyFor } from "@/lib/policies";
@@ -25,6 +26,7 @@ export default async function NewOwnerListingPage() {
     <ListingEditor
       scope="owner"
       platformDepositPercent={settings.depositPercent}
+      platformPaymentModes={platformPaymentModes(settings)}
       platformPolicy={platformPolicyFor(settings, locale)}
       ownerWhatsapp={formatWhatsappDisplay(owner.whatsapp)}
       draft={{
@@ -63,6 +65,7 @@ export default async function NewOwnerListingPage() {
         lat: settings.mapLat,
         lng: settings.mapLng,
         depositPercent: null,
+        paymentModes: null,
         amenityIds: ["wifi", "ac", "park", "bbq", "wc"],
         categoryIds: ["family"],
         verified: false,

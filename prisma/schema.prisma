@@ -61,8 +61,8 @@ datasource db {
 // admin suspends the account.
 // ---------------------------------------------------------------------------
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id    String @id @default(cuid())
+  email String @unique
 
   // ---------------------------------------------------------------------
   // The owner's sign-in name: their phone number, canonical digits, no "+".
@@ -89,7 +89,7 @@ model User {
   // an owner left NULL by that collision cannot sign in until an operator gives
   // them a distinct number from /admin/owners. That surface shows the username
   // (or "—") on every row precisely so the case is visible rather than silent.
-  username     String?  @unique
+  username String? @unique
 
   name         String?
   passwordHash String
@@ -99,6 +99,9 @@ model User {
 
   ownerProfile OwnerProfile?
   auditLogs    AuditLog[]    @relation("AuditActor")
+  // Payment links this account issued. The back-reference exists only because
+  // Prisma requires both sides of a relation; nothing queries a user's links.
+  paymentLinks PaymentLink[]
 
   @@index([role])
 }
@@ -224,10 +227,10 @@ model SiteSettings {
   id Int @id @default(1)
 
   // Identity
-  siteName    String  @default("استراحات الرمال")
-  tagline     String  @default("استراحات وشاليهات الإمارات")
-  logoUrl     String? // uploaded via the image adapter; falls back to the "و" monogram
-  logoGlyph   String  @default("و") // single letter shown when there is no logo image
+  siteName  String  @default("استراحات الرمال")
+  tagline   String  @default("استراحات وشاليهات الإمارات")
+  logoUrl   String? // uploaded via the image adapter; falls back to the "و" monogram
+  logoGlyph String  @default("و") // single letter shown when there is no logo image
 
   // ---------------------------------------------------------------------
   // English siblings for every stored piece of *copy*.
@@ -296,13 +299,13 @@ model SiteSettings {
   // A legal disclosure, not a marketing string: a UAE business is expected to
   // publish it. "" hides the line entirely rather than printing a label with
   // nothing after it.
-  tradeLicense      String @default("")
+  tradeLicense String @default("")
 
   // Google Maps location used by the footer map + settings preview
-  mapLat       Float   @default(24.7614)
-  mapLng       Float   @default(55.3340)
-  mapZoom      Int     @default(10)
-  addressLine  String? @default("دبي — الإمارات العربية المتحدة")
+  mapLat      Float   @default(24.7614)
+  mapLng      Float   @default(55.3340)
+  mapZoom     Int     @default(10)
+  addressLine String? @default("دبي — الإمارات العربية المتحدة")
 
   // Theme — hex values injected as CSS custom properties on <html>.
   // See src/app/layout.tsx and src/styles/theme.ts.
@@ -319,9 +322,9 @@ model SiteSettings {
   // somewhere, and an operator who later wants a fee can switch it back on from
   // /admin/settings — but at 0 every fee row disappears from the interface
   // rather than rendering "0%". See `quote()` in src/lib/pricing.ts.
-  serviceFeePercent Int     @default(0)
-  depositPercent    Int     @default(30)
-  freeCancelHours   Int     @default(48)
+  serviceFeePercent Int @default(0)
+  depositPercent    Int @default(30)
+  freeCancelHours   Int @default(48)
 
   // ---------------------------------------------------------------------
   // The platform's fallback arrival and departure hours, as numbers.
@@ -347,8 +350,8 @@ model SiteSettings {
 
   // Legacy free text — read only while the hour above is null. Emptied row by
   // row as operators pick an hour; `npm run policy-audit` lists what is left.
-  checkInTime       String  @default("٤ عصرًا")
-  checkOutTime      String  @default("١٢ ظهرًا")
+  checkInTime  String @default("٤ عصرًا")
+  checkOutTime String @default("١٢ ظهرًا")
 
   // ---------------------------------------------------------------------
   // The platform's commission — a separate thing from `serviceFeePercent`,
@@ -369,9 +372,71 @@ model SiteSettings {
   // step 7, once the stay is fully closed out — see `ReviewInvite`.
   reviewInviteDays Int @default(15)
 
-  // Future online deposit payments. Keep false until a gateway is wired —
-  // see src/lib/payments/index.ts for the disabled stub.
+  // ---------------------------------------------------------------------
+  // ONLINE PAYMENTS — the master switch.
+  //
+  // The column name is historical: it was added when the only thing a gateway
+  // would ever have taken was the deposit. It is now the single global on/off
+  // for *any* card or BNPL checkout on this platform, and it is read through
+  // `onlinePaymentsEnabled()` in src/lib/payments/config.ts rather than
+  // directly, so the widened meaning lives in one place.
+  //
+  // It was NOT renamed, and that is a decision rather than laziness: renaming
+  // it means a migration that rewrites the column on a table with exactly one
+  // row, plus touching every existing reader, to change a string nobody outside
+  // this file ever sees. A second boolean beside it would have been worse — two
+  // globals for one question, and a support call about which of them wins.
+  //
+  // Switching it off is a hard stop: no checkout can be initiated and no
+  // provider is offered, whatever the per-provider flags below say. Manual /
+  // bank transfer is unaffected and keeps working exactly as it does today,
+  // which is what makes this switch safe to leave off indefinitely.
   depositPaymentsEnabled Boolean @default(false)
+
+  // ---------------------------------------------------------------------
+  // Per-provider switches.
+  //
+  // A provider is offered to a guest only when ALL THREE of these hold:
+  //   1. `depositPaymentsEnabled` above is true
+  //   2. the flag here is true
+  //   3. the provider's credentials are present in the environment
+  //
+  // Three gates rather than one, because they fail for different reasons and an
+  // operator has to be able to tell them apart: (1) is "we don't take card
+  // payments yet", (2) is "we do, but not through this provider", and (3) is
+  // "somebody switched this on before the keys were deployed". Without (3) a
+  // toggle in the admin UI could strand a guest on a checkout button that
+  // cannot produce a checkout. See `providerState()` in
+  // src/lib/payments/config.ts, which returns which of the three is missing.
+  //
+  // ─── Why Tabby and Tamara are platform-level ─────────────────────────────
+  // There is no per-owner equivalent of these flags, deliberately. Many rest
+  // house owners here have no commercial registration of their own, so they
+  // cannot hold a Tabby or Tamara merchant account — requiring one per owner
+  // would exclude most of the catalogue. The guest pays Rihla through Rihla's
+  // own approved accounts, and the resulting `Payment` row carries the booking
+  // that identifies the rest house. What an owner *can* choose is whether a
+  // listing takes online payment at all — `Listing.paymentModes`.
+  //
+  // All three default false. Credentials for none of them exist yet, and a
+  // defaulted-true flag would mean a fresh install advertises a checkout it
+  // cannot complete.
+  telrEnabled   Boolean @default(false)
+  tabbyEnabled  Boolean @default(false)
+  tamaraEnabled Boolean @default(false)
+
+  // Whether Rihla may issue payment links for a confirmed booking — the
+  // "semi-self" flow. Separate from the provider flags because it is a
+  // different *shape* of payment (the owner confirms first, then the guest pays
+  // a link) rather than a different gateway; the link itself checks out through
+  // whichever provider is enabled above.
+  paymentLinksEnabled Boolean @default(false)
+
+  // How long an issued payment link stays usable, in days. Modelled on
+  // `reviewInviteDays` above, and short for the same reason a review link is:
+  // the link authorises a payment against one booking, and an unbounded one is
+  // a bearer token with no expiry sitting in a WhatsApp thread forever.
+  paymentLinkDays Int @default(7)
 
   // SEO
   seoTitle       String? @default("حجز الاستراحات والشاليهات في الإمارات")
@@ -453,8 +518,8 @@ model Listing {
   nameEn        String?
   descriptionEn String?
   areaEn        String?
-  lat  Float  @default(24.7614)
-  lng  Float  @default(55.3340)
+  lat           Float   @default(24.7614)
+  lng           Float   @default(55.3340)
 
   // Pricing in AED (whole dirhams — no fractional fils in this market)
   pricePerNight Int
@@ -487,7 +552,7 @@ model Listing {
   //     otherwise                               → pricePerNight
   holidayPrice Int @default(0)
 
-  capacity      Int @default(20)
+  capacity Int @default(20)
 
   // ---------------------------------------------------------------------
   // Which days `weekendPrice` applies to. "short" | "long" — see the block
@@ -530,12 +595,12 @@ model Listing {
   // that does not do day bookings would start advertising a leave-by time for a
   // booking it does not take. See `resolveDayUseCheckOut` in
   // src/lib/policies.ts, which deliberately has no platform tier.
-  dayUsePrice          Int    @default(0) // weekdays, no overnight stay
-  dayUseWeekendPrice   Int    @default(0) // Friday/Saturday, no overnight stay
+  dayUsePrice          Int     @default(0) // weekdays, no overnight stay
+  dayUseWeekendPrice   Int     @default(0) // Friday/Saturday, no overnight stay
   dayUseCheckOutHour   Int?
   // Legacy free text — read only while the hour above is null, per the note on
   // SiteSettings.checkInHour.
-  dayUseCheckOutTime   String @default("")
+  dayUseCheckOutTime   String  @default("")
   dayUseCheckOutTimeEn String?
 
   // Refundable security deposit (مبلغ التأمين), collected by the owner and
@@ -579,9 +644,9 @@ model Listing {
   // Denormalised review aggregates, recomputed on review write
   // (`recalcListingRating` in src/lib/reviews.ts). 0 reviews renders the
   // design's "استراحة جديدة — لا تقييمات بعد" state.
-  rating       Float @default(0)
-  reviewsCount Int   @default(0)
-  bookingsCount Int  @default(0)
+  rating        Float @default(0)
+  reviewsCount  Int   @default(0)
+  bookingsCount Int   @default(0)
 
   // ---------------------------------------------------------------------
   // The rest house's own stay policy — arrival, departure, free cancellation.
@@ -629,7 +694,7 @@ model Listing {
   // this is "". Backfilling those rows would have frozen today's platform
   // window onto the whole catalogue and deleted the inheritance that null
   // means. See `resolveCancelPolicy`.
-  cancelPolicy   String  @default("")
+  cancelPolicy String @default("")
 
   freeCancelHours Int?
 
@@ -641,6 +706,27 @@ model Listing {
   // `resolveDepositPercent()` in src/lib/pricing.ts — never read it directly,
   // or a null will silently become a 0% deposit.
   depositPercent Int?
+
+  // ---------------------------------------------------------------------
+  // Which ways this rest house will take money — a JSON array of PAYMENT_MODES
+  // ids, e.g. ["MANUAL","ONLINE"].
+  //
+  // null means "use the platform's", exactly as `depositPercent` above does,
+  // and for the same reason: an empty array is a real, different answer that an
+  // owner can choose ("take nothing online, talk to me"), so a truthiness check
+  // here would silently re-enable a checkout the owner had switched off. Read
+  // it through `resolveListingPaymentModes()` in src/lib/payments/methods.ts,
+  // never directly.
+  //
+  // JSON text rather than String[], matching `amenities` and `categories` and
+  // the portability note at the top of this file. The list is at most three
+  // short ids and is never filtered on in SQL, so the cost that note describes
+  // does not apply here.
+  //
+  // Whatever this says, a mode still has to be enabled platform-side to be
+  // offered: this can only ever narrow the platform's list, never widen it. An
+  // owner cannot switch on a gateway the platform has not connected.
+  paymentModes String?
 
   // ---------------------------------------------------------------------
   // Owner.
@@ -965,7 +1051,7 @@ model BookingRequest {
   //
   // Defaults false, so every row that predates this is an overnight stay —
   // which every one of them was.
-  dayUse   Boolean @default(false)
+  dayUse Boolean @default(false)
 
   // ---------------------------------------------------------------------
   // Where the booking came from — one of BOOKING_SOURCES in
@@ -998,10 +1084,10 @@ model BookingRequest {
 
   // Price snapshot at request time. Stored so a later price change on the
   // listing does not silently rewrite the history of what was quoted.
-  subtotal     Int
-  serviceFee   Int
-  total        Int
-  depositDue   Int @default(0)
+  subtotal   Int
+  serviceFee Int
+  total      Int
+  depositDue Int @default(0)
 
   // The deposit *rate* that produced `depositDue`, snapshotted alongside it.
   //
@@ -1089,10 +1175,45 @@ model BookingRequest {
   commissionConfirmedAt DateTime? // step 6 — operator says it arrived
   reviewInvitedAt       DateTime? // step 7 — the guest's link was issued
 
-  // Future online deposit: "NONE" | "PENDING" | "PAID" | "REFUNDED".
-  // Nothing writes anything but "NONE" until a gateway is enabled.
+  // ---------------------------------------------------------------------
+  // Payment — the booking-level ROLL-UP, not the ledger.
+  //
+  // `Payment` rows below are the ledger: one per attempt, each with its own
+  // provider, amount and lifecycle. These two columns answer the one question
+  // the booking itself has to answer — "has this stay been paid for?" — and are
+  // recomputed from the attempts by `rollUpPaymentStatus()` in
+  // src/lib/payments/status.ts whenever one of them settles.
+  //
+  // Keeping them is deliberate rather than legacy tolerance. Every existing
+  // read (the admin table, the workflow stepper, the confirmation page) wants
+  // exactly this scalar, and making each of them aggregate a relation to get it
+  // would be a query per row on a paginated list. The vocabulary is unchanged —
+  // "NONE" | "PENDING" | "PAID" | "REFUNDED", `PAYMENT_STATUSES` in
+  // src/lib/constants.ts — so nothing that reads them today needs to change.
+  //
+  // `paymentReference` holds the provider's reference for whichever attempt
+  // succeeded, so an operator reconciling a bank statement has something to
+  // match without opening the ledger.
   paymentStatus    String  @default("NONE")
   paymentReference String?
+
+  // ---------------------------------------------------------------------
+  // How the guest chose to pay — one of PAYMENT_MODES in src/lib/constants.ts.
+  //
+  //   "MANUAL" — bank transfer / cash, settled with the owner off-platform and
+  //              confirmed by hand at step 1 of the handover workflow.
+  //   "ONLINE" — a card or BNPL checkout hosted by a gateway.
+  //   "LINK"   — the owner confirmed the request first, and Rihla then issued a
+  //              payment link bound to this booking (see `PaymentLink`).
+  //
+  // Defaults to "MANUAL" because that is precisely what every booking predating
+  // this column was: the flow saved the request and handed the guest to
+  // WhatsApp, where the owner collected the deposit themselves. No backfill is
+  // needed and no existing booking changes meaning.
+  paymentMode String @default("MANUAL")
+
+  payments     Payment[]
+  paymentLinks PaymentLink[]
 
   reviewInvite ReviewInvite?
   review       Review?
@@ -1106,6 +1227,219 @@ model BookingRequest {
   // Drives the owner's "what needs me next" queue and the operator's
   // commission-to-confirm list, both of which filter on stage within status.
   @@index([status, stage])
+}
+
+// ---------------------------------------------------------------------------
+// Payment — one attempt to move money for one booking.
+//
+// ─── Why a table and not two more columns on BookingRequest ─────────────────
+// `BookingRequest.paymentStatus` / `paymentReference` could describe exactly one
+// payment, and only its final state. That is not what actually happens: a guest
+// whose card is declined tries again, a booking can be settled in two parts
+// (deposit now, balance at check-in), and a refund is a fourth event on the same
+// booking rather than an edit of the third. Squeezing those onto the booking row
+// means the failed attempt overwrites its own history, and the provider
+// reference of the successful charge is lost the moment anything else happens.
+//
+// So: this table is the ledger, and the two booking columns are the roll-up
+// computed from it. Nothing is ever deleted here.
+//
+// ─── Amounts are whole dirhams, like every other amount in this schema ──────
+// `amount` is an Int in AED, matching `total`, `depositDue` and the rest. Telr
+// wants a decimal string and Tabby wants minor units; both conversions happen
+// inside that provider's adapter and nowhere else, so no other file can round
+// money differently from the one that quoted it.
+//
+// The amount is written by the server from the booking, never from a form or a
+// query string — see `startPayment()` in src/lib/payments/service.ts.
+// ---------------------------------------------------------------------------
+model Payment {
+  id String @id @default(cuid())
+
+  bookingId String
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  // One of PAYMENT_PROVIDERS in src/lib/constants.ts:
+  // "MANUAL" | "TELR" | "TABBY" | "TAMARA". String, not enum, per the note at
+  // the top of this file — adding a gateway must not be an ALTER TYPE.
+  provider String
+
+  // What the guest actually paid with, as the provider reported it back:
+  // "CARD", "APPLE_PAY", "SAMSUNG_PAY", "BANK_TRANSFER", "BNPL", …
+  //
+  // Null until the provider says, and deliberately NOT defaulted to "CARD":
+  // this column exists to record what happened, and guessing would make the
+  // Apple Pay figures in a reconciliation wrong in a way nobody could detect.
+  method String?
+
+  // Which part of the booking this attempt is for — PAYMENT_KINDS in
+  // src/lib/constants.ts: "DEPOSIT" | "BALANCE" | "FULL".
+  kind String @default("DEPOSIT")
+
+  amount   Int
+  currency String @default("AED")
+
+  // The INTERNAL lifecycle — one of PAYMENT_LIFECYCLE in src/lib/constants.ts:
+  // PENDING → AWAITING_PAYMENT → PROCESSING → PAID / FAILED / CANCELLED →
+  // REFUNDED. Every provider's own vocabulary is mapped onto this by
+  // `toInternalStatus()` in src/lib/payments/status.ts, so the booking domain
+  // never learns that Telr says "A" for authorised and Tabby says "AUTHORIZED".
+  status String @default("PENDING")
+
+  // The provider's own reference for this attempt — a Telr order ref, a Tabby
+  // payment id. Null until the provider has issued one, which is why the unique
+  // index below is on the PAIR: PostgreSQL treats NULLs as distinct, so any
+  // number of not-yet-initiated attempts coexist while two rows can never claim
+  // the same real reference.
+  //
+  // That index is the whole idempotency story for callbacks, and it lives in
+  // the DATABASE rather than in a read-then-write check in application code —
+  // a provider that retries a webhook twice in the same second would sail
+  // straight through the latter.
+  providerRef String?
+
+  // The provider's raw status string, kept beside the mapped one. When a
+  // gateway starts returning a value this build has never seen, `status`
+  // degrades to something safe and this column is the only record of what was
+  // actually said — which is the difference between diagnosing that in minutes
+  // and guessing at it.
+  providerStatus String?
+
+  // Provider payload worth keeping: the last four card digits, the auth code,
+  // the settlement currency. JSON text, per the portability note.
+  //
+  // NEVER a full card number, a CVV or an expiry. Card capture is hosted by the
+  // provider and this platform never sees a PAN — see the note on
+  // `createCheckout` in src/lib/payments/types.ts.
+  metadata String @default("{}")
+
+  // Why a failed attempt failed, as a short provider-supplied string. Shown to
+  // an operator, never to the guest — a decline reason is between the guest and
+  // their bank.
+  failureReason String?
+
+  paidAt     DateTime?
+  refundedAt DateTime?
+
+  events PaymentEvent[]
+  links  PaymentLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerRef])
+  @@index([bookingId])
+  @@index([status])
+  @@index([provider, createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// PaymentEvent — every callback, webhook and poll this platform has acted on.
+//
+// ─── This table IS the idempotency mechanism ────────────────────────────────
+// Gateways retry. Telr's advice call, Tabby's webhook and the guest's own
+// browser hitting the return URL can all describe the same successful charge,
+// and the guest pressing refresh on that return URL delivers it again. Every one
+// of those must move the booking exactly once.
+//
+// The rule is: a delivery is recorded here FIRST, inside the same transaction
+// that applies it, and `@@unique([provider, eventId])` is what makes the second
+// copy fail rather than double-apply. There is no "have I seen this?" SELECT
+// before the write, because two concurrent retries both answer "no" to it.
+//
+// `eventId` is the provider's own delivery id where it sends one, and otherwise
+// a digest of the fields that identify the delivery (reference + status), built
+// by `eventKey()` in src/lib/payments/status.ts. A digest is the honest
+// fallback: it means "this provider told us this exact thing before".
+// ---------------------------------------------------------------------------
+model PaymentEvent {
+  id String @id @default(cuid())
+
+  // Nullable because a callback can arrive for a reference this platform has no
+  // row for — a stray retry after a database restore, or a probe. Recording it
+  // unattached is better than dropping it: the log is the only evidence that
+  // something is calling in about a payment we do not know about.
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  provider String
+  eventId  String
+
+  // "WEBHOOK" — the provider called us
+  // "RETURN"  — the guest's browser came back from the hosted page
+  // "POLL"    — this platform asked the provider for the current status
+  kind String
+
+  // The provider's status as delivered, and what it was mapped to.
+  providerStatus String?
+  status         String?
+
+  // The delivery, as received. JSON text. Truncated by the writer if a provider
+  // ever sends something enormous.
+  payload String @default("{}")
+
+  receivedAt DateTime @default(now())
+
+  @@unique([provider, eventId])
+  @@index([paymentId])
+  @@index([receivedAt])
+}
+
+// ---------------------------------------------------------------------------
+// PaymentLink — the "semi-self" flow: the owner confirms, then Rihla asks the
+// guest to pay.
+//
+// ─── The token is the entire authentication, exactly as ReviewInvite's is ───
+// There are no customer accounts on this platform, so the guest receiving this
+// link over WhatsApp has nobody to sign in as. The same three properties as a
+// review invite are therefore load-bearing here, and for higher stakes:
+//   * 32 random bytes from `crypto.randomBytes` — never derived from the
+//     booking reference, which the guest can read off their own confirmation
+//     page and which would otherwise let them mint links for other bookings
+//   * `expiresAt`, checked server-side on every visit
+//   * `usedAt`, so a forwarded link cannot be replayed after it has paid
+//
+// ─── Why the amount is a column and not a parameter ─────────────────────────
+// The URL is /pay/<token> and carries nothing else. The amount, the currency and
+// the booking are READ FROM THIS ROW, so there is no amount in the link for
+// anyone to edit and no signature to verify — a query string that does not exist
+// cannot be tampered with. The figure stored here is the snapshot taken when the
+// owner issued the link, which is the same discipline every other amount in this
+// schema follows.
+//
+// `paymentId` is set when a checkout is started from this link, which is what
+// binds the money to this booking and this guest. A payment for one booking can
+// never be applied to another: the link resolves to exactly one `bookingId`, and
+// `startPayment()` reads the amount from here rather than from the request.
+// ---------------------------------------------------------------------------
+model PaymentLink {
+  id    String @id @default(cuid())
+  token String @unique
+
+  bookingId String
+  booking   BookingRequest @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  amount   Int
+  currency String @default("AED")
+  kind     String @default("DEPOSIT")
+
+  // The attempt started from this link, once one has been. Null while the link
+  // is still unopened.
+  paymentId String?
+  payment   Payment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  // Who issued it. Nullable and SetNull so deleting a staff account does not
+  // cascade away the payment history of a booking.
+  issuedById String?
+  issuedBy   User?   @relation(fields: [issuedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([bookingId])
+  @@index([expiresAt])
 }
 
 // ---------------------------------------------------------------------------
@@ -1147,13 +1481,13 @@ model ReviewInvite {
 // Guest reviews. Moderated: `published` must be true to appear on the site.
 // ---------------------------------------------------------------------------
 model Review {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   listingId  String
-  listing    Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  listing    Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
   authorName String
-  rating     Int     @default(5) // 1..5
+  rating     Int      @default(5) // 1..5
   body       String
-  published  Boolean @default(true)
+  published  Boolean  @default(true)
   createdAt  DateTime @default(now())
 
   // ---------------------------------------------------------------------

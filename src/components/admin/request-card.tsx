@@ -70,12 +70,16 @@ export function RequestCard({
   scope = "admin",
   reviewInviteDays = 15,
   bank,
+  canIssuePaymentLink = false,
 }: {
   request: RequestCardData;
   readOnly?: boolean;
   scope?: "admin" | "owner";
   /** Passed to the stepper so step 7 states the configured link validity. */
   reviewInviteDays?: number;
+  /** Whether Rihla can issue a payment link — computed server-side, since
+   *  it depends on gateway credentials a browser must not see. */
+  canIssuePaymentLink?: boolean;
   /** Passed to the stepper so step 6 shows where to send the commission. */
   bank?: BankDetails | null;
 }) {
@@ -220,6 +224,7 @@ export function RequestCard({
           scope={scope}
           reviewInviteDays={reviewInviteDays}
           bank={bank}
+          canIssuePaymentLink={canIssuePaymentLink}
         />
       )}
 

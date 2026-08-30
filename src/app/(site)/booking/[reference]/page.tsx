@@ -10,7 +10,12 @@ import { getSettings, absoluteUrl, googleAdsSendTo, localizeSettings } from "@/l
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
 import { DAY_USE_SELECT, localizeListing } from "@/lib/listings";
 import { publicOwnerFields } from "@/lib/owners";
-import { isDepositPaymentEnabled } from "@/lib/payments";
+import { CheckoutChoice } from "@/components/booking/checkout-choice";
+import {
+  availableProviders,
+  isDepositPaymentEnabled,
+  isModeAvailable,
+} from "@/lib/payments";
 import { arDayMonth } from "@/lib/dates";
 import { arNum, formatReference } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
@@ -71,6 +76,10 @@ export default async function BookingConfirmationPage({
           // answer in three parts, and taking some of them is the silent-""
           // failure again. See `DAY_USE_SELECT`.
           ...DAY_USE_SELECT,
+          // Which ways this rest house takes money. Selected because the
+          // block below has to know before it offers a checkout — an owner
+          // who switched online payment off must not be shown one.
+          paymentModes: true,
           ownerName: true,
           ownerWhatsapp: true,
           owner: { select: publicOwnerFields() },
@@ -122,8 +131,28 @@ export default async function BookingConfirmationPage({
   });
 
   const waHref = whatsappLink(contact.digits, message);
-  const depositEnabled = isDepositPaymentEnabled(settings);
   const ref = formatReference(booking.reference, locale);
+
+  /**
+   * May this guest pay online, right now?
+   *
+   * Every clause matters, and each of them is false on every deployment today:
+   *   * a gateway is switched on AND has credentials (`isDepositPaymentEnabled`)
+   *   * this rest house allows the ONLINE mode — its owner may have opted out
+   *   * there is something to pay
+   *   * it has not already been paid, and nothing is in flight
+   *
+   * `providers` is re-read here rather than at page build: an operator can
+   * switch a gateway off between two visits, and an empty list must collapse
+   * the block rather than render a button with nothing behind it.
+   */
+  const providers = availableProviders(settings);
+  const canPayOnline =
+    isDepositPaymentEnabled(settings) &&
+    providers.length > 0 &&
+    isModeAvailable("ONLINE", booking.listing.paymentModes, settings) &&
+    booking.depositDue > 0 &&
+    booking.paymentStatus === "NONE";
 
   return (
     <div className="min-h-[70vh] bg-sand-50">
@@ -236,20 +265,48 @@ export default async function BookingConfirmationPage({
           )}
         </div>
 
-        {/* ---- deposit: disabled stub ----
-            When an online-deposit gateway is enabled from /admin/settings this
-            block becomes the "pay now" step. Until then it states plainly how
-            the deposit is collected. */}
-        <div className="mb-5.5 flex items-start gap-3 rounded-2xl border border-line bg-sand-100 p-4 text-start">
-          <Icon name="savings" size={20} className="shrink-0 text-bronze" />
-          <p className="m-0 text-[12.5px] leading-[1.8] text-muted">
-            {booking.depositDue === 0
-              ? t.booking.noDepositRequired
-              : depositEnabled
-                ? t.booking.depositPayOnline(arNum(booking.depositDue, locale))
-                : t.booking.depositCollectedByOwner(arNum(booking.depositDue, locale))}
-          </p>
-        </div>
+        {/* ---- the deposit ----
+
+            Three states, and which one renders is decided entirely by the
+            database — never by the URL. A guest who appends `?paid=1` by hand
+            gets the same page as one who does not, because what is read here is
+            `booking.paymentStatus`, which only a server-side verification can
+            move. See the note on the return route.
+
+            The middle state — an actual "pay now" button — needs online
+            payments switched on, a gateway with deployed credentials, AND this
+            rest house allowing the ONLINE mode. That is false on every
+            deployment today, so this renders exactly the sentence it always
+            has: the owner collects the deposit. */}
+        {booking.paymentStatus === "PAID" ? (
+          <div className="mb-5.5 flex items-start gap-3 rounded-2xl border border-ok bg-ok-bg p-4 text-start">
+            <Icon name="check_circle" size={20} className="shrink-0 text-ok" />
+            <p className="m-0 text-[12.5px] leading-[1.8] font-bold text-ok">
+              {t.payments.paidBanner}
+            </p>
+          </div>
+        ) : (
+          <div className="mb-5.5 rounded-2xl border border-line bg-sand-100 p-4 text-start">
+            <div className="flex items-start gap-3">
+              <Icon name="savings" size={20} className="shrink-0 text-bronze" />
+              <p className="m-0 text-[12.5px] leading-[1.8] text-muted">
+                {booking.depositDue === 0
+                  ? t.booking.noDepositRequired
+                  : booking.paymentStatus === "PENDING"
+                    ? t.payments.pendingBanner
+                    : canPayOnline
+                      ? t.booking.depositPayOnline(arNum(booking.depositDue, locale))
+                      : t.booking.depositCollectedByOwner(arNum(booking.depositDue, locale))}
+              </p>
+            </div>
+
+            {canPayOnline && (
+              <div className="mt-3.5">
+                <CheckoutChoice reference={booking.reference} providers={providers} />
+              </div>
+            )}
+          </div>
+        )}
 
         {booking.securityDeposit > 0 && (
           <div className="mb-5.5 flex items-start gap-3 rounded-2xl border border-line bg-sand-100 p-4 text-start">

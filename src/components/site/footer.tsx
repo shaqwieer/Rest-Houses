@@ -34,6 +34,25 @@ import { arYear } from "@/lib/format";
  * is a different component on a different page, and is untouched.
  */
 
+/**
+ * The social row.
+ *
+ * ─── Instagram and TikTok get their own marks ────────────────────────────────
+ * These two used to borrow Material Symbols glyphs — `photo_camera` for
+ * Instagram and `play_circle` for TikTok. Both were legible as *categories* and
+ * neither as a *destination*: a camera reads "photos", and `play_circle` is
+ * also what YouTube uses two links along, so the row showed the same icon twice
+ * for two different networks. `instagram` and `tiktok` in icon-paths.ts are
+ * drawn on the same viewBox and are still plain `<Icon>` calls, so the circular
+ * button, its border, the hover state, the spacing and the RTL order are all
+ * exactly what they were — only the artwork inside changed.
+ *
+ * The accessible name stays on the `<a>` (`aria-label={social.label}`) and the
+ * glyph stays `aria-hidden`, which is why no `label` prop is passed to `Icon`:
+ * two names on one control makes a screen reader announce the link twice.
+ *
+ * WhatsApp, email and YouTube are deliberately untouched.
+ */
 function socialLinks(
   settings: Settings,
   emailLabel: string,
@@ -41,7 +60,7 @@ function socialLinks(
   const out: { href: string; icon: IconName; label: string }[] = [];
 
   if (settings.instagram)
-    out.push({ href: settings.instagram, icon: "photo_camera", label: "Instagram" });
+    out.push({ href: settings.instagram, icon: "instagram", label: "Instagram" });
 
   // Returns "" when the number is unusable, so an unconfigured site renders no
   // dead link to `wa.me/`.
@@ -52,8 +71,7 @@ function socialLinks(
     out.push({ href: `mailto:${settings.email}`, icon: "alternate_email", label: emailLabel });
   if (settings.youtube)
     out.push({ href: settings.youtube, icon: "play_circle", label: "YouTube" });
-  if (settings.tiktok)
-    out.push({ href: settings.tiktok, icon: "play_circle", label: "TikTok" });
+  if (settings.tiktok) out.push({ href: settings.tiktok, icon: "tiktok", label: "TikTok" });
 
   return out;
 }

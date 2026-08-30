@@ -74,7 +74,20 @@ export type SettingsFormValues = {
   checkOutHour: number | null;
   checkInTime: string;
   checkOutTime: string;
+  /**
+   * The payment switches. Booleans and a day count — never a credential.
+   *
+   * This object is a prop on a CLIENT component, so everything in it ships to
+   * the browser. That is precisely why no merchant key may ever be added here:
+   * the shape of this type is the boundary, and it is defined by what is safe
+   * to render rather than by what happens to be on the settings row.
+   */
   depositPaymentsEnabled: boolean;
+  telrEnabled: boolean;
+  tabbyEnabled: boolean;
+  tamaraEnabled: boolean;
+  paymentLinksEnabled: boolean;
+  paymentLinkDays: number;
   heroTitle: string;
   heroTitleAlt: string;
   heroSubtitle: string;
@@ -99,9 +112,19 @@ const ACCENT_PRESETS = [
 export function SettingsForm({
   values,
   paymentState,
+  providerStates,
 }: {
   values: SettingsFormValues;
   paymentState: "DISABLED" | "MISCONFIGURED" | "ENABLED";
+  /**
+   * Which of the three gates each gateway is stuck on, computed server-side by
+   * `providerState()` — a code, resolved against the dictionary below.
+   *
+   * Passed in rather than derived here because the third gate is "are the
+   * credentials deployed", which a browser cannot know and must not be told.
+   * What crosses is the verdict, not the evidence.
+   */
+  providerStates: Record<string, "OFF_GLOBALLY" | "DISABLED" | "MISCONFIGURED" | "ENABLED">;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -641,7 +664,17 @@ export function SettingsForm({
             </div>
           </div>
 
-          {/* ---- online deposit: disabled stub ---- */}
+          {/* ---- online payments ----
+
+              Three tiers, drawn in the order they take effect: the global
+              switch, then the gateways, then the payment-link flow. Nothing
+              below the first switch has any effect while it is off, which is
+              why they are nested visually rather than listed as five equal
+              checkboxes — an operator ticking "Telr" on a site with online
+              payments off should be able to see that it will not do anything.
+
+              No field here accepts a credential. Keys are deployed in the
+              environment; see the note in src/lib/payments/config.ts. */}
           <div className="rounded-[13px] border border-dashed border-sand-300 bg-sand-50 p-3.5">
             <label className="flex cursor-pointer items-start gap-2.5">
               <input
@@ -652,7 +685,7 @@ export function SettingsForm({
               />
               <span>
                 <span className="block text-[13.5px] font-bold text-ink">
-                  {t.admin.enableOnlineDeposit}
+                  {t.admin.enableOnlinePayments}
                 </span>
                 <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
                   {paymentState === "ENABLED"
@@ -663,10 +696,76 @@ export function SettingsForm({
                 </span>
               </span>
             </label>
-            <p className="m-0 mt-2.5 flex items-start gap-1.5 text-[11px] leading-relaxed text-bronze">
+
+            <div className="mt-3 border-t border-dashed border-sand-300 pt-3">
+              <span className="mb-2 block text-[12px] font-bold text-ink">
+                {t.admin.paymentProviders}
+              </span>
+              <div className="grid gap-2">
+                <ProviderToggle
+                  name="telrEnabled"
+                  label={t.admin.providerTelr}
+                  hint={t.admin.providerTelrHint}
+                  defaultChecked={values.telrEnabled}
+                  state={providerStates.TELR}
+                  t={t}
+                />
+                <ProviderToggle
+                  name="tabbyEnabled"
+                  label={t.admin.providerTabby}
+                  hint={t.admin.providerBnplHint}
+                  defaultChecked={values.tabbyEnabled}
+                  state={providerStates.TABBY}
+                  t={t}
+                />
+                <ProviderToggle
+                  name="tamaraEnabled"
+                  label={t.admin.providerTamara}
+                  hint={t.admin.providerBnplHint}
+                  defaultChecked={values.tamaraEnabled}
+                  state={providerStates.TAMARA}
+                  t={t}
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 border-t border-dashed border-sand-300 pt-3">
+              <label className="flex cursor-pointer items-start gap-2.5">
+                <input
+                  type="checkbox"
+                  name="paymentLinksEnabled"
+                  defaultChecked={values.paymentLinksEnabled}
+                  className="mt-0.5 size-5 shrink-0 accent-[var(--gold-600)]"
+                />
+                <span>
+                  <span className="block text-[13px] font-bold text-ink">
+                    {t.admin.enablePaymentLinks}
+                  </span>
+                  <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
+                    {t.admin.paymentLinksHint}
+                  </span>
+                </span>
+              </label>
+              <div className="mt-2.5 max-w-[220px]">
+                <Field
+                  label={t.admin.fieldPaymentLinkDays}
+                  error={errors.paymentLinkDays}
+                >
+                  <TextInput
+                    name="paymentLinkDays"
+                    type="number"
+                    min={1}
+                    max={90}
+                    defaultValue={values.paymentLinkDays}
+                    className="font-bold"
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <p className="m-0 mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-bronze">
               <Icon name="info" size={14} className="mt-0.5 shrink-0" />
-              {t.admin.gatewayNotWired}{" "}
-              <code dir="ltr" className="font-mono">src/lib/payments/index.ts</code>.
+              {t.admin.credentialsInEnv}
             </p>
           </div>
         </Card>
@@ -952,5 +1051,66 @@ function PlatformHourSelect({
         </option>
       ))}
     </Select>
+  );
+}
+
+
+/**
+ * One gateway's switch, with the reason it is not live beside it.
+ *
+ * The state badge is the whole point of this component. A bare checkbox can say
+ * "Telr is on" while nothing works, because being on is only one of three
+ * gates — the global switch and the deployed credentials are the other two, and
+ * neither is visible from a tick box. An operator who switches Telr on and sees
+ * "keys not deployed" knows to call their developer; one who sees a ticked box
+ * and a dead checkout on the live site does not.
+ *
+ * "OFF_GLOBALLY" is rendered as muted rather than as a warning: it is not a
+ * misconfiguration, it is the switch above doing exactly what it says.
+ */
+function ProviderToggle({
+  name,
+  label,
+  hint,
+  defaultChecked,
+  state,
+  t,
+}: {
+  name: string;
+  label: string;
+  hint: string;
+  defaultChecked: boolean;
+  state: "OFF_GLOBALLY" | "DISABLED" | "MISCONFIGURED" | "ENABLED" | undefined;
+  t: Dictionary;
+}) {
+  const badge =
+    state === "ENABLED"
+      ? { text: t.admin.providerLive, className: "bg-ok-bg text-ok" }
+      : state === "MISCONFIGURED"
+        ? { text: t.admin.providerNoKeys, className: "bg-busy-bg text-busy" }
+        : state === "OFF_GLOBALLY"
+          ? { text: t.admin.providerOffGlobally, className: "bg-sand-200 text-muted" }
+          : { text: t.admin.providerOff, className: "bg-sand-200 text-muted" };
+
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5">
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="mt-0.5 size-4.5 shrink-0 accent-[var(--gold-600)]"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-2">
+          <span className="text-[12.5px] font-bold text-ink">{label}</span>
+          <span
+            className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold ${badge.className}`}
+          >
+            {badge.text}
+          </span>
+        </span>
+        <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">{hint}</span>
+      </span>
+    </label>
   );
 }

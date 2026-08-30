@@ -152,7 +152,26 @@ function settingsSchema(t: Dictionary) {
   checkOutHour: stayHourField(),
   checkInTime: z.string().trim().max(40).default("٤ عصرًا"),
   checkOutTime: z.string().trim().max(40).default("١٢ ظهرًا"),
+  // ---- payments ----
+  //
+  // Switches only. No credential is accepted here and none ever should be: a
+  // merchant key on the settings row would be readable by every operator
+  // account and would land in the nightly pg_dump. Credentials live in the
+  // environment — see src/lib/payments/config.ts.
+  //
+  // Every one of these defaults to false, so a form posted without the field
+  // (an older cached page, a partial submission) switches payments OFF rather
+  // than on. That is the safe direction for a checkbox that decides whether
+  // money can move.
   depositPaymentsEnabled: z.coerce.boolean().default(false),
+  telrEnabled: z.coerce.boolean().default(false),
+  tabbyEnabled: z.coerce.boolean().default(false),
+  tamaraEnabled: z.coerce.boolean().default(false),
+  paymentLinksEnabled: z.coerce.boolean().default(false),
+  // A payment link is a bearer credential, so its life is bounded at both ends:
+  // at least a day to be usable, at most 90 so nothing sits in a WhatsApp
+  // thread indefinitely.
+  paymentLinkDays: z.coerce.number().int().min(1).max(90).default(7),
 
   // home hero + SEO
   heroTitle: z.string().trim().max(120),
@@ -267,6 +286,11 @@ export async function saveSettings(formData: FormData): Promise<ActionResult> {
     checkInTime: current?.checkInTime ?? "٤ عصرًا",
     checkOutTime: current?.checkOutTime ?? "١٢ ظهرًا",
     depositPaymentsEnabled: formData.get("depositPaymentsEnabled") === "on",
+    telrEnabled: formData.get("telrEnabled") === "on",
+    tabbyEnabled: formData.get("tabbyEnabled") === "on",
+    tamaraEnabled: formData.get("tamaraEnabled") === "on",
+    paymentLinksEnabled: formData.get("paymentLinksEnabled") === "on",
+    paymentLinkDays: formData.get("paymentLinkDays") ?? 7,
     heroTitle: formData.get("heroTitle"),
     heroTitleAlt: formData.get("heroTitleAlt") ?? "",
     heroSubtitle: formData.get("heroSubtitle") ?? "",

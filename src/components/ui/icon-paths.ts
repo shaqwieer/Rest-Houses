@@ -125,22 +125,37 @@ export const ICON_PATHS = {
   "weekend": "M160-680q0-50 35-85t85-35h400q50 0 85 35t35 85v80q50 0 85 35t35 85v200q0 50-35 85t-85 35H160q-50 0-85-35t-35-85v-200q0-50 35-85t85-35v-80Zm80 0v112q18 17 29 39t11 49v80h400v-80q0-27 11-49t29-39v-112q0-17-11.5-28.5T680-720H280q-17 0-28.5 11.5T240-680Zm520 360H200v-160q0-8-3-15.5t-8.5-13q-5.5-5.5-13-8.5t-15.5-3q-17 0-28.5 11.5T120-480v200q0 17 11.5 28.5T160-240h640q17 0 28.5-11.5T840-280v-200q0-17-11.5-28.5T800-520q-8 0-15.5 3t-13 8.5q-5.5 5.5-8.5 13t-3 15.5v160Zm-280 0Zm0 80Zm0-160Z",
   "wifi": "M409-149q-29-29-29-71t29-71q29-29 71-29t71 29q29 29 29 71t-29 71q-29 29-71 29t-71-29Zm213.5-387Q690-512 745-470q20 15 20.5 39.5T748-388q-17 17-42 17.5T661-384q-38-26-84-41t-97-15q-51 0-97 15t-84 41q-20 14-45 13t-42-18q-17-18-17-42.5t20-39.5q55-42 122.5-65.5T480-560q75 0 142.5 24Zm93-223Q826-718 914-643q20 17 21 42t-17 43q-17 17-42 17.5T831-556q-72-59-161.5-91.5T480-680q-100 0-189.5 32.5T129-556q-20 16-45 15.5T42-558q-18-18-17-43t21-42q88-75 198.5-116T480-800q125 0 235.5 41Z",
 
-  /**
-   * Instagram's mark — the rounded square, the lens ring and the corner dot.
+  /* -------------------------------------------------------------------------
+   * Brand marks — the two glyphs in this file that are not Material Symbols.
    *
-   * The only brand glyph in this file, and the only one not from Material
-   * Symbols. It is here because a rest house's Instagram link has to be
-   * *recognisable* as Instagram: the footer's social row substitutes the generic
-   * `photo_camera` glyph, which reads as "photos" rather than as a link to a
-   * particular network, and a guest scanning a listing page for the venue's feed
-   * will not find it that way.
+   * They are here because a social link has to be *recognisable* as the network
+   * it opens. The footer used to substitute Material's generic `photo_camera`
+   * for Instagram and `play_circle` for TikTok, which read as "photos" and
+   * "video" — a guest scanning for a venue's feed does not find it that way,
+   * and `play_circle` additionally made the TikTok link indistinguishable from
+   * the YouTube one beside it.
    *
-   * Redrawn on this file's own `0 -960 960 960` viewBox so it sits on the same
-   * baseline and honours the same `size` prop as every other icon here, rather
-   * than needing a second `<svg>` with its own viewBox beside them.
-   */
+   * Both are drawn on this file's own `0 -960 960 960` viewBox so they sit on
+   * the same baseline and honour the same `size` prop as every other icon here,
+   * rather than needing a second `<svg>` with its own viewBox beside them.
+   * `Icon` renders exactly one `<path>`, so each mark is a single `d` whose
+   * counters are cut by subpaths wound the opposite way (nonzero fill).
+   * ---------------------------------------------------------------------- */
+
+  /** Instagram — the rounded square, the lens ring and the corner dot. */
   "instagram":
     "M300-840h360q75 0 127.5 52.5T840-660v360q0 75-52.5 127.5T660-120H300q-75 0-127.5-52.5T120-300v-360q0-75 52.5-127.5T300-840Zm0 80q-42 0-71 29t-29 71v360q0 42 29 71t71 29h360q42 0 71-29t29-71v-360q0-42-29-71t-71-29H300Zm180 130q79 0 134.5 55.5T670-440q0 79-55.5 134.5T480-250q-79 0-134.5-55.5T290-440q0-79 55.5-134.5T480-630Zm0 80q-46 0-78 32t-32 78q0 46 32 78t78 32q46 0 78-32t32-78q0-46-32-78t-78-32Zm212-108q19 0 32.5 13.5T738-622q0 19-13.5 32.5T692-576q-19 0-32.5-13.5T646-622q0-19 13.5-32.5T692-668Z",
+
+  /**
+   * TikTok — the note: stem, quaver hook, and the head cut out at bottom-left.
+   *
+   * Scaled onto this viewBox from the 24-unit grid the mark is published on
+   * (×40, then shifted -960 on y). Doing that once, here, is why the footer can
+   * keep rendering every social icon through the same `<Icon size={19}>` as
+   * before instead of growing a special case for one link.
+   */
+  "tiktok":
+    "M501 -959.2c52.4 -0.8 104.4 -0.4 156.4 -0.8c3.2 61.2 25.2 123.6 70 166.8c44.8 44.4 108 64.8 169.6 71.6v161.2c-57.6 -2 -115.6 -14 -168 -38.8c-22.8 -10.4 -44 -23.6 -64.8 -37.2c-0.4 116.8 0.4 233.6 -0.8 350c-3.2 56 -21.6 111.6 -54 157.6c-52.4 76.8 -143.2 126.8 -236.4 128.4c-57.2 3.2 -114.4 -12.4 -163.2 -41.2c-80.8 -47.6 -137.6 -134.8 -146 -228.4c-0.8 -20 -1.2 -40 -0.4 -59.6c7.2 -76 44.8 -148.8 103.2 -198.4c66.4 -57.6 159.2 -85.2 246 -68.8c0.8 59.2 -1.6 118.4 -1.6 177.6c-39.6 -12.8 -86 -9.2 -120.8 14.8c-25.2 16.4 -44.4 41.6 -54.4 70c-8.4 20.4 -6 42.8 -5.6 64.4c9.6 65.6 72.8 120.8 140 114.8c44.8 -0.4 87.6 -26.4 110.8 -64.4c7.6 -13.2 16 -26.8 16.4 -42.4c4 -71.6 2.4 -142.8 2.8 -214.4c0.4 -161.2 -0.4 -322 0.8 -482.8z",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

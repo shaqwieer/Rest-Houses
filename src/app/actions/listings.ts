@@ -23,6 +23,8 @@ import { normalizeDigits } from "@/lib/format";
 import { stayHourWrite } from "@/lib/clock";
 import { CANCEL_POLICIES } from "@/lib/policies";
 import { stayHourField } from "@/lib/validation";
+import { getSettings } from "@/lib/settings";
+import { PAYMENT_MODES_FIELD, serializeListingPaymentModes } from "@/lib/payments";
 import type { Dictionary } from "@/lib/i18n";
 
 /**
@@ -178,6 +180,9 @@ function listingSchema(t: Dictionary) {
      */
     dayUseCheckOutHour: stayHourField(),
     dayUseCheckOutTime: z.string().trim().max(40).default(""),
+  // Carried from the stored row, never from the request — see the note on
+  // `LegacyStayText.paymentModes`. Nullable: null means "inherit".
+  paymentModes: z.string().nullable().default(null),
     dayUseCheckOutTimeEn: blankToNull(40),
     /** Refundable security deposit in whole dirhams. 0 = none asked for. */
     securityDeposit: z.coerce.number().int().min(0).max(1_000_000).default(0),
@@ -252,6 +257,24 @@ export type LegacyStayText = {
   checkOutTimeEn: string | null;
   dayUseCheckOutTime: string;
   dayUseCheckOutTimeEn: string | null;
+  /**
+   * The stored payment modes — carried for exactly the same reason as the stay
+   * text above it, and it is the same trap.
+   *
+   * The editor renders no payment-mode control at all while the platform offers
+   * only one mode, which is every deployment today. An unrendered checkbox
+   * group posts nothing, and so does one where the owner unticked every box —
+   * `FormData` cannot tell those apart. Serialising "nothing was posted" would
+   * therefore write `"[]"` ("this owner takes nothing online") onto every
+   * listing anyone edits, destroying the null that means "inherit" and quietly
+   * excluding those listings from online payment on the day a gateway is
+   * connected.
+   *
+   * So the form posts a hidden marker whenever it renders the control, and when
+   * that marker is absent this value is written straight back — the column is
+   * not touched. Same shape as `freeCancelHours` above.
+   */
+  paymentModes: string | null;
 };
 
 const NO_LEGACY_STAY_TEXT: LegacyStayText = {
@@ -262,6 +285,9 @@ const NO_LEGACY_STAY_TEXT: LegacyStayText = {
   checkOutTimeEn: null,
   dayUseCheckOutTime: "",
   dayUseCheckOutTimeEn: null,
+  // null — "inherit the platform's list" — which is what a listing that does
+  // not exist yet should be created with.
+  paymentModes: null,
 };
 
 /**
@@ -293,6 +319,7 @@ async function legacyStayTextFor(
       checkOutTimeEn: true,
       dayUseCheckOutTime: true,
       dayUseCheckOutTimeEn: true,
+      paymentModes: true,
     },
   });
   return row ?? NO_LEGACY_STAY_TEXT;
@@ -343,6 +370,10 @@ function readListingForm(
     dayUseCheckOutHour: formData.get("dayUseCheckOutHour"),
     dayUseCheckOutTime: legacy.dayUseCheckOutTime,
     dayUseCheckOutTimeEn: legacy.dayUseCheckOutTimeEn ?? "",
+    // Not posted by the form when the editor renders no control for it — see
+    // `readPaymentModes`. Carried through from the stored row so a save cannot
+    // silently overwrite an owner's choice with "none".
+    paymentModes: legacy.paymentModes,
     securityDeposit: formData.get("securityDeposit") ?? 0,
     instagram: formData.get("instagram") ?? "",
     capacity: formData.get("capacity"),
@@ -355,6 +386,39 @@ function readListingForm(
     featured: formData.get("featured") === "on",
     published: formData.get("published") === "on",
   });
+}
+
+/**
+ * The payment modes ticked on the form, serialised for storage.
+ *
+ * ─── The absent-control case comes first, and it is the whole point ─────────
+ * `PAYMENT_MODES_FIELD` is a hidden input the editor renders beside the
+ * checkbox group. Its presence is the only way this function can tell "the
+ * owner unticked everything" (a real choice, stored as `"[]"`) from "the editor
+ * drew no control because the platform offers a single mode" (not a choice at
+ * all — every deployment today). Unchecked checkboxes post nothing in both
+ * cases, so `getAll` returns `[]` either way.
+ *
+ * Without the marker, every listing anybody edited would be written as `"[]"`,
+ * and on the day a gateway was switched on those listings — and only those —
+ * would refuse online payment while untouched ones offered it. Silent, and
+ * impossible to explain from the UI.
+ *
+ * ─── Otherwise ─────────────────────────────────────────────────────────────
+ * The ticks are filtered against what the platform actually offers, so a
+ * hand-crafted POST naming "ONLINE" on a site with no gateway stores nothing of
+ * the sort. And ticking everything currently on offer stores null — inherit —
+ * so an owner who accepts the defaults does not freeze today's platform list
+ * onto their listing and miss a gateway connected next month.
+ */
+async function readPaymentModes(
+  formData: FormData,
+  stored: string | null,
+): Promise<string | null> {
+  if (!formData.has(PAYMENT_MODES_FIELD)) return stored;
+
+  const settings = await getSettings();
+  return serializeListingPaymentModes(formData.getAll("paymentModes").map(String), settings);
 }
 
 /** Amenity/category ids arrive as repeated form fields; keep only known ids. */
@@ -457,6 +521,17 @@ function listingColumns(
   data: ListingInput,
   amenities: string[],
   categories: string[],
+  /**
+   * The owner's payment-mode choice, already serialised — null means "inherit
+   * the platform's list".
+   *
+   * Passed in rather than read from `data` because serialising it needs the
+   * platform's current list, which needs `getSettings()`, which is async — and
+   * this function is not. Computing it in the caller keeps this one a pure
+   * mapping from parsed form to columns, which is what makes the allow-list
+   * below readable in a single pass.
+   */
+  paymentModes: string | null,
   opts: { allowEditorialFlags: boolean },
 ) {
   // The three stay times. The form posts only an hour for each; the legacy free
@@ -524,6 +599,13 @@ function listingColumns(
     lat: data.lat,
     lng: data.lng,
     depositPercent: data.depositPercent,
+    // In `common`, so an owner sets it on their own listing: whether a rest
+    // house takes card payments is a commercial term of the venue, exactly like
+    // its nightly rate, not an editorial decision. It can only ever NARROW the
+    // platform's list — `serializeListingPaymentModes` intersects before
+    // storing — so an owner cannot switch on a gateway the platform has not
+    // connected.
+    paymentModes,
     amenities: stringifyIdList(amenities),
     categories: stringifyIdList(categories),
     published: data.published,
@@ -578,9 +660,13 @@ export async function saveListing(formData: FormData): Promise<ActionResult> {
   const ratesProblem = weekendRateProblem(data, t);
   if (ratesProblem) return ratesProblem;
 
-  const common = listingColumns(data, amenities, categories, {
-    allowEditorialFlags: true,
-  });
+  const common = listingColumns(
+    data,
+    amenities,
+    categories,
+    await readPaymentModes(formData, data.paymentModes),
+    { allowEditorialFlags: true },
+  );
 
   // An admin may assign a listing to an owner. Only ids that actually exist are
   // accepted — a bad id silently becoming null would quietly turn an owned
@@ -711,9 +797,13 @@ export async function saveOwnerListing(formData: FormData): Promise<ActionResult
   const ratesProblem = weekendRateProblem(data, t);
   if (ratesProblem) return ratesProblem;
 
-  const common = listingColumns(data, amenities, categories, {
-    allowEditorialFlags: false,
-  });
+  const common = listingColumns(
+    data,
+    amenities,
+    categories,
+    await readPaymentModes(formData, data.paymentModes),
+    { allowEditorialFlags: false },
+  );
 
   try {
     if (id) {

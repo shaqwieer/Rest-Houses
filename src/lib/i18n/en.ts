@@ -837,6 +837,8 @@ export const en: Dictionary = {
     dayUseCheckOutHint: "The time the guest has to be out",
     capacityLabel: "Capacity (guests)",
     descriptionLabel: "Description",
+    listingPaymentModes: "Payment methods for this rest house",
+    listingPaymentModesHint: "You cannot enable a method the platform has not connected. Unticking everything means arranging it on WhatsApp.",
     listingInstagram: "This rest house's Instagram URL",
     listingInstagramHint: "Shown as an Instagram icon on the listing page — leave blank if there isn't one",
     descriptionPlaceholder: "Write a short description highlighting what makes it special.",
@@ -988,7 +990,23 @@ export const en: Dictionary = {
     fieldFreeCancel: "Free cancellation (hours)",
     fieldCheckIn: "Check-in time",
     fieldCheckOut: "Check-out time",
-    enableOnlineDeposit: "Enable online deposit payment",
+    enableOnlinePayments: "Enable online payments",
+    paymentProviders: "Payment gateways",
+    providerTelr: "Telr — cards & wallets",
+    providerTelrHint: "Visa, Mastercard, Apple Pay and Samsung Pay, as enabled on the merchant account",
+    providerTabby: "Tabby — pay in instalments",
+    providerTamara: "Tamara — pay in instalments",
+    providerBnplHint: "On the platform's own merchant account — owners need no trade licence of their own",
+    providerLive: "Ready",
+    providerNoKeys: "Awaiting keys",
+    providerOffGlobally: "Online payments off",
+    providerOff: "Off",
+    enablePaymentLinks: "Enable payment links",
+    paymentLinksHint:
+      "The owner confirms the booking first, then the platform issues a payment link tied to that one booking",
+    fieldPaymentLinkDays: "Payment link validity (days)",
+    credentialsInEnv:
+      "Gateway keys are set as environment variables on the server. They are never stored in, or shown on, this page.",
     gatewayNotWired: "No payment gateway is wired yet. The steps are written in",
     fieldHeroTitle: "Hero heading",
     fieldHeroTitleAlt: "Second line (in the accent colour)",
@@ -1398,6 +1416,54 @@ export const en: Dictionary = {
     waitForCheck: "Wait for the security check to finish before sending",
   },
 
+  /* -------------------------------------------------------------- payments */
+  payments: {
+    // --- how the guest chooses to pay ---
+    chooseMethod: "Payment method",
+    modeMANUAL: "Bank transfer or cash",
+    modeMANUALHint: "Settle the deposit with the owner on WhatsApp — the current method",
+    modeONLINE: "Pay online",
+    modeONLINEHint: "Card or digital wallet through a secure payment gateway",
+    modeLINK: "Payment link",
+    modeLINKHint: "The owner confirms your booking first, then sends you a payment link",
+
+    // --- the payment link page ---
+    payTitle: "Complete your payment",
+    paySubtitle: "Pay the amount due on your booking securely",
+    payNow: "Pay now",
+    payAmount: "Amount due",
+    payBooking: "Booking reference",
+    payProvider: "Choose how to pay",
+    payRedirecting: "Taking you to the secure payment page…",
+    paySecureNote:
+      "Payment happens on the provider's own page. Your card details are never stored on this platform.",
+    payLinkExpiresOn: (date: string) => `Valid until ${date}`,
+
+    // --- provider names ---
+    providerTELR: "Card (Telr)",
+    providerTABBY: "Tabby — split it",
+    providerTAMARA: "Tamara — split it",
+
+    // --- outcomes ---
+    paidBanner: "Your payment has been received",
+    pendingBanner: "Your payment is being processed — we will confirm the booking once it clears",
+    linkIssued: "Payment link created",
+    linkRevoked: "Payment link revoked",
+
+    // --- errors ---
+    errorDisabled: "Online payment is not enabled at the moment",
+    errorProviderUnavailable: "That payment method is not available right now",
+    errorNotPayable: "This booking cannot be paid for in its current state",
+    errorNothingDue: "There is nothing outstanding on this booking",
+    errorAlreadyPaid: "This booking has already been paid",
+    errorAmount: "The amount is not valid — please get in touch",
+    errorGateway: "The payment could not be started — please try again shortly",
+    errorLinkInvalid: "This payment link is not valid",
+    errorLinkExpired: "This payment link has expired — ask the owner for a new one",
+    errorLinkUsed: "This payment link has already been used",
+    errorLinkSpentByFailure: "The payment could not be completed and this link is no longer valid — ask the owner for a new one",
+  },
+
   /* --------------------------------------------------------------- statuses */
   status: {
     NEW: "New",
@@ -1479,6 +1545,8 @@ export const en: Dictionary = {
     reviewBody: (days: string) =>
       `Create a link valid for ${days} days so the guest can review the stay — the review reaches the operator for approval before it appears.`,
     reviewAction: "Create the review link",
+    issuePaymentLink: "Create a payment link for the guest",
+    paymentLinkReady: "Payment link ready — send it to the guest",
     reviewLinkReady: "The review link is ready — send it to the guest",
     copyLink: "Copy link",
     linkCopied: "Link copied",
@@ -1527,6 +1595,13 @@ export const en: Dictionary = {
     CALENDAR_FEED_REMOVED: "External calendar removed",
     CALENDAR_EXPORT_ENABLED: "Calendar export link enabled",
     CALENDAR_EXPORT_DISABLED: "Calendar export link disabled",
+    PAYMENT_INITIATED: "Payment started",
+    PAYMENT_SETTLED: "Payment received",
+    PAYMENT_FAILED: "Payment failed",
+    PAYMENT_REFUNDED: "Payment refunded",
+    PAYMENT_LINK_ISSUED: "Payment link issued",
+    PAYMENT_LINK_REVOKED: "Payment link revoked",
+    PAYMENT_NEEDS_REVIEW: "Payment needs review",
     OWNER_APPROVED: "Owner approved",
     OWNER_REJECTED: "Owner request rejected",
     OWNER_SUSPENDED: "Owner suspended",

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { ListingEditor } from "@/components/admin/listing-editor";
 import { getListingById } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
+import { parseListingPaymentModes, platformPaymentModes } from "@/lib/payments";
 import { requireAdminPage } from "@/lib/auth";
 import { listOwnerOptions } from "@/lib/admin-queries";
 import { platformPolicyFor } from "@/lib/policies";
@@ -30,6 +31,7 @@ export default async function EditListingPage({
     <ListingEditor
       scope="admin"
       platformDepositPercent={settings.depositPercent}
+      platformPaymentModes={platformPaymentModes(settings)}
       platformPolicy={platformPolicyFor(settings, locale)}
       owners={owners}
       draft={{
@@ -61,6 +63,7 @@ export default async function EditListingPage({
         lat: listing.lat,
         lng: listing.lng,
         depositPercent: listing.depositPercent,
+        paymentModes: parseListingPaymentModes(listing.paymentModes),
         amenityIds: listing.amenityIds,
         categoryIds: listing.categoryIds,
         verified: listing.verified,

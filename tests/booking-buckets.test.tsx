@@ -58,6 +58,15 @@ vi.mock("@/app/actions/requests", () => ({
   advanceOwnerRequestStage: async () => ({ ok: true }),
   confirmCommissionTransfer: async () => ({ ok: true }),
   revertRequestStage: async () => ({ ok: true }),
+  confirmBookingForPayment: async () => ({ ok: true, confirmed: true }),
+}));
+
+// Step 2's payment-link button, for the same reason as the block above: it
+// imports a server action, which reaches next-auth. The button renders only when
+// the platform can actually issue a link — false in this suite — but the module
+// graph is loaded either way.
+vi.mock("@/app/actions/payments", () => ({
+  issueBookingPayLink: async () => ({ ok: true }),
 }));
 
 /* -------------------------------------------------------------------------- */

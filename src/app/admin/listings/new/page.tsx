@@ -1,5 +1,6 @@
 import { ListingEditor } from "@/components/admin/listing-editor";
 import { getSettings } from "@/lib/settings";
+import { platformPaymentModes } from "@/lib/payments";
 import { requireAdminPage } from "@/lib/auth";
 import { listOwnerOptions } from "@/lib/admin-queries";
 import { platformPolicyFor } from "@/lib/policies";
@@ -22,6 +23,7 @@ export default async function NewListingPage() {
     <ListingEditor
       scope="admin"
       platformDepositPercent={settings.depositPercent}
+      platformPaymentModes={platformPaymentModes(settings)}
       platformPolicy={platformPolicyFor(settings, locale)}
       owners={owners}
       draft={{
@@ -66,6 +68,7 @@ export default async function NewListingPage() {
         // tracks the platform's rate if the operator later changes it, rather
         // than freezing today's value into the row.
         depositPercent: null,
+        paymentModes: null,
         amenityIds: ["wifi", "ac", "park", "bbq", "wc"],
         categoryIds: ["family"],
         verified: false,

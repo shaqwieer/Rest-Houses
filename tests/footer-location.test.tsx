@@ -88,6 +88,11 @@ const settings = {
   footerAboutEn: "",
   googleTagId: "",
   googleAdsConversionLabel: "",
+  telrEnabled: false,
+  tabbyEnabled: false,
+  tamaraEnabled: false,
+  paymentLinksEnabled: false,
+  paymentLinkDays: 7,
   updatedAt: new Date(),
 } satisfies Settings;
 

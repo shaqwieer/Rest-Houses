@@ -20,7 +20,9 @@ import {
 import { AMENITIES, CATEGORIES, CITIES, label } from "@/lib/constants";
 import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
+import { PAYMENT_MODES_FIELD } from "@/lib/constants";
 import { stayHourOptions } from "@/lib/clock";
+
 import { CANCEL_POLICIES } from "@/lib/policies";
 import type { Locale } from "@/lib/i18n/config";
 import type { WeekendMode } from "@/lib/dates";
@@ -102,6 +104,16 @@ export type ListingDraft = {
   lng: number;
   /** null = "use the platform default" — distinct from 0, "no deposit". */
   depositPercent: number | null;
+  /**
+   * Which payment modes this rest house takes — PAYMENT_MODES ids.
+   *
+   * `null` means "inherit whatever the platform offers", which is what every
+   * listing resolves to until an owner narrows it. NOT `[]`: an empty array is
+   * a real, different answer ("take nothing online"), and collapsing the two
+   * would silently re-enable a checkout an owner switched off. Same
+   * nullable-inherit contract as `depositPercent` above.
+   */
+  paymentModes: string[] | null;
   amenityIds: string[];
   categoryIds: string[];
   verified: boolean;
@@ -119,6 +131,7 @@ export function ListingEditor({
   draft,
   scope = "admin",
   platformDepositPercent,
+  platformPaymentModes,
   platformPolicy,
   owners = [],
   ownerWhatsapp,
@@ -127,6 +140,16 @@ export function ListingEditor({
   scope?: "admin" | "owner";
   /** Shown as the fallback hint next to the deposit field. */
   platformDepositPercent: number;
+  /**
+   * The payment modes the PLATFORM currently offers — the ceiling this listing
+   * can narrow but never widen.
+   *
+   * Computed server-side by `platformPaymentModes()`, because whether a gateway
+   * is usable depends on credentials the browser must not be told about. Today
+   * it is `["MANUAL"]` on every deployment, which is exactly why the block below
+   * renders nothing: one option is not a choice.
+   */
+  platformPaymentModes: string[];
   /**
    * What a blank policy field resolves to, shown as the placeholder in each
    * box. Without it "leave blank for the default" asks the owner to trust a
@@ -668,6 +691,63 @@ export function ListingEditor({
             </span>
           </Field>
         </div>
+
+        {/* ---- how this rest house takes money ----
+
+            Rendered only when the platform offers more than one mode. With a
+            single option there is no choice to make, and a lone checkbox that
+            cannot be unticked reads as a broken control rather than as a
+            setting — the same "0 hides it everywhere" discipline the day-use
+            and security-deposit fields follow.
+
+            Today that means this block is invisible on every deployment: no
+            gateway has credentials, so the platform offers "MANUAL" alone. It
+            appears by itself the day one is connected, with no code change.
+
+            Unticking everything is allowed and means "talk to me on WhatsApp".
+            Manual is re-added server-side regardless — a published rest house
+            that can be booked by nobody is not a state an owner can reach from
+            here. */}
+        {platformPaymentModes.length > 1 && (
+          <Field
+            label={t.admin.listingPaymentModes}
+            hint={t.admin.listingPaymentModesHint}
+          >
+            {/* Tells the server this control was rendered at all. Unticking
+                every box posts nothing, and so does never drawing the group —
+                without this marker the save path cannot tell an owner's "none"
+                from the platform's "there was no choice to make". */}
+            <input type="hidden" name={PAYMENT_MODES_FIELD} value="1" />
+            <div className="grid gap-2">
+              {platformPaymentModes.map((mode) => (
+                <label
+                  key={mode}
+                  className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-line bg-surface px-3 py-2.5"
+                >
+                  <input
+                    type="checkbox"
+                    name="paymentModes"
+                    value={mode}
+                    // null (inherit) ticks everything, which is what inheriting
+                    // the platform's full list actually means on screen.
+                    defaultChecked={
+                      draft.paymentModes === null || draft.paymentModes.includes(mode)
+                    }
+                    className="mt-0.5 size-4.5 shrink-0 accent-[var(--gold-600)]"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-[12.5px] font-bold text-ink">
+                      {t.payments[`mode${mode}` as "modeMANUAL"]}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-relaxed text-muted">
+                      {t.payments[`mode${mode}Hint` as "modeMANUALHint"]}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </Field>
+        )}
 
         {/* ---- the rest house's own Instagram ----
             Not the platform's account (that one lives in /admin/settings and

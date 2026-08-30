@@ -18,10 +18,39 @@ import "leaflet/dist/leaflet.css";
  *
  * Why Leaflet and not the Google Maps JS API: it needs no API key and no
  * billing account, which matters for a self-hosted deployment the owner runs
- * themselves. Tiles come from CARTO's free Voyager basemap, whose muted palette
- * happens to sit well against the sand/gold design. The *footer* and *settings*
- * maps are Google Maps embeds instead, because the client asked for Google Maps
- * for the business location specifically — that's a keyless `<iframe>`.
+ * themselves. The *footer* and *settings* maps are Google Maps embeds instead,
+ * because the client asked for Google Maps for the business location
+ * specifically — that's a keyless `<iframe>`.
+ *
+ * ─── The basemap: OpenStreetMap's own tiles, and why not CARTO ───────────────
+ * This used to point at `{s}.basemaps.cartocdn.com/rastertiles/voyager`, whose
+ * muted palette sat nicely against the sand/gold design. CARTO has since put
+ * that host behind an API key: it keeps answering 200 with a real PNG, so
+ * nothing errors and nothing logs — the tiles simply arrive with
+ * "API KEY REQUIRED — carto.com/basemaps/apikey" printed diagonally across the
+ * map. A silent watermark, in production, on the page where a guest checks
+ * where they are going.
+ *
+ * `tile.openstreetmap.org` is the replacement: keyless, no account, no
+ * dependency, and the one basemap this project was already half-attributing.
+ * It also labels the UAE in Arabic, which CARTO's English-first style did not.
+ *
+ * Three details in that URL are load-bearing, and each was a bug waiting to
+ * happen if the old URL's shape had simply been retargeted:
+ *
+ *   * no `{r}` — Leaflet substitutes "@2x" there on a high-DPI screen, which is
+ *     a CARTO convention. OSM answers `…/{z}/{x}/{y}@2x.png` with **400**, so
+ *     carrying it over would have left the map working on a desktop and blank
+ *     on every phone — the one device most guests open a listing on.
+ *   * no `{s}` — OSM has deprecated subdomain sharding (a.,b.,c.). HTTP/2
+ *     multiplexes over one connection anyway, and the sharded hosts are not a
+ *     supported entry point.
+ *   * the attribution is a *link* to the copyright page. OSM's licence asks for
+ *     the credit to be clickable, and the old string additionally credited
+ *     CARTO — who no longer serve any of these tiles.
+ *
+ * `maxZoom` stays at 18 (OSM serves 19) so the zoom range a visitor gets is
+ * exactly the one they had before.
  *
  * Loaded via `next/dynamic` with `ssr: false` by the callers: Leaflet touches
  * `window` at import time and would crash a server render.
@@ -75,9 +104,12 @@ export default function ListingMap({
           zoomControl: true,
           attributionControl: true,
         });
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+        // OpenStreetMap's own standard raster tiles. See the note above for
+        // why the URL is spelled exactly like this — no {s}, no {r}.
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 18,
-          attribution: "&copy; OpenStreetMap, &copy; CARTO",
+          attribution:
+            '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
         }).addTo(mapRef.current);
         layerRef.current = L.layerGroup().addTo(mapRef.current);
       }

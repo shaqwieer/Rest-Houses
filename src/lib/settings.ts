@@ -67,7 +67,16 @@ const FALLBACK = {
   checkOutHour: null,
   checkInTime: "٤ عصرًا",
   checkOutTime: "١٢ ظهرًا",
+  // The master switch for online payments, and the three gateways behind it.
+  // All false on an unseeded install, matching the column defaults: no
+  // credentials exist for any provider, and a fresh database must not advertise
+  // a checkout it cannot complete. See src/lib/payments/config.ts.
   depositPaymentsEnabled: false,
+  telrEnabled: false,
+  tabbyEnabled: false,
+  tamaraEnabled: false,
+  paymentLinksEnabled: false,
+  paymentLinkDays: 7,
   seoTitle: "حجز الاستراحات والشاليهات في الإمارات",
   seoDescription:
     "استراحات وشاليهات صحراوية موثّقة في دبي وأبوظبي والعين وليوا والشارقة — أسعار واضحة وتقويم متاح لحظيًا وتأكيد مباشر عبر الواتساب.",

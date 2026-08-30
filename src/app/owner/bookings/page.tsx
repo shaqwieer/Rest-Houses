@@ -3,6 +3,7 @@ import { Icon } from "@/components/ui/icon";
 import { prisma } from "@/lib/prisma";
 import { getActiveOwnerSession } from "@/lib/auth";
 import { bankDetails, getSettings } from "@/lib/settings";
+import { platformPaymentModes } from "@/lib/payments";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
 import { BOOKING_FILTERS, isBookingFilter } from "@/lib/constants";
 import {
@@ -173,6 +174,12 @@ export default async function OwnerBookingsPage({
               scope="owner"
               reviewInviteDays={settings.reviewInviteDays}
               bank={bankDetails(settings)}
+              // Whether Rihla can issue a payment link at all. Resolved
+              // here because it depends on gateway credentials, which the
+              // browser must not be told about — what crosses is the
+              // verdict. False everywhere today, and the control in step 2
+              // renders nothing when it is.
+              canIssuePaymentLink={platformPaymentModes(settings).includes("LINK")}
               request={{
                 id: r.id,
                 reference: r.reference,
