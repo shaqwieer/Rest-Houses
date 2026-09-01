@@ -8,6 +8,7 @@ import { Field, TextArea, TextInput } from "@/components/ui/field";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { HumanCheck } from "@/components/security/human-check";
 import { createBookingRequest } from "@/app/actions/booking";
+import { reportBookingRequestConversion } from "@/components/booking/google-ads-conversion";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
@@ -73,6 +74,7 @@ export function BookingForm({
     startTransition(async () => {
       const result = await createBookingRequest(formData);
       if (result.ok) {
+        reportBookingRequestConversion(result.reference);
         router.push(`/booking/${result.reference}`);
       } else {
         setError(result.error);
