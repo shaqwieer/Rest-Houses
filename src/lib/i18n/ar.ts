@@ -319,8 +319,6 @@ export const ar = {
     extraPricingTitle: "خيارات وأسعار إضافية",
     dayUseNote:
       "حجز بدون مبيت — تحضر وتغادر في نفس اليوم. اتفق على التفاصيل مع المالك عبر الواتساب.",
-    dayUseWeekday: "بدون مبيت — أيام الأسبوع",
-    dayUseWeekend: "بدون مبيت — نهاية الأسبوع",
     dayUseCheckOut: "وقت الخروج",
     securityDepositLabel: "التأمين (مسترد)",
     securityDepositNote:

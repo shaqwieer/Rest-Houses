@@ -390,12 +390,15 @@ export default async function ListingDetailPage({
                 offers no day booking and asks for no security deposit must
                 look exactly as it does today.
 
-                These rates ARE bookable now: the calendar below carries a
-                "بدون مبيت / day only" toggle whenever `dayUsePrice` is set, and
-                a request made through it is priced from exactly the figures
-                shown here. This block stayed as the reference table — a guest
-                comparing weekday against weekend before choosing a day still
-                wants to see both at once, which a calendar cannot show. */}
+                The two day-use rates used to sit here as a side-by-side
+                reference table. They are gone: more than one guest read those
+                figures as what the whole stay costs and came away confused
+                about which price applied to them. Nothing about the booking
+                changed — the calendar below still carries a "بدون مبيت / day
+                only" toggle whenever `dayUsePrice` is set, and it quotes the
+                exact same rate at the moment a day is picked, which is the one
+                moment the number is unambiguous. What stays here is the fact a
+                guest needs before choosing: the hour they have to be out. */}
             {(hasDayUse || listing.securityDeposit > 0) && (
               <section className="border-b border-line py-6">
                 <h2 className="m-0 mb-2.5 font-display text-[19px] font-extrabold text-ink">
@@ -404,32 +407,22 @@ export default async function ListingDetailPage({
 
                 {hasDayUse && (
                   <>
-                    <p className="m-0 mb-3.5 text-[13.5px] leading-relaxed text-muted">
+                    <p
+                      className={`m-0 text-[13.5px] leading-relaxed text-muted ${
+                        l.dayUseCheckOutTime ? "mb-3.5" : ""
+                      }`}
+                    >
                       {t.listing.dayUseNote}
                     </p>
-                    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                      {listing.dayUsePrice > 0 && (
-                        <Fact
-                          icon="calendar_today"
-                          label={t.listing.dayUseWeekday}
-                          value={`${arNum(listing.dayUsePrice, locale)} ${t.common.aed}`}
-                        />
-                      )}
-                      {listing.dayUseWeekendPrice > 0 && (
-                        <Fact
-                          icon="event"
-                          label={t.listing.dayUseWeekend}
-                          value={`${arNum(listing.dayUseWeekendPrice, locale)} ${t.common.aed}`}
-                        />
-                      )}
-                      {l.dayUseCheckOutTime && (
+                    {l.dayUseCheckOutTime && (
+                      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
                         <Fact
                           icon="schedule"
                           label={t.listing.dayUseCheckOut}
                           value={l.dayUseCheckOutTime}
                         />
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </>
                 )}
 

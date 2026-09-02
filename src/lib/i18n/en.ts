@@ -257,8 +257,6 @@ export const en: Dictionary = {
     extraPricingTitle: "Other rates and options",
     dayUseNote:
       "Day booking — you arrive and leave the same day. Arrange the details with the owner on WhatsApp.",
-    dayUseWeekday: "Day booking — weekdays",
-    dayUseWeekend: "Day booking — weekend",
     dayUseCheckOut: "Leave by",
     securityDepositLabel: "Security deposit (refundable)",
     securityDepositNote:
