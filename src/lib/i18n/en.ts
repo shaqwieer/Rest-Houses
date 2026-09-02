@@ -289,6 +289,9 @@ export const en: Dictionary = {
     reviewsTitle: "Guest reviews",
     noReviews: "New rest house — no reviews yet",
     instagram: "On Instagram",
+    share: "Share",
+    shareCopied: "Link copied",
+    shareText: (name, where) => `${name} — ${where}`,
     policiesTitle: "Booking policy",
     notFound: "Rest house not found",
     reviewCount: (n, count) =>

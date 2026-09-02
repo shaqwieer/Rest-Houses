@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { Gallery } from "@/components/listing/gallery";
 import { BookingProvider } from "@/components/listing/booking-context";
@@ -7,7 +7,9 @@ import { BookingCard, CalendarSection, MobileBookingBar } from "@/components/lis
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
+import { ShareButton } from "@/components/listing/share-button";
 import {
+  findListingSlugMove,
   getListingBySlug,
   getSpecialDays,
   getUnavailableDates,
@@ -50,11 +52,27 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const [{ t, locale }, listing] = await Promise.all([
-    getI18n(),
-    getListingBySlug(decodeURIComponent(slug)),
-  ]);
-  if (!listing) return { title: t.listing.notFound };
+  const wanted = decodeURIComponent(slug);
+  const [{ t, locale }, listing] = await Promise.all([getI18n(), getListingBySlug(wanted)]);
+
+  if (!listing) {
+    /**
+     * The rename redirect is resolved *here*, not only in the page body below.
+     *
+     * `generateMetadata` runs first, and returning not-found metadata from it
+     * makes Next render its not-found tree — so the 308 the page then throws
+     * went out carrying a full HTML document titled "الاستراحة غير موجودة",
+     * complete with `robots: index, follow` and a canonical pointing at the site
+     * root. Browsers and crawlers honour the status line and never read that
+     * body, so the redirect worked; but serving a page that contradicts its own
+     * status code is the kind of thing that is fine until something reads it.
+     *
+     * Redirecting from metadata short-circuits before any of that renders.
+     */
+    const movedTo = await findListingSlugMove(wanted);
+    if (movedTo) permanentRedirect(`/listings/${encodeURIComponent(movedTo)}`);
+    return { title: t.listing.notFound };
+  }
 
   const settings = await getSettings();
   const s = localizeSettings(settings, locale);
@@ -116,8 +134,28 @@ export default async function ListingDetailPage({
   // owner is suspended, rejected or out of membership 404s by direct URL just as
   // it disappears from the grid. Hiding it from the grid while leaving the slug
   // reachable would not be hiding it at all.
-  const listing = await getListingBySlug(decodeURIComponent(slug));
-  if (!listing) notFound();
+  const wanted = decodeURIComponent(slug);
+  const listing = await getListingBySlug(wanted);
+
+  if (!listing) {
+    /**
+     * Not a listing — but it may have been one. Renaming a rest house re-derives
+     * its slug, and before the ListingSlug table every rename silently broke the
+     * URL Google had indexed and every link already shared on WhatsApp.
+     *
+     * A permanent redirect is what makes a rename a *move*: the crawler carries
+     * the old page's ranking over to the new URL instead of dropping a page it
+     * believes was deleted, and the guest with the old link lands where they
+     * meant to. (Next's `permanentRedirect` sends 308 — a 301 that also forbids
+     * changing the method, which search engines treat identically.)
+     *
+     * It throws, so nothing below runs; `notFound()` is only reached for a slug
+     * that was never in use.
+     */
+    const movedTo = await findListingSlugMove(wanted);
+    if (movedTo) permanentRedirect(`/listings/${encodeURIComponent(movedTo)}`);
+    notFound();
+  }
 
   const [settings, unavailable, specialDays, { t, locale }] = await Promise.all([
     getSettings(),
@@ -330,6 +368,19 @@ export default async function ListingDetailPage({
                       {t.listing.instagram}
                     </a>
                   )}
+
+                  {/* Share, in the same row and the same pill as the Instagram
+                      link. It hands out the short /r/<shortId> URL rather than
+                      this page's own address: the canonical slug is Arabic, so
+                      what a guest copies from the address bar is the
+                      percent-encoded form, which is unreadable in a WhatsApp
+                      message. Built absolute here — the button has to give the
+                      recipient a full link, and only the server knows the site's
+                      configured host. */}
+                  <ShareButton
+                    url={absoluteUrl(`/r/${listing.shortId}`)}
+                    title={t.listing.shareText(l.name, where)}
+                  />
                 </div>
               </div>
             </div>

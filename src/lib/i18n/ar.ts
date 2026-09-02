@@ -351,6 +351,10 @@ export const ar = {
     reviewsTitle: "تقييمات الضيوف",
     noReviews: "استراحة جديدة — لا تقييمات بعد",
     instagram: "إنستقرام الاستراحة",
+    share: "مشاركة",
+    shareCopied: "تم نسخ الرابط",
+    /** عنوان بطاقة المشاركة على واتساب — يسبق الرابط المختصر. */
+    shareText: (name: string, where: string) => `${name} — ${where}`,
     policiesTitle: "سياسة الحجز",
     notFound: "الاستراحة غير موجودة",
     reviewCount: (n: string, count: number) =>

@@ -1,10 +1,11 @@
 import Image from "next/image";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { BookingForm } from "@/components/booking/booking-form";
 import { Icon } from "@/components/ui/icon";
 import {
+  findListingSlugMove,
   getListingBySlug,
   getSpecialDays,
   isRangeAvailable,
@@ -39,8 +40,27 @@ export default async function BookPage({
 
   // The public predicate applies here too: an inactive owner's listing is not
   // bookable, so the form is never rendered for one.
-  const listing = await getListingBySlug(decodeURIComponent(slug));
-  if (!listing) notFound();
+  const wanted = decodeURIComponent(slug);
+  const listing = await getListingBySlug(wanted);
+
+  if (!listing) {
+    // Same rename redirect as the detail page. Nothing here is indexed — this
+    // route is `robots: noindex` and disallowed in robots.txt — but a guest who
+    // was sent a booking link with dates on it should keep the dates, not be
+    // dropped on a 404 while the rest house is sitting there under a new name.
+    const movedTo = await findListingSlugMove(wanted);
+    if (movedTo) {
+      const query = new URLSearchParams(
+        Object.entries(sp).flatMap(([key, value]) =>
+          typeof value === "string" ? [[key, value] as [string, string]] : [],
+        ),
+      ).toString();
+      permanentRedirect(
+        `/listings/${encodeURIComponent(movedTo)}/book${query ? `?${query}` : ""}`,
+      );
+    }
+    notFound();
+  }
 
   const from = typeof sp.from === "string" ? sp.from : undefined;
   const to = typeof sp.to === "string" ? sp.to : undefined;

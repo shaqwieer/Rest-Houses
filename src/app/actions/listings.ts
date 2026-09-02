@@ -628,6 +628,47 @@ function listingColumns(
   };
 }
 
+/**
+ * Rename a listing and keep its old URL working.
+ *
+ * The update and the redirect row are written in one transaction. Split across
+ * two awaits, a crash in between would leave a listing at its new slug with no
+ * record of the old one — precisely the orphaned-URL failure this exists to
+ * prevent, made permanent and invisible.
+ *
+ * The delete before the upsert handles the rename-back case: if this listing is
+ * moving *to* a slug some past rename retired, that row now describes a redirect
+ * from a live URL to itself. It has to go before the new row lands.
+ *
+ * Shared by the admin and the owner save actions, which had the same three lines
+ * and are exactly where the second copy would have drifted.
+ */
+async function updateListingAndKeepOldUrl(
+  id: string,
+  previousSlug: string,
+  data: Prisma.ListingUncheckedUpdateInput,
+) {
+  const nextSlug = typeof data.slug === "string" ? data.slug : previousSlug;
+
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.listing.update({ where: { id }, data });
+
+    if (nextSlug !== previousSlug) {
+      await tx.listingSlug.deleteMany({ where: { slug: nextSlug } });
+      await tx.listingSlug.upsert({
+        where: { slug: previousSlug },
+        create: { slug: previousSlug, listingId: id },
+        // A slug retired twice — A renamed away from it, B later took and left
+        // it — belongs to whoever released it last. That is where the link that
+        // is still in circulation should now lead.
+        update: { listingId: id },
+      });
+    }
+
+    return updated;
+  });
+}
+
 /* -------------------------------------------------------------------------- */
 /* create / update — admin                                                    */
 /* -------------------------------------------------------------------------- */
@@ -701,9 +742,10 @@ export async function saveListing(formData: FormData): Promise<ActionResult> {
           ? existing.slug
           : uniqueSlug(data.name, await getTakenSlugs(id));
 
-      const updated = await prisma.listing.update({
-        where: { id },
-        data: { ...common, slug, ...(ownerId !== undefined ? { ownerId } : {}) },
+      const updated = await updateListingAndKeepOldUrl(id, existing.slug, {
+        ...common,
+        slug,
+        ...(ownerId !== undefined ? { ownerId } : {}),
       });
 
       await prisma.auditLog.create({
@@ -819,9 +861,9 @@ export async function saveOwnerListing(formData: FormData): Promise<ActionResult
           ? existing.slug
           : uniqueSlug(data.name, await getTakenSlugs(id));
 
-      const updated = await prisma.listing.update({
-        where: { id: existing.id },
-        data: { ...common, slug },
+      const updated = await updateListingAndKeepOldUrl(existing.id, existing.slug, {
+        ...common,
+        slug,
       });
 
       await prisma.auditLog.create({

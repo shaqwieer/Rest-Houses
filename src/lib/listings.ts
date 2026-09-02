@@ -453,13 +453,73 @@ export async function getListingsForOwner(ownerId: string): Promise<ListingView[
   return rows.map(toView);
 }
 
-/** Slug list, for `uniqueSlug()` when creating or renaming. */
+/**
+ * Slug list, for `uniqueSlug()` when creating or renaming.
+ *
+ * Retired slugs count as taken. A URL that is still redirecting somewhere must
+ * not be handed to a different listing: the live route would win, the redirect
+ * row would become a lie, and anyone following an old link would land on a rest
+ * house that is not the one they were sent.
+ *
+ * `exceptId` excludes the listing being saved from *both* tables, not just its
+ * current slug. That is what lets a rename be undone — rename «الرمال» to
+ * «الكثبان» and back, and the listing gets its original URL (and its original
+ * search ranking) rather than «الرمال-2», because its own retired row does not
+ * block it.
+ */
 export async function getTakenSlugs(exceptId?: string): Promise<string[]> {
-  const rows = await prisma.listing.findMany({
-    where: exceptId ? { id: { not: exceptId } } : undefined,
+  const [live, retired] = await Promise.all([
+    prisma.listing.findMany({
+      where: exceptId ? { id: { not: exceptId } } : undefined,
+      select: { slug: true },
+    }),
+    prisma.listingSlug.findMany({
+      where: exceptId ? { listingId: { not: exceptId } } : undefined,
+      select: { slug: true },
+    }),
+  ]);
+  return [...live, ...retired].map((r) => r.slug);
+}
+
+/**
+ * "This URL is not a listing — was it one?"
+ *
+ * Returns the slug the retired one now points at, or null. The detail page
+ * calls this before giving up and 404-ing, and redirects when it gets an
+ * answer, so a rename moves a page instead of deleting it.
+ *
+ * Request-cached like `getListingBySlug`, because both `generateMetadata` and
+ * the page body ask the same question on the same request.
+ *
+ * The public predicate is applied to the *destination*, deliberately. Without
+ * it a retired URL belonging to an unpublished listing — or to one hidden
+ * because its owner lapsed — would redirect to a page that then 404s, which is
+ * a worse answer than the 404 it replaced and, for a suspended owner, a way to
+ * confirm the listing still exists.
+ */
+export const findListingSlugMove = cache(async (retiredSlug: string): Promise<string | null> => {
+  const row = await prisma.listingSlug.findFirst({
+    where: { slug: retiredSlug, listing: { is: publicListingWhere() } },
+    select: { listing: { select: { slug: true } } },
+  });
+  // A slug that redirects to itself is not a move; returning it would be a loop.
+  const current = row?.listing.slug ?? null;
+  return current === retiredSlug ? null : current;
+});
+
+/**
+ * The canonical slug behind a /r/<shortId> share link.
+ *
+ * Same public predicate as every other read path: a short link to a listing
+ * whose owner has lapsed 404s exactly as the listing's own URL does, rather
+ * than becoming a side door into hidden inventory.
+ */
+export async function getPublicSlugByShortId(shortId: string): Promise<string | null> {
+  const row = await prisma.listing.findFirst({
+    where: withPublicListingWhere({ shortId }),
     select: { slug: true },
   });
-  return rows.map((r) => r.slug);
+  return row?.slug ?? null;
 }
 
 /* -------------------------------------------------------------------------- */

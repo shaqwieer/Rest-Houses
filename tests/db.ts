@@ -52,6 +52,7 @@ export async function resetDatabase(): Promise<void> {
   await prisma.calendarFeed.deleteMany();
   await prisma.review.deleteMany();
   await prisma.listingImage.deleteMany();
+  await prisma.listingSlug.deleteMany();
   await prisma.listing.deleteMany();
   await prisma.ownerProfile.deleteMany();
   await prisma.user.deleteMany();

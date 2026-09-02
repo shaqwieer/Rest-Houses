@@ -17,16 +17,17 @@ typography, spacing and components match it.
 4. [Environment variables](#environment-variables)
 5. [Project structure](#project-structure)
 6. [Changing the site name, colours and branding](#changing-the-site-name-colours-and-branding)
-7. [How the booking flow works](#how-the-booking-flow-works)
-8. [Form protection](#form-protection)
-9. [Running with Docker](#running-with-docker)
-10. [Image storage (including images in the database)](#image-storage-including-images-in-the-database)
-11. [Database and migrations](#database-and-migrations)
-12. [Enabling online deposit payments](#enabling-online-deposit-payments)
-13. [Deploying](#deploying)
-14. [Everyday tasks](#everyday-tasks)
-15. [Design decisions worth knowing](#design-decisions-worth-knowing)
-16. [Troubleshooting](#troubleshooting)
+7. [Listing URLs](#listing-urls)
+8. [How the booking flow works](#how-the-booking-flow-works)
+9. [Form protection](#form-protection)
+10. [Running with Docker](#running-with-docker)
+11. [Image storage (including images in the database)](#image-storage-including-images-in-the-database)
+12. [Database and migrations](#database-and-migrations)
+13. [Enabling online deposit payments](#enabling-online-deposit-payments)
+14. [Deploying](#deploying)
+15. [Everyday tasks](#everyday-tasks)
+16. [Design decisions worth knowing](#design-decisions-worth-knowing)
+17. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -173,6 +174,7 @@ src/
       listings/          results, detail, booking form
       booking/           confirmation + WhatsApp link
       favorites/, about/, faq/, how-it-works/, policies/, privacy/
+    r/[code]/            short share links — /r/<shortId> → the listing's URL
     admin/               dashboard (mobile-first shell, auth-guarded)
     login/               admin sign-in
     actions/             server actions — the only code that writes
@@ -206,7 +208,7 @@ src/
     pricing.ts           the one place a total is computed
     whatsapp.ts          deep links + the Arabic message
     format.ts            Arabic-Indic number formatting
-    slug.ts              Arabic-aware slugs
+    slug.ts              Arabic-aware slugs — see "Listing URLs" below
     storage/             swappable image adapter (db / local / cloudinary / s3)
     payments/            disabled deposit-payment stub
   middleware.ts          edge guard for /admin
@@ -366,6 +368,41 @@ fetch('https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsrounded/'
 ```
 then paste the result into `ICON_PATHS`. Browse names at
 [fonts.google.com/icons](https://fonts.google.com/icons) (style: Rounded).
+
+---
+
+## Listing URLs
+
+A listing lives at its Arabic slug — `/listings/استراحة-الرمال-الذهبية` — and
+that is deliberate. Arabic is legal in a URL path, browsers display it decoded,
+and Google decodes it and matches an Arabic query against it. A Latin
+transliteration would lose that (there is no agreed romanisation of «استراحة»
+anyway), and an id-only URL would lose the keyword entirely.
+
+Three pieces make that choice cheap to live with.
+
+**`src/lib/slug.ts`** derives the slug: diacritics dropped, alef and ya variants
+normalised, ة folded to ه — so «إستراحة» and «استراحة» produce the same URL, and
+it matches how people actually type in the search box.
+
+**`/r/<shortId>`** is the short, ASCII form, and it is what the share button on a
+listing page hands out. On the wire an Arabic path is percent-encoded, so what a
+guest copies out of the address bar is a wall of `%D8%A7` that looks broken in a
+WhatsApp message. `/r/f4a6403078` redirects (301) to the canonical Arabic URL, so
+the pretty link is the one that circulates while the indexed URL never changes.
+The code is a PostgreSQL-generated column, `Listing.shortId`, so every create
+path gets one without being told.
+
+**`ListingSlug`** keeps every URL a listing has answered to. Renaming a rest
+house re-derives its slug; without this the old URL 404s, which a crawler reads
+as "deleted" rather than "moved" — the listing loses the ranking it had earned
+and every already-shared link breaks. The detail page looks here before giving
+up and issues a permanent redirect instead. `getTakenSlugs()` reads the table
+too, so a retired URL is never handed to a different listing, and a rename can be
+undone without the slug coming back as `…-2`.
+
+`tests/listing-urls.test.ts` covers all of it, including the case that matters
+most: a redirect must never point at a listing the public predicate hides.
 
 ---
 
