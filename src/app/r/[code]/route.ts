@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
 import { getPublicSlugByShortId } from "@/lib/listings";
 
 /**
@@ -30,10 +29,7 @@ import { getPublicSlugByShortId } from "@/lib/listings";
 // Reads the database on every request; there is nothing here to prerender.
 export const dynamic = "force-dynamic";
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ code: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ code: string }> }) {
   const { code } = await params;
 
   // `getPublicSlugByShortId` applies the same public predicate as every other
@@ -43,10 +39,25 @@ export async function GET(
   const slug = await getPublicSlugByShortId(code);
   if (!slug) return new NextResponse(null, { status: 404 });
 
-  // Resolved against the incoming request rather than the configured site URL,
-  // so the redirect stays on whichever host the visitor actually used — the
-  // production domain, a staging host, or localhost during development.
-  const target = new URL(`/listings/${encodeURIComponent(slug)}`, request.url);
-
-  return NextResponse.redirect(target, 301);
+  /**
+   * A RELATIVE Location, and not `NextResponse.redirect()`.
+   *
+   * `redirect()` demands an absolute URL, and the obvious way to build one —
+   * `new URL(path, request.url)` — is wrong behind a reverse proxy. In the
+   * container `request.url` is derived from the address the server is bound to,
+   * so production served `Location: https://0.0.0.0:3000/listings/…` and the
+   * short link was broken for every visitor. It passed local testing precisely
+   * because a dev server binds to the host the browser is already talking to.
+   *
+   * Reading `Host` instead would work but means trusting a client-supplied
+   * header to decide where to send that client. A relative Location needs
+   * neither: RFC 7231 §7.1.2 has the client resolve it against the request URI,
+   * so this is correct on the production domain, behind any proxy, and on
+   * localhost, with nothing to configure. It is also what Next's own
+   * `permanentRedirect` emits for the slug-history redirect on the detail page.
+   */
+  return new NextResponse(null, {
+    status: 301,
+    headers: { Location: `/listings/${encodeURIComponent(slug)}` },
+  });
 }
