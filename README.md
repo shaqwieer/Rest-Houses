@@ -57,7 +57,8 @@ typography, spacing and components match it.
 | `/admin/listings/new`, `/admin/listings/[id]` | Full editor: name, description, city, area, prices, capacity, amenities, categories, coordinates, images, owner contact, flags |
 | `/admin/calendar` | Tap any day to block/free it; bulk block or free the rest of a month |
 | `/admin/requests` | Confirm / reject / cancel requests, filter by status, one-tap WhatsApp reply |
-| `/admin/settings` | Site name, logo, colours, WhatsApp number, contacts, socials, map location, fees, hero copy, SEO, Google tag |
+| `/admin/settings` | Site name, logo, colours, WhatsApp number, contacts, socials, map location, fees, hero copy, SEO |
+| `/admin/tracking` | Google tag + Ads conversion, GA4, Tag Manager, Meta / TikTok / Snapchat pixels, and the map of which event the site sends each platform |
 
 Navigation is a thumb-reachable bottom tab bar on phones (clearing the iOS home
 indicator) and a pill bar on desktop. Every admin action is confirmed with a
@@ -237,48 +238,99 @@ Go to **/admin/settings**. You can change:
   check-in/out times
 - **Home page + SEO** — hero title, subtitle, hero image, footer text, SEO title
   and description
-- **Google tag & tracking** — the Google tag ID and one Ads conversion label
 
 Saving takes effect immediately across the whole site.
 
-### Connecting Google Ads or Google Analytics
+Advertising and analytics are **not** here — they have their own page, and their
+own save. See the next section.
 
-Google gives you a block of `<script>` and tells you to paste it before
-`</head>`. Don't — **/admin/settings** → **وسم جوجل والتتبّع** takes the two
-identifiers out of that block instead, and the site writes the snippet itself:
+### Tracking: Google, Meta, TikTok and Snapchat — **/admin/tracking**
 
-| Field | What Google calls it | Example |
+Every one of these platforms gives you a block of `<script>` and tells you to
+paste it before `</head>`. Don't. **/admin/tracking** takes the *identifier* out
+of that block and the site writes the snippet itself:
+
+| Field | Where you find it | Example |
 |---|---|---|
-| Google tag ID | the `id=` in the gtag.js line, or `config` | `AW-950802645`, `G-ABC123XYZ` |
+| Google tag ID | the `id=` in the gtag.js line | `AW-950802645` |
 | Conversion label | the half of `send_to` after the slash | `dVoECJ30sOQcENWxsMUD` |
+| Google Analytics (GA4) | Admin → Data streams | `G-ABC123XYZ` |
+| Tag Manager container | the container ID at the top of the workspace | `GTM-ABC1234` |
+| Meta pixel | Events Manager → Data sources | `123456789012345` |
+| TikTok pixel | TikTok Ads → Assets → Events | `CO4A2JJC77UF1234ABCD` |
+| Snapchat pixel | Snapchat Ads → Events Manager | a UUID |
 
-Pasting the whole `AW-950802645/dVoECJ30sOQcENWxsMUD` into the second field
-works — only the label is kept.
+Pasting the whole `AW-950802645/dVoECJ30sOQcENWxsMUD` into the conversion field
+works — only the label is kept. The Google tag field accepts `AW-`, `G-`, `GT-`
+and `DC-`, the four `gtag.js` itself takes; a **Tag Manager** container is loaded
+by `gtm.js` rather than by this tag, so it is refused there and has its own
+field. GA4 has its own field too, because gtag.js takes one loader and a
+`config` per property — a site running Ads *and* Analytics needs both.
 
-Accepted prefixes are `AW-`, `G-`, `GT-` and `DC-` — the four `gtag.js` itself
-takes. A Google **Tag Manager** container (`GTM-…`) is loaded by `gtm.js`, not by
-this tag, so it is refused rather than rendered as a script that does nothing.
+Clearing a field switches that platform off completely: no script, no global, no
+request to it.
 
-Three things follow from storing identifiers rather than markup, and they are
-the reason there is no "paste your head code here" box:
+#### What the site reports
 
-- **The tag loads on the public site only.** It is mounted in
-  `src/app/(site)/layout.tsx`, and `/admin`, `/owner` and `/login` sit outside
-  that route group — so your own working day never lands in the ad account's
-  traffic, or in its conversion counts.
-- **The conversion fires once per booking**, on `/booking/[reference]`, carrying
-  the reference as `transaction_id` and the booking total as `value` in AED. A
+`PageView` comes from each platform's own snippet. Everything else is one
+business event with one name per platform, defined once in
+`src/lib/tracking-events.ts` — and printed on /admin/tracking so the names you
+type into Ads Manager come from the same table the browser fires from.
+
+| The moment | Meta | TikTok | Snapchat | GA4 |
+|---|---|---|---|---|
+| A rest-house page was opened | `ViewContent` | `ViewContent` | `VIEW_CONTENT` | `view_item` |
+| Search results were shown | `Search` | `Search` | `SEARCH` | `search` |
+| A complete set of dates was picked | `AvailabilityCheck`\* | `AvailabilityCheck` | `CUSTOM_EVENT_2` | `availability_check` |
+| WhatsApp contact was opened | `Contact` | `Contact` | `CUSTOM_EVENT_1` | `contact` |
+| The booking form was reached | `InitiateCheckout` | `InitiateCheckout` | `START_CHECKOUT` | `begin_checkout` |
+| A booking request was sent | `Lead` | `SubmitForm` | `RESERVE` | `generate_lead` |
+| A deposit was confirmed paid | `Purchase` | `CompletePayment` | `PURCHASE` | `purchase` |
+| An owner finished registering | `CompleteRegistration` | `CompleteRegistration` | `SIGN_UP` | `sign_up` |
+| An owner added a rest house | `AddProperty`\* | `AddProperty` | — | `add_property` |
+| An owner published a rest house | `CompletePropertySetup`\* | `CompletePropertySetup` | — | `complete_property_setup` |
+
+\* sent through `fbq('trackCustom', …)` — Meta drops an unrecognised name sent
+through `track`.
+
+A **booking request is a `Lead`, not a `Purchase`**: the guest has asked and the
+owner has not confirmed. Only a deposit verified server-side reports a purchase.
+Reporting requests as sales is how a campaign ends up optimised to buy enquiries
+that never become stays.
+
+#### Where it runs, and where it deliberately doesn't
+
+- **The public site.** The snippets are mounted in `src/app/(site)/layout.tsx`,
+  and `/admin` and `/login` sit outside that route group — so your own working
+  day never lands in the ad account's traffic, or in its conversion counts.
+- **The owner dashboard, only if you ask.** "Added a rest house" and "published
+  a rest house" happen at `/owner/listings/new`, outside that group. The
+  **Track the owner dashboard too** switch on /admin/tracking mounts the pixels
+  there as well. Off by default; `/admin` is never included.
+- **The Ads conversion fires once per booking request**, from the moment the
+  server accepts it — not from the confirmation page, which can be reloaded. A
   reload, or a return from WhatsApp with the back button, does not count a
   second time. See `src/components/booking/google-ads-conversion.tsx`.
-- **A mistyped paste cannot reach the page.** The IDs are validated against the
-  shape Google issues, so a half-copied `<script>` line is refused at the form
-  rather than rendered into every page as a tag that never fires.
+- **A mistyped paste cannot reach the page.** Every ID is validated against the
+  shape its platform issues, so a half-copied `<script>` line is refused at the
+  form rather than rendered into every page as a tag that never fires.
 
-Clearing the tag ID switches tracking off completely: no script, no `dataLayer`,
-no request to Google.
+> Running a Tag Manager container **and** a pixel wired up directly here will
+> double-count everything if the container fires that same pixel.
+> /admin/tracking says so when it sees both; it does not silently switch one
+> off, because a tag that vanishes with no explanation is a worse bug than the
+> double count.
 
-> Adding a Google tag means the site starts sending visitor data to Google.
-> Check that `/privacy` says so before you turn it on.
+#### Checking that it works
+
+Open each platform's test console and then do the thing yourself on the site:
+Events Manager → Test Events (Meta), Pixel Helper (TikTok), Event Manager
+(Snapchat), DebugView (GA4). An event arriving is not proof of a real booking or
+a real registration until you have matched it against the request itself in
+`/admin/requests` or `/admin/owner-requests`.
+
+> Adding any of these means the site starts sending visitor data to that
+> platform. Check that `/privacy` says so before you turn it on.
 
 ### Arabic and English: what translates itself and what you type twice
 

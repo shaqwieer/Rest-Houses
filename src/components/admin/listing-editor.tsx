@@ -19,6 +19,7 @@ import {
 } from "@/app/actions/listings";
 import { AMENITIES, CATEGORIES, CITIES, label } from "@/lib/constants";
 import { useLocale } from "@/lib/i18n/provider";
+import { track } from "@/lib/tracking-events";
 import { arNum } from "@/lib/format";
 import { PAYMENT_MODES_FIELD } from "@/lib/constants";
 import { stayHourOptions } from "@/lib/clock";
@@ -208,6 +209,44 @@ export function ListingEditor({
         ? await saveOwnerListing(formData)
         : await saveListing(formData);
       if (result.ok) {
+        /**
+         * The owner-side half of the plan's funnel: "Add Property" and
+         * "Complete Property Setup".
+         *
+         * Only for an OWNER. An operator adding a rest house from /admin is
+         * staff doing their job, not a campaign paying off, and counting it
+         * would put the team's own working day into the owner-acquisition
+         * numbers.
+         *
+         * These reach a platform only when the operator has switched owner-area
+         * tracking on — /owner sits outside the public shell, which loads no
+         * pixel by default. `track` no-ops safely when nothing is loaded, so
+         * the call site does not need to know which it is.
+         *
+         * "Setup complete" is *published*, not *saved*: a draft nobody can book
+         * is not a rest house on the platform yet.
+         */
+        if (isOwner) {
+          // The slug comes back from the action, which is the only place that
+          // knows it — the draft carries the name, not the URL.
+          const payload = { id: result.slug ?? "", name: draft.name };
+          const published = formData.get("published") === "on";
+
+          // Split on `isNew` rather than testing `draft.published` in both
+          // branches. `draft` is the state BEFORE this save, refreshed by the
+          // `router.refresh()` below — so a branch that reads it for a listing
+          // that did not exist a moment ago is racing a refresh for an answer
+          // it already knows.
+          if (isNew) {
+            track("AddProperty", payload);
+            if (published) track("CompletePropertySetup", payload);
+          } else if (published && !draft.published) {
+            // The transition, not the state: re-saving a rest house that was
+            // already live is an edit, and reporting it would count one
+            // successful onboarding once a week forever.
+            track("CompletePropertySetup", payload);
+          }
+        }
         toast(result.message ?? t.common.saved);
         if (isNew && result.id) {
           // Land on the saved listing so images can be uploaded next.

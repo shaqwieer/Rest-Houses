@@ -57,6 +57,7 @@ type AdminTabKey =
   | "insights"
   | "auditLog"
   | "settings"
+  | "tracking"
   | "account";
 
 const TABS: {
@@ -81,6 +82,11 @@ const TABS: {
   { href: "/admin/insights", labelKey: "insights", icon: "donut_large" },
   { href: "/admin/audit", labelKey: "auditLog", icon: "history" },
   { href: "/admin/settings", labelKey: "settings", icon: "tune" },
+  // Its own section rather than a card inside /admin/settings: the advertising
+  // configuration belongs to the media buyer, is read against Events Manager
+  // rather than against the site, and changes on a completely different rhythm
+  // from the name, colours and fees next door.
+  { href: "/admin/tracking", labelKey: "tracking", icon: "bolt" },
   // The operator's own credentials, deliberately its own page rather than a
   // card inside /admin/settings: everything there is *the site's* configuration,
   // which any admin may change freely, while this is one person's sign-in and

@@ -1020,21 +1020,114 @@ export const en: Dictionary = {
     fieldSeoTitleHint: "Shown in search results",
     fieldSeoDescription: "SEO description",
     seoDescriptionHint: (n) => `Best between 120 and 160 characters — currently ${n}`,
-    googleTagCard: "Google tag & tracking",
-    googleTagHint:
-      "Paste the identifiers exactly as they appear in your Google account — the site builds the snippets itself and puts them where they belong. Leave both blank to switch tracking off entirely.",
-    fieldGoogleTagId: "Google tag ID",
-    fieldGoogleTagIdHint:
-      "e.g. AW-950802645 for Google Ads, or G-XXXXXXX for Google Analytics (GA4). GT- and DC- are accepted too; GTM- containers are not. Loads on the public site only — the dashboard is never tracked.",
-    fieldConversionLabel: "Conversion label (confirmed booking)",
-    fieldConversionLabelHint:
-      "The half after the slash in send_to, e.g. dVoECJ30sOQcENWxsMUD. Reported once when the booking confirmation page is shown, with the booking total in AED.",
-    googleTagLiveOn: "Tracking is live",
-    googleTagLiveOff: "Tracking is off",
-    googleTagConversionOff: "The tag loads, but no conversion is reported",
+    // The /admin/tracking tab. Its strings moved to the `tracking` group below;
+    // what stays here is the name the tab bar shows, because the bar reads
+    // `t.admin[labelKey]`.
+    tracking: "Tracking",
     settingsTitle: "Site settings",
     settingsSubtitle:
       "Everything you change here appears on the site immediately — no code change, no redeploy.",
+  },
+
+  /* -------------------------------------------------------------- tracking */
+  /**
+   * /admin/tracking.
+   *
+   * Its own group rather than part of `admin` because a different person reads
+   * it: this is the media buyer's page — advertising accounts, events, platform
+   * names — while `admin` is the operator's daily surface. Filing it under
+   * `admin` would have mixed two dictionaries that change on different days and
+   * for different reasons.
+   */
+  tracking: {
+    title: "Tracking & measurement",
+    subtitle:
+      "Connect your advertising accounts to the site. Paste the identifier only — the site assembles the snippet and puts it where it belongs. A blank field means that platform is off.",
+
+    /* ---- Google card ---- */
+    googleCard: "Google",
+    googleHint:
+      "One tag carries Google Ads and Google Analytics together. A Tag Manager container has its own field because it is loaded by a different file.",
+    fieldGoogleTagId: "Google tag ID",
+    fieldGoogleTagIdHint:
+      "Such as AW-950802645 for Google Ads. G-, GT- and DC- work too; GTM- containers do not.",
+    fieldConversionLabel: "Conversion label (booking request)",
+    fieldConversionLabelHint:
+      "The half after the slash in send_to, e.g. dVoECJ30sOQcENWxsMUD. Reported once, when a booking request is accepted.",
+    fieldGa4: "Google Analytics ID (GA4)",
+    fieldGa4Hint: "Starts with G- — e.g. G-ABC123XYZ. Runs alongside the Ads tag.",
+    fieldGtm: "Google Tag Manager container",
+    fieldGtmHint:
+      "Starts with GTM- — e.g. GTM-ABC1234. Use it if you manage your tags inside Tag Manager.",
+
+    /* ---- pixels card ---- */
+    pixelsCard: "Advertising pixels",
+    pixelsHint:
+      "Paste the identifier from each platform's events manager — not the code. The identifier is all the site needs; it builds the rest.",
+    fieldMetaPixel: "Meta pixel ID (Facebook & Instagram)",
+    fieldMetaPixelHint: "Digits only — from Events Manager → Data sources.",
+    fieldTiktokPixel: "TikTok pixel ID",
+    fieldTiktokPixelHint: "From TikTok Ads → Assets → Events — e.g. CO4A2JJC77UF1234ABCD.",
+    fieldSnapPixel: "Snapchat pixel ID",
+    fieldSnapPixelHint: "From Snapchat Ads → Events Manager — a UUID.",
+
+    /* ---- scope ---- */
+    scopeCard: "Where tracking runs",
+    scopeHint:
+      "Pixels run on the public site only. The admin dashboard is never tracked, so your own working day stays out of your campaign numbers.",
+    fieldOwnerArea: "Track the owner dashboard too",
+    fieldOwnerAreaHint:
+      "Turn this on if you run owner-acquisition campaigns: without it, \"Added a rest house\" and \"Published a rest house\" never arrive, because both happen inside the owner dashboard. The admin dashboard stays untracked either way.",
+
+    /* ---- status ---- */
+    statusCard: "What is live right now",
+    statusHint: "This reads the saved configuration, not what is typed in the fields above.",
+    connected: "Connected",
+    notConnected: "Not connected",
+    platformGoogleAds: "Google Ads",
+    platformGa4: "Google Analytics GA4",
+    platformGtm: "Tag Manager",
+    platformMeta: "Meta",
+    platformTiktok: "TikTok",
+    platformSnap: "Snapchat",
+    conversionOn: "The booking-request conversion is reported to Google Ads",
+    conversionOff: "The Google tag loads, but no conversion is reported",
+    nothingLive: "No platform is connected — the site reports nothing.",
+    gtmWarning:
+      "Heads up: a Tag Manager container is running alongside a pixel wired up directly here. If the container also fires that pixel, every page view and every event is counted twice. Keep each pixel in one place — either here or inside the container.",
+
+    /* ---- the events table ---- */
+    eventsCard: "What the site reports",
+    eventsHint:
+      "These are the real names as each platform receives them — use them exactly when building conversions and audiences. \"—\" means the platform has no sensible name for that moment, so nothing is sent to it.",
+    colEvent: "The moment",
+    colMeta: "Meta",
+    colTiktok: "TikTok",
+    colSnap: "Snapchat",
+    colGoogle: "Google / GA4",
+    notSent: "—",
+    pageViewNote:
+      "PageView is sent by each platform's own snippet whenever a public page opens, and needs no setup.",
+    ownerEventsNote:
+      "\"Added a rest house\" and \"Published a rest house\" happen inside the owner dashboard, so they only arrive once \"Track the owner dashboard\" is on.",
+    eventNames: {
+      ViewProperty: "A rest-house page was opened",
+      Search: "Search results were shown",
+      AvailabilityCheck: "A complete set of dates was picked",
+      ContactWhatsapp: "WhatsApp contact was opened",
+      InitiateBooking: "The booking form was reached",
+      BookingRequested: "A booking request was sent",
+      Purchase: "A deposit was confirmed paid",
+      Registration: "An owner finished registering",
+      AddProperty: "An owner added a rest house",
+      CompletePropertySetup: "An owner published a rest house",
+    },
+
+    /* ---- testing ---- */
+    testCard: "How to check the events arrive",
+    testHint:
+      "Open each platform's test tool and then perform the action on the site yourself: Events Manager → Test Events on Meta, Pixel Helper on TikTok, Event Manager on Snapchat, DebugView on GA4. No event counts as proof of a real booking or registration until it has been matched against the request itself in the dashboard.",
+    saveButton: "Save tracking settings",
   },
 
   /* -------------------------------------------------------------- calendar */
@@ -1389,6 +1482,13 @@ export const en: Dictionary = {
       "That tag ID isn't valid — it starts with AW-, G-, GT- or DC-, e.g. AW-950802645. Google Tag Manager containers (GTM-) are not supported here.",
     invalidConversionLabel:
       "That conversion label isn't valid — copy the value after the slash in send_to",
+    invalidGa4Id: "That GA4 ID isn't valid — it starts with G-, e.g. G-ABC123XYZ",
+    invalidGtmId: "That container ID isn't valid — it starts with GTM-, e.g. GTM-ABC1234",
+    invalidMetaPixel: "That Meta pixel ID isn't valid — digits only, e.g. 123456789012345",
+    invalidTiktokPixel:
+      "That TikTok pixel ID isn't valid — letters and digits, e.g. CO4A2JJC77UF1234ABCD",
+    invalidSnapPixel:
+      "That Snapchat pixel ID isn't valid — a UUID, e.g. 0a1b2c3d-4e5f-6789-abcd-ef0123456789",
     invalidCoordinates: "Those coordinates aren't valid — use the form: 24.7614, 55.3340",
     invalidFormat: "Wrong format",
     checkTheFields: "Please check the fields",
@@ -1795,6 +1895,18 @@ export const en: Dictionary = {
     privMapsLead: "We use",
     privMapsTail:
       "maps to show rest house locations on their pages. Loading a map means the provider sees your IP address, under their own privacy policy.",
+    // ---- advertising measurement
+    //
+    // Rendered only when a platform is actually connected: a policy that admits
+    // to tracking which never happens is as inaccurate as one that hides
+    // tracking which does.
+    privTrackH: "Measurement and advertising tools",
+    privTrackLead:
+      "We use third-party measurement tools to understand where visitors come from and which pages interest them. The platforms currently connected to this site:",
+    privTrackBody:
+      "These tools set cookies in your browser and can see your IP address and which pages you open on this site, under each of their own privacy policies. We do not send them your name, your phone number or the text of your notes, and they do not run inside the dashboard.",
+    privTrackOptOut:
+      "You can switch them off in your browser's privacy settings or with any tracker-blocking extension; it will not affect your ability to browse the site or send a booking request.",
     privRetainH: "How long we keep it",
     privRetainB:
       "We keep booking requests for as long as they are needed to manage the booking and refer back to it in any dispute. You can ask us to delete your request at any time.",

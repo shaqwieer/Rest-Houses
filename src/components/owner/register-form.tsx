@@ -8,6 +8,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { HumanCheck } from "@/components/security/human-check";
 import { registerOwner } from "@/app/actions/owners";
 import { useLocale } from "@/lib/i18n/provider";
+import { track } from "@/lib/tracking-events";
 import { CITIES, label } from "@/lib/constants";
 
 /**
@@ -43,6 +44,12 @@ export function OwnerRegisterForm() {
     startTransition(async () => {
       const result = await registerOwner(formData);
       if (result.ok) {
+        // The plan's owner-side `Registration`, reported from the server's
+        // acceptance rather than from the panel below — the panel re-renders,
+        // the acceptance happens once. /register/owner is inside the public
+        // shell, so the pixels are loaded here regardless of whether the owner
+        // dashboard is tracked.
+        track("Registration");
         setDone(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {

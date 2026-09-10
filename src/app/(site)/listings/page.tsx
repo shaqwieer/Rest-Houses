@@ -4,6 +4,7 @@ import { ListingCard } from "@/components/listing/listing-card";
 import { toCardData } from "@/components/listing/card-data";
 import { FiltersAside, FiltersTrigger } from "@/components/listing/filters-panel";
 import { ResultsToolbar } from "@/components/listing/results-toolbar";
+import { TrackEvent } from "@/components/site/track-event";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { findListings, localizeListing, type ListingFilters } from "@/lib/listings";
@@ -102,8 +103,59 @@ export default async function ListingsPage({
       ? `${arDayMonth(filters.availableFrom, locale)} – ${arDayMonth(filters.availableTo, locale)}`
       : null;
 
+  /**
+   * What the guest actually searched for, in one line.
+   *
+   * Every platform's Search event takes a single search term, and the URL is
+   * the search: a destination, a date range and a guest count. Assembled from
+   * the parsed filters rather than the raw query string so a bookmarked link
+   * with junk parameters reports what was honoured, not what was typed.
+   */
+  const searchTerm = [
+    filters.city && filters.city !== "all" ? cityLabel(filters.city, locale) : null,
+    filters.q || null,
+    dateLine,
+    filters.minCapacity ? `${filters.minCapacity}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  /**
+   * One distinct search, once per tab.
+   *
+   * Without a key this page reports a Search on every mount — and a guest who
+   * opens five rest houses from one result page and presses back each time
+   * mounts it six times. Meta and TikTok both size audiences off Search volume,
+   * so that is a fivefold lie about the top of the funnel.
+   *
+   * The key is what was actually searched for, so changing a filter is a new
+   * search and the back button is not. `sort` is deliberately excluded:
+   * re-ordering the same results is not a new question. Amenities are included
+   * even though they are not in the readable `searchTerm` — narrowing to "has a
+   * pool" IS a different search, and leaving them out would swallow it.
+   */
+  const searchKey = [
+    filters.city ?? "",
+    filters.q ?? "",
+    filters.availableFrom ?? "",
+    filters.availableTo ?? "",
+    filters.minCapacity ?? "",
+    [...(filters.amenities ?? [])].sort().join(","),
+  ].join("|");
+
   return (
     <div className="min-h-[70vh] bg-sand-50">
+      {/* The plan's Search. Fired from the results page rather than from the
+          hero bar, the filters panel and the sort menu in turn: every one of
+          those ends here, and the count is only known once the results are in.
+          Filters are in the URL, so this re-fires when they change — which is
+          what a search is. */}
+      <TrackEvent
+        event="Search"
+        dedupeKey={searchKey}
+        payload={{ query: searchTerm, count: listings.length }}
+      />
+
       {/* ---- results header ---- */}
       <div className="border-b border-line bg-surface">
         <div className="mx-auto max-w-[1280px] px-4 pt-4.5 md:px-10">

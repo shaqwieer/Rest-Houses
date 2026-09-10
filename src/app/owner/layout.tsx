@@ -2,9 +2,11 @@ import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { OwnerShell } from "@/components/owner/owner-shell";
 import { OwnerStatusPanel } from "@/components/owner/status-panel";
+import { TrackingScripts } from "@/components/site/tracking-scripts";
 import { auth, dashboardForSession, getOwnerProfileForSession } from "@/lib/auth";
 import { ownerAccessState } from "@/lib/owners";
 import { getSettings } from "@/lib/settings";
+import { trackingConfig } from "@/lib/tracking";
 import { prisma } from "@/lib/prisma";
 import { getI18n } from "@/lib/i18n/server";
 import { toISODate } from "@/lib/dates";
@@ -89,21 +91,41 @@ export default async function OwnerLayout({
   });
 
   return (
-    <OwnerShell
-      siteName={settings.siteName}
-      logoGlyph={settings.logoGlyph || "و"}
-      ownerName={account.ownerProfile.businessName || account.ownerProfile.fullName}
-      newRequestCount={newRequestCount}
-      // A plain ISO string, not a Date: props to a client component are
-      // serialised into the RSC payload, and a string has no timezone for the
-      // browser to reinterpret. The shell formats it with the active locale.
-      membershipExpiresAt={
-        account.ownerProfile.membershipExpiresAt
-          ? toISODate(account.ownerProfile.membershipExpiresAt)
-          : null
-      }
-    >
-      {children}
-    </OwnerShell>
+    <>
+      {/* ---- the owner-acquisition funnel, and only when it is asked for ----
+
+          Everything outside the (site) route group is untracked by design, so
+          that staff and owners working all day do not land in the advertising
+          accounts. `ownerAreaTracking` is the single, deliberate exception: the
+          owner funnel does not end at registration — "added a rest house" and
+          "published it" happen in here — and a campaign optimised on a signup
+          it can never see the outcome of is a campaign buying the wrong people.
+
+          Off by default, so nobody gets this by accident, and never extended to
+          /admin: staff are not an audience. The switch is on /admin/tracking,
+          with the trade-off written next to it.
+
+          Only an APPROVED owner reaches this branch. An owner still waiting on
+          review sees the status panel above and is not tracked at all — their
+          journey has not produced an event worth reporting yet. */}
+      {settings.ownerAreaTracking && <TrackingScripts config={trackingConfig(settings)} />}
+
+      <OwnerShell
+        siteName={settings.siteName}
+        logoGlyph={settings.logoGlyph || "و"}
+        ownerName={account.ownerProfile.businessName || account.ownerProfile.fullName}
+        newRequestCount={newRequestCount}
+        // A plain ISO string, not a Date: props to a client component are
+        // serialised into the RSC payload, and a string has no timezone for the
+        // browser to reinterpret. The shell formats it with the active locale.
+        membershipExpiresAt={
+          account.ownerProfile.membershipExpiresAt
+            ? toISODate(account.ownerProfile.membershipExpiresAt)
+            : null
+        }
+      >
+        {children}
+      </OwnerShell>
+    </>
   );
 }

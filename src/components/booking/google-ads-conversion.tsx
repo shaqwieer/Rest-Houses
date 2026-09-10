@@ -3,19 +3,43 @@
 const reportedBookings = new Set<string>();
 
 /**
- * Report the Booking Request conversion after `createBookingRequest` succeeds.
+ * Report the booking-request conversion to Google Ads after
+ * `createBookingRequest` succeeds.
  *
- * This is deliberately an imperative function, not a confirmation-page
- * component: viewing or refreshing an existing booking must never be enough to
- * produce a conversion. The caller supplies the server-issued reference only
- * from the action's successful result.
+ * ─── `sendTo` is a parameter, not a constant ─────────────────────────────────
+ * It used to be a string literal in this file. /admin/settings collected a tag
+ * ID and a conversion label, validated them, and showed the operator a green
+ * "tracking is live" line — while the conversion this function actually
+ * reported went to a hardcoded account that had nothing to do with either
+ * field. Every symptom of that is silent: the form looks configured, the page
+ * looks live, and the conversions arrive somewhere else entirely.
+ *
+ * So the value comes from the settings row now, assembled by `googleAdsSendTo`
+ * — which returns "" unless BOTH halves are configured, because
+ * "AW-950802645/" is a `send_to` Google accepts and attributes to nothing.
+ * An empty value reports nothing at all.
+ *
+ * ─── Why this is imperative and not a confirmation-page component ────────────
+ * Viewing or refreshing an existing booking must never be enough to produce a
+ * conversion. The caller supplies the server-issued reference only from the
+ * action's successful result.
  *
  * The in-memory and session-storage guards cover repeated result handling,
  * back/forward navigation, and accidental duplicate calls in the same tab. If
  * storage is unavailable, the in-memory guard still protects this page load.
+ *
+ * This is the Google Ads conversion specifically. The same moment is reported
+ * to Meta, TikTok and Snapchat through `track("BookingRequested")` — see
+ * src/lib/tracking-events.ts — because a Google Ads conversion has a `send_to`
+ * and its own de-duplication rules that the other three do not share.
  */
-export function reportBookingRequestConversion(reference: string): boolean {
-  if (!reference || reportedBookings.has(reference) || typeof window === "undefined") {
+export function reportBookingRequestConversion(reference: string, sendTo: string): boolean {
+  if (
+    !reference ||
+    !sendTo ||
+    reportedBookings.has(reference) ||
+    typeof window === "undefined"
+  ) {
     return false;
   }
 
@@ -44,9 +68,7 @@ export function reportBookingRequestConversion(reference: string): boolean {
   }
 
   try {
-    gtag('event', 'conversion', {
-      send_to: 'AW-950802645/v8J9CO7Sk-wcENWxsMUD',
-    });
+    gtag("event", "conversion", { send_to: sendTo });
   } catch {
     // Analytics failures must not affect a successful booking.
   }

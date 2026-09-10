@@ -86,6 +86,15 @@ const FALLBACK = {
   // sample data happened to name.
   googleTagId: "",
   googleAdsConversionLabel: "",
+  // Same rule for every advertising pixel: an unseeded install reports to
+  // nobody rather than to whichever account the sample data happened to name.
+  metaPixelId: "",
+  tiktokPixelId: "",
+  snapchatPixelId: "",
+  googleAnalyticsId: "",
+  gtmContainerId: "",
+  // The owner dashboard loads no pixel until an operator switches it on.
+  ownerAreaTracking: false,
   heroTitle: "استراحتك في قلب الصحراء",
   heroTitleAlt: "تبدأ بحجز واحد",
   heroSubtitle:
@@ -169,19 +178,12 @@ export function bankDetails(settings: Settings) {
 }
 
 /**
- * Google Ads' `send_to` value — "AW-950802645/dVoECJ30sOQcENWxsMUD" — or "" when
- * the conversion is not fully configured.
- *
- * The two halves are stored separately so the tag ID is written once and the
- * conversion label cannot drift away from it. Joining them belongs here rather
- * than at the call site: "" from *either* half means no conversion is reported,
- * and a page that assembled the string itself would happily send "AW-950802645/"
- * — a `send_to` Google accepts and silently attributes to nothing.
+ * `googleAdsSendTo` used to live here. It moved to src/lib/tracking.ts with the
+ * rest of the advertising configuration when Meta, TikTok and Snapchat joined
+ * Google on their own page — the settings row still stores the two halves, but
+ * nothing about *how they are reported* belongs in the module every page of the
+ * site imports for its branding.
  */
-export function googleAdsSendTo(settings: Settings): string {
-  if (!settings.googleTagId || !settings.googleAdsConversionLabel) return "";
-  return `${settings.googleTagId}/${settings.googleAdsConversionLabel}`;
-}
 
 export const getSettings = cache(async (): Promise<Settings> => {
   try {

@@ -3,7 +3,15 @@ import { getSettings } from "@/lib/settings";
 import { depositPaymentStatus, publicPaymentConfig } from "@/lib/payments";
 import { requireAdminPage } from "@/lib/auth";
 
-/** Site settings — the config-driven branding surface. */
+/**
+ * Site settings — the config-driven branding surface.
+ *
+ * The Google tag and the advertising pixels used to be a card at the bottom of
+ * this form. They are now /admin/tracking: a page of their own, with its own
+ * action, because they are the media buyer's surface rather than the operator's
+ * and because everything on them is written and read by a different person on a
+ * different day than the site's name and colours.
+ */
 export default async function AdminSettingsPage() {
   await requireAdminPage();
 
@@ -60,10 +68,6 @@ export default async function AdminSettingsPage() {
         footerAbout: settings.footerAbout,
         seoTitle: settings.seoTitle ?? "",
         seoDescription: settings.seoDescription ?? "",
-
-        // Google tag — both non-null in the schema, so no ?? needed.
-        googleTagId: settings.googleTagId,
-        googleAdsConversionLabel: settings.googleAdsConversionLabel,
 
         // English copy — blank means "fall back to the Arabic value".
         siteNameEn: settings.siteNameEn ?? "",

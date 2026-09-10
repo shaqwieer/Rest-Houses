@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { BookingForm } from "@/components/booking/booking-form";
+import { TrackEvent } from "@/components/site/track-event";
 import { Icon } from "@/components/ui/icon";
 import {
   findListingSlugMove,
@@ -12,6 +13,7 @@ import {
   localizeListing,
 } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
+import { googleAdsSendTo } from "@/lib/tracking";
 import { quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
@@ -170,6 +172,16 @@ export default async function BookPage({
         </h1>
         <p className="m-0 mb-6.5 max-w-[56ch] text-[15px] text-muted">{t.booking.introBody}</p>
 
+        {/* The guest has left the listing and is filling in a request: this is
+            the "begin checkout" moment every platform optimises towards.
+            Reported from the page rather than from the two buttons that lead
+            here, so a guest who arrives on a shared link — or comes back to a
+            half-filled form — counts the same as one who tapped through. */}
+        <TrackEvent
+          event="InitiateBooking"
+          payload={{ id: listing.slug, name: l.name, value: q.total, count: guests }}
+        />
+
         <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
           <BookingForm
             listingId={listing.id}
@@ -184,6 +196,12 @@ export default async function BookPage({
             // the policy paragraph under the form is a promise the OWNER keeps.
             cancel={resolveCancelPolicy(listing, settings)}
             depositPercent={depositPercent}
+            // Everything below is for the advertising events the form reports
+            // once the request is accepted: what was booked, what it is worth,
+            // and which Google Ads conversion — if any — to report it as.
+            listingName={l.name}
+            total={q.total}
+            adsSendTo={googleAdsSendTo(settings)}
           />
 
           {/* ---- summary ---- */}

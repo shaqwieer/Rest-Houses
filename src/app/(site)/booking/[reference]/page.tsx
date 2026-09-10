@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { WhatsappAutoSend } from "@/components/booking/whatsapp-auto-send";
+import { TrackEvent } from "@/components/site/track-event";
 import { prisma } from "@/lib/prisma";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
@@ -155,6 +156,33 @@ export default async function BookingConfirmationPage({
 
   return (
     <div className="min-h-[70vh] bg-sand-50">
+      {/* ---- the plan's Purchase, and the only place it is reported ----
+
+          Two conditions, and both are needed. `paymentStatus === "PAID"` comes
+          from the database, which only a server-side verification can move — a
+          guest who appends ?paid=1 by hand changes nothing here, exactly as the
+          banner below it does not change. And the dedupe key means a refresh,
+          a back button out of the gateway, or the link opened again next week
+          reports nothing: the deposit was paid once.
+
+          Deliberately NOT reported for a booking request. A request is a lead
+          — the owner has not confirmed and no money has moved — and reporting
+          it as a sale teaches every platform's optimiser to buy enquiries that
+          never become stays. See `BookingRequested` in the event map. */}
+      {booking.paymentStatus === "PAID" && (
+        <TrackEvent
+          event="Purchase"
+          dedupeKey={booking.reference}
+          payload={{
+            id: booking.listing.slug,
+            name: l.name,
+            // What was actually paid — the deposit — not the stay's total.
+            value: booking.depositDue,
+            transactionId: booking.reference,
+          }}
+        />
+      )}
+
       <div className="animate-pop-in mx-auto max-w-[620px] px-4 py-10 text-center md:py-15">
         <div className="mx-auto mb-6 grid size-24 place-items-center rounded-full border-2 border-ok/25 bg-ok-bg">
           <Icon name="check_circle" size={52} className="text-ok" />

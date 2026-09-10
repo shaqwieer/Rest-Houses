@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import { track } from "@/lib/tracking-events";
 
 /**
  * The confirmation screen's WhatsApp button, with a five-second countdown that
@@ -92,6 +93,12 @@ export function WhatsappAutoSend({
       } catch {
         /* nothing to do — see the note above */
       }
+      // The countdown hand-off is a navigation, not a click, so the delegated
+      // listener in src/components/site/whatsapp-tracker.tsx never sees it.
+      // Reported here instead — the guest reaches WhatsApp either way, and an
+      // enquiry that only counts when somebody pressed the button would
+      // undercount the majority of them.
+      track("ContactWhatsapp");
       window.location.href = href;
       return;
     }

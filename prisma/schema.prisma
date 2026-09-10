@@ -470,6 +470,50 @@ model SiteSettings {
   googleTagId              String @default("")
   googleAdsConversionLabel String @default("")
 
+  // ---------------------------------------------------------------------
+  // The advertising pixels — Meta, TikTok, Snapchat — plus GA4 and Tag
+  // Manager, on exactly the same terms as the two columns above.
+  //
+  // Each holds ONE IDENTIFIER and never a script. The snippets are assembled
+  // by src/components/site/tracking-scripts.tsx from these values, so the
+  // whole surface an admin session can reach is "which account do we report
+  // to", not "what JavaScript runs on every page of the site".
+  //
+  //   metaPixelId       Meta (Facebook/Instagram) pixel — 15-16 digits.
+  //   tiktokPixelId     TikTok pixel — a 20-character base-36 id, e.g.
+  //                     "CO4A2JJC77UF1234ABCD".
+  //   snapchatPixelId   Snap Pixel ID — a UUID.
+  //   googleAnalyticsId GA4 measurement id, "G-…". SEPARATE from googleTagId
+  //                     because that one is usually the Ads tag ("AW-…") and
+  //                     gtag.js takes one loader with a `config` per property.
+  //   gtmContainerId    Tag Manager container, "GTM-…". Deliberately its own
+  //                     column and its own snippet: a container is loaded by
+  //                     gtm.js, NOT by gtag/js?id=, so it can never be put in
+  //                     googleTagId — see the refusal in actions/tracking.ts.
+  //
+  // All default to "" for the reason spelled out above: a plausible default
+  // here would start reporting a real site's traffic into a stranger's ad
+  // account.
+  metaPixelId       String @default("")
+  tiktokPixelId     String @default("")
+  snapchatPixelId   String @default("")
+  googleAnalyticsId String @default("")
+  gtmContainerId    String @default("")
+
+  // Does the OWNER dashboard load the pixels too?
+  //
+  // Off by default, and that default is the invariant the rest of the product
+  // relies on: /admin, /owner and /login sit outside the (site) route group
+  // precisely so staff and owners working all day never land in the
+  // advertising account's traffic or its conversion counts.
+  //
+  // The switch exists because the owner-acquisition funnel does not stop at
+  // registration — "added a rest house" and "published it" happen at
+  // /owner/listings/new, inside the dashboard. An operator running owner
+  // campaigns turns this on knowingly; nobody gets it by accident. /admin is
+  // never covered by it: staff are not an audience.
+  ownerAreaTracking Boolean @default(false)
+
   // Home hero copy (editable so the front page can change without a deploy)
   heroTitle    String  @default("استراحتك في قلب الصحراء")
   heroTitleAlt String  @default("تبدأ بحجز واحد")

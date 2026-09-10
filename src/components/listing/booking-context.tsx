@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { DateRange } from "./availability-calendar";
 import { quote, type Quote } from "@/lib/pricing";
+import { track } from "@/lib/tracking-events";
 import type { ISODate, WeekendMode } from "@/lib/dates";
 
 /**
@@ -79,6 +80,8 @@ type BookingContextValue = {
 const BookingContext = createContext<BookingContextValue | null>(null);
 
 export function BookingProvider({
+  slug,
+  listingName,
   unavailableDates,
   pricePerNight,
   weekendPrice,
@@ -92,6 +95,9 @@ export function BookingProvider({
   capacity,
   children,
 }: {
+  /** This listing's slug and name — the label on the availability event. */
+  slug: string;
+  listingName: string;
   unavailableDates: ISODate[];
   pricePerNight: number;
   weekendPrice: number;
@@ -140,11 +146,33 @@ export function BookingProvider({
       // to remember. That equality is exactly what the server then requires.
       if (isDayUse) {
         setRangeState({ checkIn: next.checkIn, checkOut: next.checkIn });
+        // A day booking is complete on the first click, so this is the moment
+        // the guest asked "is it free". See the note below.
+        if (next.checkIn) track("AvailabilityCheck", { id: slug, name: listingName });
         return;
       }
       setRangeState(next);
+
+      /**
+       * The plan's "Availability Check", reported here because this callback is
+       * the one funnel every calendar click goes through — the sidebar card and
+       * the mobile bar both read this provider rather than holding their own
+       * selection.
+       *
+       * Only a COMPLETE range counts. An overnight selection takes two clicks,
+       * and the first one is a guest who has not yet asked a question anybody
+       * can answer. Firing on it would report roughly twice as many checks as
+       * happened and teach every optimiser to buy the wrong half of them.
+       *
+       * Not de-duplicated: a guest who tries three different weekends really
+       * did check availability three times, which is exactly the signal a
+       * remarketing audience of "started looking at dates" wants.
+       */
+      if (next.checkIn && next.checkOut) {
+        track("AvailabilityCheck", { id: slug, name: listingName });
+      }
     },
-    [isDayUse],
+    [isDayUse, slug, listingName],
   );
 
   const ready = isDayUse

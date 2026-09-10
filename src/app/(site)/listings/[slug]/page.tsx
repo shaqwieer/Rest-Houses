@@ -8,6 +8,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
 import { ShareButton } from "@/components/listing/share-button";
+import { TrackEvent } from "@/components/site/track-event";
 import {
   findListingSlugMove,
   getListingBySlug,
@@ -259,6 +260,10 @@ export default async function ListingDetailPage({
 
   return (
     <BookingProvider
+      // Identity for the availability event the calendar reports; the provider
+      // is where every date click funnels through.
+      slug={listing.slug}
+      listingName={l.name}
       unavailableDates={[...unavailable]}
       pricePerNight={listing.pricePerNight}
       weekendPrice={listing.weekendPrice}
@@ -283,6 +288,17 @@ export default async function ListingDetailPage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
+      {/* The plan's ViewProperty: one rest house was looked at, with its slug
+          as the content id and its nightly rate as the value. This — not the
+          bare page view every snippet sends on its own — is what a remarketing
+          audience of "people who looked at a rest house" is built from. No
+          dedupe key: opening the same listing twice in a session really is two
+          views. */}
+      <TrackEvent
+        event="ViewProperty"
+        payload={{ id: listing.slug, name: l.name, value: listing.pricePerNight }}
       />
 
       <div className="bg-sand-50">

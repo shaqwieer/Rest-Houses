@@ -9,6 +9,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { HumanCheck } from "@/components/security/human-check";
 import { createBookingRequest } from "@/app/actions/booking";
 import { reportBookingRequestConversion } from "@/components/booking/google-ads-conversion";
+import { track } from "@/lib/tracking-events";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
@@ -37,6 +38,9 @@ export function BookingForm({
   capacity,
   cancel,
   depositPercent,
+  listingName,
+  total,
+  adsSendTo,
 }: {
   listingId: string;
   listingSlug: string;
@@ -50,6 +54,21 @@ export function BookingForm({
   capacity: number;
   cancel: ResolvedCancelPolicy;
   depositPercent: number;
+  /** The rest house's name in the visitor's language — the event's label. */
+  listingName: string;
+  /**
+   * The quoted total in AED. A preview, exactly as the summary beside this form
+   * is: `createBookingRequest` re-prices from the database and its figure is
+   * the one stored. Good enough to value a lead with, and the only figure the
+   * browser has at the moment the request succeeds.
+   */
+  total: number;
+  /**
+   * Google Ads' `send_to`, or "" when the conversion is not configured. Read
+   * from the settings row on the server — never a constant in the bundle. See
+   * ./google-ads-conversion.tsx for what that mistake looked like.
+   */
+  adsSendTo: string;
 }) {
   const router = useRouter();
   const { t, locale } = useLocale();
@@ -74,7 +93,18 @@ export function BookingForm({
     startTransition(async () => {
       const result = await createBookingRequest(formData);
       if (result.ok) {
-        reportBookingRequestConversion(result.reference);
+        // The server has accepted the request, so this is the moment it
+        // happened — not the confirmation page, which a guest can reload.
+        // Google Ads has its own `send_to` and its own de-duplication; the
+        // other three platforms are named by the shared event map.
+        reportBookingRequestConversion(result.reference, adsSendTo);
+        track("BookingRequested", {
+          id: listingSlug,
+          name: listingName,
+          value: total,
+          count: guests,
+          transactionId: result.reference,
+        });
         router.push(`/booking/${result.reference}`);
       } else {
         setError(result.error);
