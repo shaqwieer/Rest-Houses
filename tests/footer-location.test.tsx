@@ -141,7 +141,7 @@ describe("the removed location section", () => {
        * would be a regression dressed up as a requirement.
        */
       it("still exposes the WhatsApp number and the address", () => {
-        expect(html).toContain("wa.me/971500000000");
+        expect(html).toContain("api.whatsapp.com/send?phone=971500000000");
         expect(html).toContain("+971500000000");
       });
 

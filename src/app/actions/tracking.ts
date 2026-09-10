@@ -74,7 +74,7 @@ function trackingSchema(t: Dictionary) {
     googleAdsConversionLabel: z
       .string()
       .trim()
-      // Google shows the conversion as "AW-950802645/dVoECJ30sOQcENWxsMUD" and
+      // Google shows the conversion as "AW-950802645/AbCdEfGh12ijKLmnOpQr" and
       // an operator will reasonably paste the whole thing. Keep only the half
       // after the slash: the id is already stored in its own field, and holding
       // it twice is how the two drift apart.

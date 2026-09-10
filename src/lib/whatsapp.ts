@@ -7,12 +7,37 @@ import { DEFAULT_LOCALE, type Locale } from "./i18n/config";
 /**
  * WhatsApp deep links.
  *
- * `https://wa.me/<digits>?text=<urlencoded message>` opens the native app (or
- * WhatsApp Web on desktop) with the message pre-typed but NOT sent — the guest
- * still presses send, which is what keeps this compliant and spam-free.
+ * `?text=<urlencoded message>` opens the native app (or WhatsApp Web on
+ * desktop) with the message pre-typed but NOT sent — the guest still presses
+ * send, which is what keeps this compliant and spam-free.
  *
  * Message text comes from the dictionary, so a guest browsing in English sends
  * the owner an English message and an Arabic browser sends Arabic.
+ *
+ * ─── Why api.whatsapp.com and not wa.me ─────────────────────────────────────
+ * `wa.me` is WhatsApp's own shortener, and it does not redirect losslessly: it
+ * re-encodes `text` and replaces every **non-BMP** character — every emoji —
+ * with U+FFFD, the replacement character. Arabic is BMP and survives, so the
+ * damage is invisible in a quick look at an Arabic message and shows up as a
+ * single `<?>` box where the 👋 was.
+ *
+ * Measured against WhatsApp directly, with nothing of ours in the path:
+ *
+ *   GET https://wa.me/971500000000?text=%F0%9F%91%8B%20test
+ *   → location: https://api.whatsapp.com/send/?...&text=%EF%BF%BD+test
+ *
+ * The same text sent straight to `api.whatsapp.com/send` answers 200 with no
+ * redirect at all, so there is nothing in between to re-encode it. That is the
+ * endpoint WhatsApp documents for Click to Chat; `wa.me` is only an alias for
+ * it, and the alias is the lossy part. This module therefore builds the real
+ * endpoint and skips the hop.
+ *
+ * Worth being precise about, because the obvious diagnosis is wrong: the
+ * corruption is NOT in this repo, the dictionary, `encodeURIComponent`, or the
+ * Docker build. Every one of those was checked — the source holds the emoji as
+ * valid UTF-8 (`f0 9f 91 8b`), the built bundle holds it as an escaped
+ * surrogate pair, and the server serves `%F0%9F%91%8B` on the wire. Don't go
+ * looking for a charset bug here; there isn't one.
  */
 
 /* -------------------------------------------------------------------------- */
@@ -112,16 +137,23 @@ export function resolveListingWhatsapp(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Bare link with no message — used by "contact us" style affordances.
+ * The one place a WhatsApp URL is built.
  *
  * Returns "" when the number is unusable, so a caller can hide the button
- * rather than render a link to `https://wa.me/` that opens nothing.
+ * rather than render a link with no number in it that opens nothing.
+ *
+ * `encodeURIComponent` is correct for the message and always was — it emits
+ * proper UTF-8 percent-encoding for astral characters (`👋` → `%F0%9F%91%8B`).
+ * See the note at the top of this file for what was eating them, and why the
+ * host in this template is the fix.
  */
+export const WHATSAPP_ENDPOINT = "https://api.whatsapp.com/send";
+
 export function whatsappLink(number: string | null | undefined, message?: string): string {
   const digits = whatsappDigits(String(number ?? ""));
   if (!digits) return "";
-  const base = `https://wa.me/${digits}`;
-  return message ? `${base}?text=${encodeURIComponent(message)}` : base;
+  const base = `${WHATSAPP_ENDPOINT}?phone=${digits}`;
+  return message ? `${base}&text=${encodeURIComponent(message)}` : base;
 }
 
 /* -------------------------------------------------------------------------- */

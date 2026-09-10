@@ -66,20 +66,66 @@ describe("isValidWhatsapp", () => {
 });
 
 describe("whatsappLink", () => {
-  it("builds a wa.me link with digits only", () => {
-    expect(whatsappLink("+971 50 214 8890")).toBe("https://wa.me/971502148890");
+  it("builds a link with digits only", () => {
+    expect(whatsappLink("+971 50 214 8890")).toBe(
+      "https://api.whatsapp.com/send?phone=971502148890",
+    );
+  });
+
+  /**
+   * NOT `wa.me`, and this assertion is the guard on that.
+   *
+   * `wa.me` is WhatsApp's own shortener and it does not redirect losslessly: it
+   * re-encodes `text` and replaces every non-BMP character with U+FFFD.
+   * Measured against WhatsApp itself, with nothing of ours in the path,
+   * `?text=%F0%9F%91%8B` comes back as `text=%EF%BF%BD`. Arabic is BMP and
+   * survives, so an Arabic message looks perfectly fine while every emoji in it
+   * is quietly destroyed. See the note at the top of src/lib/whatsapp.ts.
+   */
+  it("uses the endpoint that does not re-encode the message", () => {
+    const href = whatsappLink("+971502148890", "مرحبا");
+    expect(href.startsWith("https://api.whatsapp.com/send?phone=")).toBe(true);
+    expect(href).not.toContain("wa.me");
   });
 
   it("url-encodes the prefilled message without mangling it", () => {
     const message = "مرحبا — RQ-2420";
     const href = whatsappLink("+971502148890", message);
-    expect(href.startsWith("https://wa.me/971502148890?text=")).toBe(true);
-    expect(decodeURIComponent(href.split("?text=")[1])).toBe(message);
+    expect(
+      href.startsWith("https://api.whatsapp.com/send?phone=971502148890&text="),
+    ).toBe(true);
+    expect(decodeURIComponent(href.split("&text=")[1])).toBe(message);
+  });
+
+  /**
+   * The regression this change exists for.
+   *
+   * Emoji are astral — U+1F44B is the surrogate pair 👋 — while
+   * Arabic is BMP, and the two travel differently: a transform that loses one
+   * keeps the other, which is exactly why the corruption went unnoticed for so
+   * long. So the assertion is on the BYTES, not on the rendered glyph:
+   * `%F0%9F%91%8B` is the correct UTF-8 percent-encoding of 👋, and
+   * `%EF%BF%BD` is the replacement character that must never appear.
+   */
+  it("carries Arabic and non-BMP emoji through as valid UTF-8", () => {
+    const message = "‏السلام عليكم 👋\nالإجمالي: 💰 التأمين: 🛡️";
+    const href = whatsappLink("+971502148890", message);
+    const encoded = href.split("&text=")[1];
+
+    // Round-trips exactly, emoji and all.
+    expect(decodeURIComponent(encoded)).toBe(message);
+
+    // And the wire form is real UTF-8 rather than a replacement character.
+    expect(encoded).toContain("%F0%9F%91%8B");
+    expect(encoded).toContain("%F0%9F%92%B0");
+    expect(encoded).not.toContain("%EF%BF%BD");
+    expect(href).not.toContain("�");
   });
 
   /**
    * The caller uses "" to decide whether to render the button at all. Returning
-   * "https://wa.me/" instead would produce a visible link that opens nothing.
+   * a bare endpoint with no number would produce a visible link that opens
+   * nothing.
    */
   it("returns an empty string when there is no usable number", () => {
     expect(whatsappLink("")).toBe("");
@@ -249,5 +295,45 @@ describe("bookingRequestMessage", () => {
   it("uses the RTL mark only in Arabic", () => {
     expect(bookingRequestMessage({ ...base, locale: "ar" })).toContain("‏");
     expect(bookingRequestMessage({ ...base, locale: "en" })).not.toContain("‏");
+  });
+
+  /**
+   * The message is built from dictionary lines that lead with emoji — 📋 for the
+   * reference, 📅 for the dates, 💰 for the total. Every one of those is astral,
+   * so they are the first thing any encoding fault destroys while the Arabic
+   * beside them survives and makes the message look intact.
+   */
+  it("keeps its emoji intact in both languages", () => {
+    for (const locale of ["ar", "en"] as const) {
+      const message = bookingRequestMessage({
+        ...base,
+        depositDue: 945,
+        depositPercent: 25,
+        securityDeposit: 500,
+        locale,
+      });
+
+      expect(message, `${locale} greeting emoji`).toContain("👋");
+      expect(message, `${locale} reference emoji`).toContain("📋");
+      expect(message, `${locale} total emoji`).toContain("💰");
+      expect(message, `${locale} security-deposit emoji`).toContain("🛡️");
+      expect(message, `${locale} replacement char`).not.toContain("�");
+    }
+  });
+
+  /**
+   * End to end: the message the owner actually receives is the one that came
+   * out of the link, not the one that came out of the builder. This is the
+   * assertion that would have caught the corruption — the builder was always
+   * right, and everything downstream of it is what had to be proved.
+   */
+  it("survives the round trip through the link as valid UTF-8", () => {
+    const message = bookingRequestMessage({ ...base, locale: "ar" });
+    const href = whatsappLink("+971502148890", message);
+    const encoded = href.split("&text=")[1];
+
+    expect(decodeURIComponent(encoded)).toBe(message);
+    expect(encoded).toContain("%F0%9F%91%8B"); // 👋
+    expect(encoded).not.toContain("%EF%BF%BD"); // U+FFFD
   });
 });

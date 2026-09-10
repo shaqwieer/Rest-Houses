@@ -1163,7 +1163,7 @@ export const ar = {
       "مثل AW-950802645 لإعلانات جوجل. يقبل أيضًا ‎G-‎ و‎GT-‎ و‎DC-‎، ولا يقبل حاويات ‎GTM-‎.",
     fieldConversionLabel: "تسمية التحويل (طلب حجز)",
     fieldConversionLabelHint:
-      "النصف الذي بعد الشرطة المائلة في send_to، مثل dVoECJ30sOQcENWxsMUD. يُحتسب مرة واحدة عند نجاح إرسال طلب الحجز.",
+      "النصف الذي بعد الشرطة المائلة في send_to، مثل AbCdEfGh12ijKLmnOpQr. يُحتسب مرة واحدة عند نجاح إرسال طلب الحجز.",
     fieldGa4: "معرّف تحليلات جوجل (GA4)",
     fieldGa4Hint: "يبدأ بـ ‎G-‎ — مثل G-ABC123XYZ. يعمل مع وسم الإعلانات في الوقت نفسه.",
     fieldGtm: "حاوية Google Tag Manager",

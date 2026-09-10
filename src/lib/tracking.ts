@@ -86,7 +86,7 @@ export function trackingConfig(settings: Settings): TrackingConfig {
 }
 
 /**
- * Google Ads' `send_to` value — "AW-950802645/dVoECJ30sOQcENWxsMUD" — or ""
+ * Google Ads' `send_to` value — "AW-950802645/AbCdEfGh12ijKLmnOpQr" — or ""
  * when the conversion is not fully configured.
  *
  * The two halves are stored separately so the tag ID is written once and the

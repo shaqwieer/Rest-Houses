@@ -15,8 +15,15 @@ import { track } from "@/lib/tracking-events";
  * `wa.me` link added later would be missing by default.
  *
  * So this listens once, on the document, in the capture phase, and asks one
- * question of whatever was clicked: did it lead to wa.me? Nothing else in the
- * codebase has to know that WhatsApp clicks are measured.
+ * question of whatever was clicked: did it lead to WhatsApp? Nothing else in
+ * the codebase has to know that WhatsApp clicks are measured.
+ *
+ * Both hosts are matched. Links are built as `api.whatsapp.com/send` (see the
+ * note in src/lib/whatsapp.ts for why the `wa.me` alias had to go), but a
+ * `wa.me` link pasted into a listing description or left in an older cached
+ * page is the same enquiry and still counts. Matching only the current form
+ * would have made this silently stop counting the moment the endpoint moved —
+ * which is the failure this delegated listener exists to prevent.
  *
  * ─── Capture phase, and never preventing the click ───────────────────────────
  * Capture, because a handler on the element itself may stop propagation — the
@@ -26,7 +33,7 @@ import { track } from "@/lib/tracking-events";
  * exactly as it would have, whether or not any pixel is loaded.
  *
  * ─── Mounted in the public shell only ────────────────────────────────────────
- * With the pixels themselves. The admin dashboard is full of `wa.me` links —
+ * With the pixels themselves. The admin dashboard is full of WhatsApp links —
  * every request card has one — and an operator answering their queue is not an
  * enquiry.
  *
@@ -42,7 +49,10 @@ export function WhatsappTracker() {
       // icon or the label inside the anchor.
       const link = target.closest("a");
       const href = link?.getAttribute("href") ?? "";
-      if (!href.startsWith("https://wa.me/")) return;
+      const isWhatsapp =
+        href.startsWith("https://api.whatsapp.com/send") ||
+        href.startsWith("https://wa.me/");
+      if (!isWhatsapp) return;
 
       // On a rest house's page, say which one — a "contacted about a listing"
       // audience is worth far more than an undifferentiated "contacted us".

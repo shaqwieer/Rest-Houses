@@ -136,7 +136,12 @@ export function TrackingForm({
             <TextInput
               name="googleAdsConversionLabel"
               dir="ltr"
-              placeholder="dVoECJ30sOQcENWxsMUD"
+              // A deliberately meaningless example. It used to be a label
+              // that looks real because it WAS real — and belonged to a
+              // different conversion on the operator's own Ads account, which
+              // is precisely the value nobody should be able to retype out of
+              // the grey placeholder text.
+              placeholder="AbCdEfGh12ijKLmnOpQr"
               defaultValue={values.googleAdsConversionLabel}
               maxLength={80}
               invalid={Boolean(errors.googleAdsConversionLabel)}

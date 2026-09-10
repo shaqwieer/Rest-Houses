@@ -1053,7 +1053,7 @@ export const en: Dictionary = {
       "Such as AW-950802645 for Google Ads. G-, GT- and DC- work too; GTM- containers do not.",
     fieldConversionLabel: "Conversion label (booking request)",
     fieldConversionLabelHint:
-      "The half after the slash in send_to, e.g. dVoECJ30sOQcENWxsMUD. Reported once, when a booking request is accepted.",
+      "The half after the slash in send_to, e.g. AbCdEfGh12ijKLmnOpQr. Reported once, when a booking request is accepted.",
     fieldGa4: "Google Analytics ID (GA4)",
     fieldGa4Hint: "Starts with G- — e.g. G-ABC123XYZ. Runs alongside the Ads tag.",
     fieldGtm: "Google Tag Manager container",
