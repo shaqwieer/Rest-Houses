@@ -308,6 +308,8 @@ export const en: Dictionary = {
     cancelAskOwner: "Ask the owner",
     locationNote: (where) =>
       `${where} — the exact location is sent on the map once your booking is confirmed.`,
+    openInGoogleMaps: "Open in Google Maps",
+    directionsFromYou: "Distance from you",
     ratingOutOf: (rating, count) => `${rating} from ${count} reviews`,
     beFirstToReview: "Be the first to review this rest house",
     beFirstToReviewBody:

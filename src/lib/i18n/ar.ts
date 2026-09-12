@@ -378,6 +378,11 @@ export const ar = {
     cancelAskOwner: "اسأل المالك",
     locationNote: (where: string) =>
       `${where} — يُرسل الموقع الدقيق على الخريطة بعد تأكيد الحجز.`,
+    /* "قوقل ماب" بالنطق الخليجي الدارج، وهو ما يستخدمه العميل نفسه — لا
+       "خرائط جوجل"، وهي الترجمة الرسمية التي لا ينطق بها أحد هنا. */
+    openInGoogleMaps: "افتح على قوقل ماب",
+    /** الإجابة على "هل هي قريبة مني؟" — قوقل ماب يحسب المسافة والمدة. */
+    directionsFromYou: "المسافة من موقعك",
     ratingOutOf: (rating: string, count: string) => `${rating} من ${count} تقييم`,
     beFirstToReview: "كن أول من يقيّم هذه الاستراحة",
     beFirstToReviewBody:

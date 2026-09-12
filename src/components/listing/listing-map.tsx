@@ -6,6 +6,7 @@ import { arNum, currencyUnit } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
 import type { Dictionary, Locale } from "@/lib/i18n";
 import { groupByCoord, type CoordGroup } from "@/lib/map-groups";
+import { googleMapsSearchUrl } from "@/lib/maps";
 
 // Leaflet's own stylesheet. Imported statically so the bundler can process it,
 // but because this whole module is only reached through `next/dynamic` (see
@@ -212,13 +213,19 @@ function pillHtml(g: CoordGroup<MapPoint>, t: Dictionary, locale: Locale): strin
  * spot it is the whole list — and that list is the only place the second and
  * third rest house at a coordinate can be told apart, so every row carries its
  * own price too.
+ *
+ * Both shapes end with the Google Maps hand-off, and it belongs on the *group*
+ * rather than on each row: everyone in a group sits at one coordinate, so a
+ * per-row link would repeat the same URL three times.
  */
 function popupHtml(g: CoordGroup<MapPoint>, t: Dictionary, locale: Locale): string {
   const rtl = locale === "ar";
   const open = `<div style="direction:${rtl ? "rtl" : "ltr"};text-align:${rtl ? "right" : "left"};font-family:var(--font-tajawal),sans-serif">`;
+  const maps = mapsLinkHtml(g, t);
 
   // The pill beside it already carries the price, so a lone row omits it.
-  if (g.points.length === 1) return `${open}${entryHtml(g.points[0], t, locale, false)}</div>`;
+  if (g.points.length === 1)
+    return `${open}${entryHtml(g.points[0], t, locale, false)}${maps}</div>`;
 
   const rows = g.points
     .map(
@@ -230,7 +237,29 @@ function popupHtml(g: CoordGroup<MapPoint>, t: Dictionary, locale: Locale): stri
   return `${open}
        <b style="font-size:13px">${escapeHtml(t.listing.sameSpot(arNum(g.points.length, locale), g.points.length))}</b>
        <ul style="list-style:none;margin:2px 0 0;padding:0;max-height:222px;overflow-y:auto">${rows}</ul>
+       ${maps}
      </div>`;
+}
+
+/**
+ * "Open in Google Maps", inside the popup — the tap that a guest reaches for
+ * first, because the pin is the thing on screen that *looks* like a location.
+ * The prominent pair of links under the listing page's map stays the primary
+ * route; a marker this small is not discoverable enough to be the only one.
+ *
+ * Search rather than directions: on a phone it still hands off to the Maps app,
+ * which is where the distance and the drive time actually live, but it does not
+ * drop a browsing guest into a navigation UI they never asked for.
+ *
+ * `escapeHtml` on a URL built from two floats is not sanitising — it is there
+ * so the `&` between the query parameters is written `&amp;`, which is what an
+ * HTML attribute requires.
+ */
+function mapsLinkHtml(g: CoordGroup<MapPoint>, t: Dictionary): string {
+  const url = googleMapsSearchUrl(g);
+
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer"
+       style="display:block;margin-top:6px;border-top:1px solid #EFE7D8;padding-top:7px;font-size:12px;font-weight:700;color:#A8873A">${escapeHtml(t.listing.openInGoogleMaps)}</a>`;
 }
 
 /** One rest house inside a popup. */

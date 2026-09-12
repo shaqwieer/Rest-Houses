@@ -7,6 +7,7 @@ import { BookingCard, CalendarSection, MobileBookingBar } from "@/components/lis
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
 import { MapEmbed } from "@/components/listing/map-embed";
+import { googleMapsDirectionsUrl, googleMapsSearchUrl } from "@/lib/maps";
 import { ShareButton } from "@/components/listing/share-button";
 import { TrackEvent } from "@/components/site/track-event";
 import {
@@ -567,6 +568,44 @@ export default async function ListingDetailPage({
                   ]}
                   zoom={12}
                 />
+              </div>
+
+              {/* Out to Google Maps, because the embedded map answers "where"
+                  but not "how far from me" — and that is the question a guest
+                  actually has before they book. Two links, not one, because
+                  they are two different questions:
+
+                    * search  → drops the pin, opens the Maps app on a phone,
+                                and lets the guest orient themselves first.
+                    * dir     → skips straight to distance and drive time from
+                                wherever they are standing.
+
+                  Both URLs are built in lib/maps.ts, which carries the two
+                  traps: the `?api=1` shape (not the `output=embed` one used by
+                  the admin settings form) and raw digits in the coordinates.
+
+                  This discloses nothing new — the same coordinates already sit
+                  in the pin above and in the public JSON-LD `GeoCoordinates`
+                  on this page. */}
+              <div className="mt-3.5 flex flex-wrap gap-2.5">
+                <a
+                  href={googleMapsSearchUrl(listing)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[13px] font-bold text-bronze no-underline transition hover:border-gold-500 hover:bg-gold-100 hover:no-underline"
+                >
+                  <Icon name="pin_drop" size={17} />
+                  {t.listing.openInGoogleMaps}
+                </a>
+                <a
+                  href={googleMapsDirectionsUrl(listing)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-line px-3.5 py-2 text-[13px] font-bold text-bronze no-underline transition hover:border-gold-500 hover:bg-gold-100 hover:no-underline"
+                >
+                  <Icon name="travel_explore" size={17} />
+                  {t.listing.directionsFromYou}
+                </a>
               </div>
             </section>
 
