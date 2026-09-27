@@ -38,6 +38,7 @@ export function CalendarSection({
     dayUseAvailable,
     weekendMode,
     specialDays,
+    priceFor,
   } = useBooking();
   const { t } = useLocale();
   const isDayUse = stayType === "dayUse";
@@ -129,6 +130,7 @@ export function CalendarSection({
         singleDay={isDayUse}
         weekendMode={weekendMode}
         specialDays={specialDays}
+        priceFor={priceFor}
       />
     </section>
   );

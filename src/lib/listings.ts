@@ -326,15 +326,36 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
   return views;
 }
 
-/** Home page — the hand-picked "featured this week" row. */
-export const getFeaturedListings = cache(async (limit = 4): Promise<ListingView[]> => {
+/**
+ * Home page — a random handful of public listings, drawn afresh on every visit.
+ *
+ * No criteria on purpose: the operator asked for every rest house to get its
+ * turn on the front page rather than the same top-rated few. The `featured`
+ * flag no longer decides this row.
+ *
+ * Shuffled in JS over the ids rather than `ORDER BY random()`, which Prisma
+ * cannot express; the catalogue is small enough that reading every id is
+ * cheaper than a raw query that would have to repeat the public predicate.
+ */
+export const getRandomListings = cache(async (limit = 4): Promise<ListingView[]> => {
+  const ids = (
+    await prisma.listing.findMany({ where: withPublicListingWhere({}), select: { id: true } })
+  ).map((r) => r.id);
+
+  // Fisher–Yates, stopped after `limit` swaps — every listing equally likely.
+  for (let i = 0; i < Math.min(limit, ids.length); i++) {
+    const j = i + Math.floor(Math.random() * (ids.length - i));
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+  }
+  const picked = ids.slice(0, limit);
+
   const rows = await prisma.listing.findMany({
-    where: withPublicListingWhere({ featured: true }),
+    where: withPublicListingWhere({ id: { in: picked } }),
     include: listingInclude,
-    orderBy: [{ rating: "desc" }, { reviewsCount: "desc" }],
-    take: limit,
   });
-  return rows.map(toView);
+  // `in` returns rows in whatever order the database likes; keep the draw's.
+  const order = new Map(picked.map((id, i) => [id, i]));
+  return rows.sort((a, b) => order.get(a.id)! - order.get(b.id)!).map(toView);
 });
 
 /**

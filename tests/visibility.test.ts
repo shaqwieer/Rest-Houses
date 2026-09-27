@@ -10,7 +10,7 @@ import {
 } from "./db";
 import {
   findListings,
-  getFeaturedListings,
+  getRandomListings,
   getListingBySlug,
   getPublicListingSlugs,
   getPublicListingStats,
@@ -182,11 +182,10 @@ describe("public listing visibility", () => {
    * `{ published: true }` is a hole — this is the test that finds one.
    */
   describe("every public read path applies the predicate", () => {
-    it("the featured row", async () => {
+    it("the home page's random row", async () => {
       const { owners } = await buildCatalogue();
-      await prisma.listing.updateMany({ data: { featured: true } });
 
-      const names = (await getFeaturedListings(20)).map((l) => l.name);
+      const names = (await getRandomListings(20)).map((l) => l.name);
       expect(names).toContain("Active owner");
       expect(names).not.toContain("Expired owner");
       expect(names).not.toContain("Suspended owner");

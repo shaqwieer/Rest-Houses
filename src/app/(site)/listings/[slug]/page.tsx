@@ -402,6 +402,17 @@ export default async function ListingDetailPage({
               </div>
             </div>
 
+            {/* availability calendar (shares state with the sidebar card).
+                Straight under the title rather than after the amenities: on a
+                phone the dates are what a guest came to check, and it used to
+                take a long scroll past the description to reach them. */}
+            <CalendarSection
+              checkIn={policy.checkInTime}
+              checkOut={policy.checkOutTime}
+              dayUseCheckOutTime={l.dayUseCheckOutTime}
+              datesTaken={datesTaken}
+            />
+
             {/* about + key facts */}
             <section className="border-b border-line py-6">
               <h2 className="m-0 mb-2.5 font-display text-[19px] font-extrabold text-ink">
@@ -462,7 +473,7 @@ export default async function ListingDetailPage({
                 reference table. They are gone: more than one guest read those
                 figures as what the whole stay costs and came away confused
                 about which price applied to them. Nothing about the booking
-                changed — the calendar below still carries a "بدون مبيت / day
+                changed — the calendar above still carries a "بدون مبيت / day
                 only" toggle whenever `dayUsePrice` is set, and it quotes the
                 exact same rate at the moment a day is picked, which is the one
                 moment the number is unambiguous. What stays here is the fact a
@@ -536,14 +547,6 @@ export default async function ListingDetailPage({
                 </div>
               </section>
             )}
-
-            {/* availability calendar (shares state with the sidebar card) */}
-            <CalendarSection
-              checkIn={policy.checkInTime}
-              checkOut={policy.checkOutTime}
-              dayUseCheckOutTime={l.dayUseCheckOutTime}
-              datesTaken={datesTaken}
-            />
 
             {/* location — the per-listing Leaflet map, which is a different
                 component from the removed footer embed and stays. */}

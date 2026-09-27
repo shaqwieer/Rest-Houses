@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { DateRange } from "./availability-calendar";
-import { quote, type Quote } from "@/lib/pricing";
+import { dayUseRate, nightRate, quote, type Quote } from "@/lib/pricing";
 import { track } from "@/lib/tracking-events";
 import type { ISODate, WeekendMode } from "@/lib/dates";
 
@@ -75,6 +75,12 @@ type BookingContextValue = {
    * trusted for the stored total.
    */
   specialDays: ReadonlyMap<ISODate, string>;
+  /**
+   * What one calendar day costs in the current stay type, shown under the day
+   * number in each cell. The same `nightRate` / `dayUseRate` the quote walks,
+   * so the figure in a cell is exactly what that night adds to the total.
+   */
+  priceFor: (iso: ISODate) => number;
 };
 
 const BookingContext = createContext<BookingContextValue | null>(null);
@@ -175,6 +181,24 @@ export function BookingProvider({
     [isDayUse, slug, listingName],
   );
 
+  const priceFor = useCallback(
+    (iso: ISODate) =>
+      isDayUse
+        ? dayUseRate({ dayUsePrice, dayUseWeekendPrice, weekendMode }, iso)
+        : nightRate({ pricePerNight, weekendPrice, holidayPrice, weekendMode }, iso, specialDayMap)
+            .amount,
+    [
+      isDayUse,
+      dayUsePrice,
+      dayUseWeekendPrice,
+      pricePerNight,
+      weekendPrice,
+      holidayPrice,
+      weekendMode,
+      specialDayMap,
+    ],
+  );
+
   const ready = isDayUse
     ? Boolean(range.checkIn)
     : Boolean(range.checkIn && range.checkOut);
@@ -240,6 +264,7 @@ export function BookingProvider({
       ready,
       weekendMode,
       specialDays: specialDayMap,
+      priceFor,
     }),
     [
       range,
@@ -255,6 +280,7 @@ export function BookingProvider({
       capacity,
       weekendMode,
       specialDayMap,
+      priceFor,
     ],
   );
 

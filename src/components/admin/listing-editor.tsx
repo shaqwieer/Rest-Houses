@@ -168,6 +168,8 @@ export function ListingEditor({
   const { t, locale } = useLocale();
   const [pending, startTransition] = useTransition();
   const [uploading, setUploading] = useState(false);
+  /** The photo whose delete button was tapped once and is awaiting a confirm. */
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [amenities, setAmenities] = useState<string[]>(draft.amenityIds);
@@ -281,6 +283,7 @@ export function ListingEditor({
   }
 
   function onDeleteImage(imageId: string) {
+    setConfirmingDelete(null);
     startTransition(async () => {
       const result = isOwner
         ? await deleteOwnerListingImage(imageId)
@@ -365,7 +368,7 @@ export function ListingEditor({
                 {draft.images.map((img, i) => (
                   <div
                     key={img.id}
-                    className="group relative aspect-4/3 overflow-hidden rounded-[13px] border border-line bg-sand-100"
+                    className="relative aspect-4/3 overflow-hidden rounded-[13px] border border-line bg-sand-100"
                   >
                     <Image src={img.url} alt={img.alt} fill sizes="120px" className="object-cover" />
 
@@ -375,30 +378,60 @@ export function ListingEditor({
                       </span>
                     )}
 
-                    <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-night-900/55 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
-                      {i !== 0 && (
+                    {/* Corner buttons, always visible. They used to sit in a
+                        hover-revealed overlay, and a phone has no hover: the
+                        overlay stayed invisible but still covered the tile, so
+                        a tap anywhere near the middle of a photo landed on the
+                        hidden delete button and removed it with no warning. */}
+                    {confirmingDelete === img.id ? (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-night-900/70 p-1.5">
+                        <span className="text-[11px] font-bold text-white">
+                          {t.admin.deletePhotoConfirm}
+                        </span>
+                        <div className="flex flex-wrap justify-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onDeleteImage(img.id)}
+                            disabled={pending}
+                            className="rounded-lg bg-busy px-2 py-1.5 text-[11px] font-bold text-white"
+                          >
+                            {t.common.delete}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingDelete(null)}
+                            className="rounded-lg bg-surface px-2 py-1.5 text-[11px] font-bold text-ink"
+                          >
+                            {t.common.cancel}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {i !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => onMakeCover(img.id)}
+                            disabled={pending}
+                            title={t.admin.makeCover}
+                            aria-label={t.admin.makeCover}
+                            className="absolute top-1 start-1 grid size-8 place-items-center rounded-lg bg-surface/90 text-ink shadow-e1 disabled:opacity-50"
+                          >
+                            <Icon name="star" size={17} />
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => onMakeCover(img.id)}
+                          onClick={() => setConfirmingDelete(img.id)}
                           disabled={pending}
-                          title={t.admin.makeCover}
-                          aria-label={t.admin.makeCover}
-                          className="grid size-7.5 place-items-center rounded-lg bg-surface text-ink"
+                          title={t.admin.deletePhoto}
+                          aria-label={t.admin.deletePhoto}
+                          className="absolute top-1 end-1 grid size-8 place-items-center rounded-lg bg-busy text-white shadow-e1 disabled:opacity-50"
                         >
-                          <Icon name="star" size={16} />
+                          <Icon name="delete" size={17} />
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => onDeleteImage(img.id)}
-                        disabled={pending}
-                        title={t.admin.deletePhoto}
-                        aria-label={t.admin.deletePhoto}
-                        className="grid size-7.5 place-items-center rounded-lg bg-busy text-white"
-                      >
-                        <Icon name="delete" size={16} />
-                      </button>
-                    </div>
+                      </>
+                    )}
                   </div>
                 ))}
 

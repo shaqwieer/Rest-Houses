@@ -149,8 +149,8 @@ export const ar = {
         other: "استراحة",
       })}`,
 
-    featuredEyebrow: "مختارة بعناية",
-    featuredTitle: "استراحات مميّزة هذا الأسبوع",
+    featuredEyebrow: "جديد في كل زيارة",
+    featuredTitle: "استراحات قد تعجبك",
 
     whyTitle: "لماذا تحجز معنا",
     whySubtitle:
@@ -901,6 +901,7 @@ export const ar = {
     coverPhoto: "الغلاف",
     makeCover: "اجعلها الغلاف",
     deletePhoto: "حذف الصورة",
+    deletePhotoConfirm: "حذف هذه الصورة؟",
     uploading: "جارٍ الرفع…",
     photoHint: "JPG أو PNG أو WebP — حتى ٢٠٠ ميغابايت للصورة. أول صورة هي الغلاف.",
     listingName: "اسم الاستراحة",

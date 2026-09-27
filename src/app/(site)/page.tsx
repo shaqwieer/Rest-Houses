@@ -6,7 +6,7 @@ import { ListingCard } from "@/components/listing/listing-card";
 import { toCardData } from "@/components/listing/card-data";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
-import { getFeaturedListings, getPublicListingStats } from "@/lib/listings";
+import { getPublicListingStats, getRandomListings } from "@/lib/listings";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { CATEGORIES, DEFAULT_PHOTO_URL, label } from "@/lib/constants";
 import { arNum } from "@/lib/format";
@@ -57,7 +57,7 @@ export default async function HomePage() {
   const [{ t, locale }, settings, featured, stats] = await Promise.all([
     getI18n(),
     getSettings(),
-    getFeaturedListings(4),
+    getRandomListings(4),
     // Routed through the shared public predicate, so an inactive or expired
     // owner's listings are absent from these counts exactly as they are from
     // the grid. The three inline `prisma.listing` queries this replaced each

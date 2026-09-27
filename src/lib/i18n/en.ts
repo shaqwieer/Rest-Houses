@@ -115,8 +115,8 @@ export const en: Dictionary = {
     categoryCount: (n, count) =>
       `${n} ${plural("en", count, { one: "rest house", other: "rest houses" })}`,
 
-    featuredEyebrow: "Hand-picked",
-    featuredTitle: "Featured rest houses this week",
+    featuredEyebrow: "Something new every visit",
+    featuredTitle: "Rest houses you might like",
 
     whyTitle: "Why book with us",
     whySubtitle:
@@ -792,6 +792,7 @@ export const en: Dictionary = {
     coverPhoto: "Cover",
     makeCover: "Make this the cover",
     deletePhoto: "Delete photo",
+    deletePhotoConfirm: "Delete this photo?",
     uploading: "Uploading…",
     photoHint: "JPG, PNG or WebP — up to 200 MB each. The first photo is the cover.",
     listingName: "Rest house name",

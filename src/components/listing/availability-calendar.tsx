@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
 import { useLocale } from "@/lib/i18n/provider";
+import { arNum } from "@/lib/format";
 import { dayNames, dayNamesShort } from "@/lib/constants";
 import {
   addDays,
@@ -66,6 +67,12 @@ export function AvailabilityCalendar({
    * is applied by `quote()`; this only marks the cells.
    */
   specialDays,
+  /**
+   * What a day costs, printed under its number so a guest can see the price
+   * of each night before choosing — the weekend and occasion nights included.
+   * Omitted, the cells show the day number alone.
+   */
+  priceFor,
 }: {
   unavailableDates: ISODate[];
   value: DateRange;
@@ -74,6 +81,7 @@ export function AvailabilityCalendar({
   singleDay?: boolean;
   weekendMode?: WeekendMode;
   specialDays?: ReadonlyMap<ISODate, string>;
+  priceFor?: (iso: ISODate) => number;
 }) {
   const today = todayISO();
   const unavailable = useMemo(() => new Set(unavailableDates), [unavailableDates]);
@@ -216,6 +224,7 @@ export function AvailabilityCalendar({
                 const occasion = specialDays?.get(cell.iso);
                 // A past occasion is history and marking it only adds noise.
                 const isSpecial = occasion !== undefined && !cell.isPast;
+                const price = !disabled && priceFor ? priceFor(cell.iso) : 0;
 
                 return (
                   <button
@@ -229,7 +238,7 @@ export function AvailabilityCalendar({
                     title={isSpecial ? occasion || t.listing.occasionNight : undefined}
                     aria-pressed={isStart || isEnd}
                     className={clsx(
-                      "relative flex h-11.5 flex-col items-center justify-center rounded-xl border text-[14px] font-bold leading-none transition",
+                      "relative flex h-12.5 flex-col items-center justify-center rounded-xl border text-[14px] font-bold leading-none transition",
                       cell.isPast && "cursor-not-allowed border-transparent bg-transparent text-off",
                       !cell.isPast &&
                         cell.isUnavailable &&
@@ -253,8 +262,13 @@ export function AvailabilityCalendar({
                     )}
                   >
                     <span>{cell.label}</span>
-                    {cell.hijri && (
-                      <span className="mt-0.5 text-[9px] font-medium opacity-55">{cell.hijri}</span>
+                    {/* The night's price where the Hijri day used to be. Not
+                        on a past or booked day: neither can be picked, and a
+                        price there reads as an offer. */}
+                    {price > 0 && (
+                      <span className="mt-1 whitespace-nowrap text-[9.5px] font-semibold tracking-tight opacity-70">
+                        {arNum(price, locale)}
+                      </span>
                     )}
                     {/* A dot rather than a colour, so the occasion marker can
                         sit on top of whatever state the cell already has —
@@ -263,7 +277,7 @@ export function AvailabilityCalendar({
                     {isSpecial && (
                       <span
                         aria-hidden
-                        className="absolute bottom-1 size-1.25 rounded-full bg-gold-600"
+                        className="absolute top-1 end-1 size-1.25 rounded-full bg-gold-600"
                       />
                     )}
                   </button>
