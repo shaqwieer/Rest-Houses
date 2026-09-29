@@ -26,11 +26,17 @@ export function ListingCard({
   showVerifiedBadge = false,
   /** Cards above the fold should not lazy-load — it delays the LCP image. */
   priority = false,
+  /**
+   * Appended to the links into the rest house — "?from=…&to=…&guests=…" on a
+   * results page searched with dates, so its calendar opens on them.
+   */
+  linkQuery = "",
 }: {
   listing: ListingCardData;
   showCityBadge?: boolean;
   showVerifiedBadge?: boolean;
   priority?: boolean;
+  linkQuery?: string;
 }) {
   const { isFavorite, toggle } = useFavorites();
   const { t, locale } = useLocale();
@@ -44,6 +50,20 @@ export function ListingCard({
   // shows the English name.
   const name = localized(listing.name, listing.nameEn, locale);
   const where = localized(listing.area, listing.areaEn, locale) || cityLabel(listing.city, locale);
+  const href = `/listings/${encodeURIComponent(listing.slug)}${linkQuery}`;
+
+  /**
+   * The nightly figure, labelled for what it is.
+   *
+   * A listing with a different weekend rate, or an occasion rate, does not
+   * cost `pricePerNight` every night — the calendar prices each night on its
+   * own. Printing the weekday figure bare would read as the price of any stay,
+   * so a varying rate is shown as «من» the lowest night instead. (A weekend
+   * rate of 0 means "same as weekdays" — see `nightRate` in lib/pricing.ts.)
+   */
+  const weekend = listing.weekendPrice > 0 ? listing.weekendPrice : listing.pricePerNight;
+  const priceVaries = weekend !== listing.pricePerNight || listing.holidayPrice > 0;
+  const lowestNight = Math.min(listing.pricePerNight, weekend);
 
   return (
     <article className="group flex flex-col overflow-hidden rounded-[20px] border border-line bg-surface shadow-e1 transition duration-200 hover:-translate-y-1 hover:border-sand-300 hover:shadow-e2">
@@ -98,7 +118,7 @@ export function ListingCard({
         <div className="flex items-start justify-between gap-2.5">
           <h3 className="m-0 font-display text-[16px] font-bold leading-snug text-ink">
             <Link
-              href={`/listings/${encodeURIComponent(listing.slug)}`}
+              href={href}
               className="text-ink no-underline hover:text-bronze hover:no-underline"
             >
               {name}
@@ -144,8 +164,11 @@ export function ListingCard({
 
         <div className="mt-auto flex items-end justify-between gap-2.5 border-t border-dashed border-line pt-3">
           <div>
+            {priceVaries && (
+              <span className="text-[12px] font-semibold text-muted">{t.common.from} </span>
+            )}
             <span className="font-display text-[18px] font-extrabold text-ink">
-              {arNum(listing.pricePerNight, locale)}
+              {arNum(lowestNight, locale)}
             </span>
             <span className="text-[12px] font-semibold text-muted">
               {" "}
@@ -153,7 +176,7 @@ export function ListingCard({
             </span>
           </div>
           <Link
-            href={`/listings/${encodeURIComponent(listing.slug)}`}
+            href={href}
             className="rounded-full bg-night-900 px-4 py-2.5 text-[13px] font-bold text-sand-100 no-underline transition hover:bg-gold-600 hover:text-night-900 hover:no-underline"
           >
             {t.common.details}

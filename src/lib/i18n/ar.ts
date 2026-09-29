@@ -129,13 +129,12 @@ export const ar = {
 
   /* ------------------------------------------------------------------ home */
   home: {
-    verifiedBadge: (listings: string, cities: string) =>
-      `${listings} استراحة موثّقة في ${cities} إمارات`,
+    // A count of what is live — every public listing, verified or not, so the
+    // badge no longer calls them all «موثّقة».
+    inventoryBadge: (listings: string, cities: string) =>
+      `${listings} استراحة وشاليه ومزرعة في ${cities} إمارات`,
     mostSearched: "الأكثر بحثًا:",
-    quickPool: "استراحة بمسبح",
-    quickLahbab: "لهباب",
-    quickWedding: "قاعة أعراس",
-    quickCamp: "مخيم شتوي",
+    browseAll: (n: string) => `تصفّح الكل (${n})`,
 
     categoriesTitle: "تصفّح حسب المناسبة",
     categoriesSubtitle: "اختر المناسبة وسنعرض لك الاستراحات المتاحة لها",
@@ -167,20 +166,6 @@ export const ar = {
     why4Title: "تأكيد سريع من المالك",
     why4Body:
       "طلبك يصل مالك الاستراحة مباشرة على الواتساب بكل التفاصيل جاهزة، فيصلك الرد بسرعة.",
-
-    testimonialsTitle: "ماذا يقول ضيوفنا",
-    testimonial1Quote:
-      "أفضل ما في المنصة أن كل استراحة موثّقة فعليًا — الصور مطابقة للواقع تمامًا، وهذا نادر.",
-    testimonial1Name: "محمد الرميثي",
-    testimonial1Role: "ضيف منذ ٢٠٢٣",
-    testimonial2Quote:
-      "أنظّم أكثر من عشرين مناسبة سنويًا، والتقويم هنا يوفّر عليّ ساعات من الاتصالات. أرى المتاح فورًا وأرسل الطلب عبر الواتساب.",
-    testimonial2Name: "شيخة المهيري",
-    testimonial2Role: "منظّمة مناسبات",
-    testimonial3Quote:
-      "حجزت خلال دقيقتين من الجوال. وصلني تأكيد المالك خلال ربع ساعة مع موقع دقيق على الخريطة.",
-    testimonial3Name: "عبدالعزيز السويدي",
-    testimonial3Role: "ضيف منذ ٢٠٢٤",
 
     ctaTitle: "لم تجد الاستراحة المناسبة؟ راسلنا",
     ctaBody:
@@ -221,15 +206,22 @@ export const ar = {
     resetFilters: "إعادة ضبط الفلاتر",
     filters: "الفلاتر",
     sortResults: "ترتيب النتائج",
-    headingCity: (city: string) => `استراحات متاحة في ${city}`,
-    headingAll: "استراحات متاحة في الإمارات",
+    /**
+     * The results heading — and the page title — named after what was searched,
+     * so a «مزارع للإيجار في عجمان» ad lands on a page that says exactly that.
+     * "للإيجار" rather than the old "متاحة": without dates nothing has been
+     * checked for availability, and the old heading said it had.
+     */
+    resultsHeading: (farm: boolean, pool: boolean, place: string | null, query: string | null) =>
+      `${farm ? "مزارع" : "استراحات وشاليهات"}${pool ? " بمسبح خاص" : ""} للإيجار${
+        place ? ` في ${place}` : query ? "" : " في الإمارات"
+      }${query ? ` — «${query}»` : ""}`,
     emptyBodyLong: "جرّب توسيع نطاق السعر أو إزالة بعض المرافق.",
-    metaTitleCity: (city: string) => `استراحات ${city}`,
-    metaTitleAll: "تصفّح الاستراحات",
     metaDescCity: (city: string, site: string) =>
       `استراحات وشاليهات للإيجار في ${city} — أسعار واضحة، تقويم متاح، وحجز مباشر عبر الواتساب من ${site}.`,
     destination: "الوجهة",
     searchButton: "ابحث",
+    anyDate: "أي تاريخ",
   },
 
   /* -------------------------------------------------------------- favorites */
@@ -449,6 +441,8 @@ export const ar = {
       ". سياسة الإلغاء تُتفق عليها مباشرة مع المالك، ولا يُطلب عربون.",
     submit: "إرسال الطلب عبر الواتساب",
     submitting: "جارٍ إرسال الطلب…",
+    // Nothing reached the server — the details they typed are still on screen.
+    sendFailed: "تعذّر إرسال الطلب — تحقّق من الاتصال واضغط إرسال مرة أخرى. بياناتك محفوظة في النموذج.",
     noPaymentOnline: "لا يُطلب أي دفع عبر الموقع — يتواصل معك المالك للتأكيد.",
     summaryTitle: "ملخّص الحجز",
     subtotal: "المجموع",

@@ -91,7 +91,19 @@ export function BookingForm({
     setFieldErrors({});
 
     startTransition(async () => {
-      const result = await createBookingRequest(formData);
+      // A request that never reaches the server — a phone dropping signal
+      // mid-send, a deploy restarting the app — THROWS here rather than
+      // returning `{ ok: false }`. Uncaught, it escaped the transition into the
+      // error boundary and replaced the page, taking everything the guest had
+      // typed with it. Caught, it is one more failure to show beside the form,
+      // with a fresh challenge so pressing send again can work. No conversion
+      // is reported: nothing was created.
+      let result: Awaited<ReturnType<typeof createBookingRequest>>;
+      try {
+        result = await createBookingRequest(formData);
+      } catch {
+        result = { ok: false, error: t.booking.sendFailed };
+      }
       if (result.ok) {
         // The server has accepted the request, so this is the moment it
         // happened — not the confirmation page, which a guest can reload.

@@ -37,7 +37,7 @@ typography, spacing and components match it.
 
 | Route | What it does |
 |---|---|
-| `/` | Hero search (destination, dates, guests), categories, featured listings, trust points, testimonials, WhatsApp CTA |
+| `/` | Hero search (destination, dates, guests — all open by default), popular-search links shown only while live listings match them, listing cards, categories, trust points, WhatsApp CTA |
 | `/listings` | Search results with filters (city, occasion, max price, capacity, amenities), sorting, and an optional map view. All filter state lives in the URL, so any filtered view is shareable |
 | `/listings/[slug]` | Gallery, description, amenities, **availability calendar** with booked/blocked days disabled, Leaflet map, reviews, sticky price card |
 | `/listings/[slug]/book` | Booking request form with a live price summary |

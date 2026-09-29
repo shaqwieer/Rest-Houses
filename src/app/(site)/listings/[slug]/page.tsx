@@ -22,7 +22,7 @@ import { cityLabel, label as pickLabel } from "@/lib/constants";
 import { arNum, arRating, arTimeAgo } from "@/lib/format";
 import { resolveDepositPercent } from "@/lib/pricing";
 import { resolveListingPolicy } from "@/lib/policies";
-import { toWeekendMode } from "@/lib/dates";
+import { isISODate, nightsBetween, nightsInRange, todayISO, toWeekendMode } from "@/lib/dates";
 import { resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
 import { getI18n } from "@/lib/i18n/server";
 import { ogLocale } from "@/lib/i18n/config";
@@ -122,9 +122,10 @@ export default async function ListingDetailPage({
 }: {
   params: Promise<{ slug: string }>;
   /**
-   * Only one flag is read: `?unavailable=1`, set when the booking page turned a
-   * guest back because their dates were taken while they were filling the form
-   * in. See the redirect in ./book/page.tsx.
+   * `?unavailable=1`, set when the booking page turned a guest back because
+   * their dates were taken while they were filling the form in (see the
+   * redirect in ./book/page.tsx) — and `from`/`to`/`guests`, the stay a results
+   * page was searched for, carried in on the card link.
    */
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -197,6 +198,31 @@ export default async function ListingDetailPage({
   // the row and handed to the calendar and the quote alike, so the shaded cells
   // and the charged nights are the same set of days.
   const weekendMode = toWeekendMode(listing.weekendMode);
+
+  /**
+   * The stay searched for on the results page, if it still holds.
+   *
+   * Pre-selected only when every night is open *now* and the range is one the
+   * booking form would accept (future, at most 60 nights). Anything less and
+   * the calendar opens empty rather than showing a selection the next step
+   * would refuse. `unavailable=1` wins outright: those are the dates that were
+   * just taken.
+   */
+  const carriedFrom = typeof sp.from === "string" ? sp.from : undefined;
+  const carriedTo = typeof sp.to === "string" ? sp.to : undefined;
+  const initialRange =
+    !datesTaken &&
+    isISODate(carriedFrom) &&
+    isISODate(carriedTo) &&
+    carriedFrom < carriedTo &&
+    carriedFrom >= todayISO() &&
+    nightsBetween(carriedFrom, carriedTo) <= 60 &&
+    nightsInRange(carriedFrom, carriedTo).every((night) => !unavailable.has(night))
+      ? { checkIn: carriedFrom, checkOut: carriedTo }
+      : undefined;
+  const carriedGuests = Number(typeof sp.guests === "string" ? sp.guests : "");
+  const initialGuests =
+    Number.isFinite(carriedGuests) && carriedGuests > 0 ? carriedGuests : undefined;
 
   // Day-use is offered when either rate carries a figure. A leave-by time on
   // its own is not enough — a time with no price is an incomplete entry, and
@@ -285,6 +311,8 @@ export default async function ListingDetailPage({
       serviceFeePercent={settings.serviceFeePercent}
       depositPercent={depositPercent}
       capacity={listing.capacity}
+      initialRange={initialRange}
+      initialGuests={initialGuests}
     >
       <script
         type="application/ld+json"

@@ -7,6 +7,7 @@ import { toCardData } from "@/components/listing/card-data";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { getPublicListingStats, getRandomListings } from "@/lib/listings";
+import { getPopularSearches } from "@/lib/popular-searches";
 import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
 import { CATEGORIES, DEFAULT_PHOTO_URL, label } from "@/lib/constants";
 import { arNum } from "@/lib/format";
@@ -34,6 +35,21 @@ import { generalEnquiryMessage, whatsappLink } from "@/lib/whatsapp";
  * The only owner-facing surfaces reachable from here are the footer's "list your
  * property" link and the header's owner login, both deliberately secondary.
  *
+ * ─── The first screen is for the search people arrived with ──────────────────
+ * Almost all paid traffic is a phone, from searches like «شاليهات للايجار» and
+ * «مزارع للايجار». So the first screen says plainly what is here (the heading
+ * is the operator's `heroTitle`, set to exactly that), puts a search that
+ * starts unrestricted directly under it, then one tap per popular search, and
+ * then real rest houses — photo, place, guests, price — before anything else.
+ * The occasion tiles and the reasons to book come after the listings, not
+ * before them.
+ *
+ * ─── No testimonials ─────────────────────────────────────────────────────────
+ * The three quotes that used to sit here were sample copy: named guests "since
+ * 2023" and "since 2024" on a platform that went live in July 2026, with no
+ * review behind any of them. They are gone, not rewritten. Real reviews live on
+ * each listing's page, where they belong to a stay that happened.
+ *
  * ─── The "Our Location" map has been removed ─────────────────────────────────
  * The Google Maps embed that rendered below this page's closing section lived in
  * the shared footer, and is gone — see the note at the top of
@@ -54,8 +70,8 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [{ t, locale }, settings, featured, stats] = await Promise.all([
-    getI18n(),
+  const { t, locale } = await getI18n();
+  const [settings, featured, stats, popular] = await Promise.all([
     getSettings(),
     getRandomListings(4),
     // Routed through the shared public predicate, so an inactive or expired
@@ -63,6 +79,9 @@ export default async function HomePage() {
     // the grid. The three inline `prisma.listing` queries this replaced each
     // built their own `{ published: true }` and would have kept counting them.
     getPublicListingStats(),
+    // The popular searches that currently lead somewhere — a link with no
+    // live listing behind it is not rendered at all.
+    getPopularSearches(locale),
   ]);
 
   const s = localizeSettings(settings, locale);
@@ -86,31 +105,6 @@ export default async function HomePage() {
     { icon: "event_available", title: t.home.why2Title, body: t.home.why2Body },
     { icon: "receipt_long", title: t.home.why3Title, body: t.home.why3Body },
     { icon: "forum", title: t.home.why4Title, body: t.home.why4Body },
-  ];
-
-  const testimonials = [
-    {
-      quote: t.home.testimonial1Quote,
-      name: t.home.testimonial1Name,
-      role: t.home.testimonial1Role,
-    },
-    {
-      quote: t.home.testimonial2Quote,
-      name: t.home.testimonial2Name,
-      role: t.home.testimonial2Role,
-    },
-    {
-      quote: t.home.testimonial3Quote,
-      name: t.home.testimonial3Name,
-      role: t.home.testimonial3Role,
-    },
-  ];
-
-  const quickSearches = [
-    { label: t.home.quickPool, href: "/listings?amenities=pool" },
-    { label: t.home.quickLahbab, href: "/listings?q=لهباب" },
-    { label: t.home.quickWedding, href: "/listings?category=wedding" },
-    { label: t.home.quickCamp, href: "/listings?category=camp" },
   ];
 
   /**
@@ -175,44 +169,106 @@ export default async function HomePage() {
         />
         <div className="bg-sadu pointer-events-none absolute inset-0 opacity-50" aria-hidden />
 
-        <div className="relative mx-auto max-w-[1280px] px-4 pt-14 pb-7 md:px-10 md:pt-24 md:pb-14">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-gold-500/40 bg-night-900/50 px-4 py-1.5 text-[12.5px] font-semibold text-gold-300">
+        <div className="relative mx-auto max-w-[1280px] px-4 pt-6 pb-4 md:px-10 md:pt-20 md:pb-10">
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold-500/40 bg-night-900/50 px-3.5 py-1 text-[12px] font-semibold text-gold-300 md:mb-5 md:px-4 md:py-1.5 md:text-[12.5px]">
             <span
               className="animate-soft-pulse size-1.5 rounded-full bg-gold-500"
               aria-hidden
             />
-            {t.home.verifiedBadge(arNum(stats.total, locale), arNum(stats.cities, locale))}
+            {t.home.inventoryBadge(arNum(stats.total, locale), arNum(stats.cities, locale))}
           </div>
 
-          <h1 className="m-0 mb-4 max-w-[15ch] font-display text-[clamp(30px,5.6vw,60px)] font-extrabold leading-[1.22] text-sand-50">
+          {/* The operator's heading, from /admin/settings. The second line is
+              optional — the search-intent heading is one sentence — and an
+              empty one renders nothing, not a blank gold line. */}
+          <h1 className="m-0 mb-2.5 max-w-[22ch] font-display text-[clamp(26px,5vw,54px)] font-extrabold leading-[1.3] text-sand-50 md:mb-4">
             {s.heroTitle}
-            <br />
-            <span className="text-gold-300">{s.heroTitleAlt}</span>
+            {s.heroTitleAlt && (
+              <>
+                <br />
+                <span className="text-gold-300">{s.heroTitleAlt}</span>
+              </>
+            )}
           </h1>
-          <p className="m-0 max-w-[46ch] text-[clamp(15px,1.5vw,19px)] leading-[1.85] text-sand-100/78">
-            {s.heroSubtitle}
-          </p>
+          {s.heroSubtitle && (
+            <p className="m-0 max-w-[52ch] text-[clamp(14.5px,1.5vw,19px)] leading-[1.75] text-sand-100/80">
+              {s.heroSubtitle}
+            </p>
+          )}
         </div>
 
-        <div className="relative mx-auto max-w-[1280px] px-4 pb-10 md:px-10 md:pb-18">
+        <div className="relative mx-auto max-w-[1280px] px-4 pb-5 md:px-10 md:pb-16">
           <HeroSearch />
 
-          <div className="mt-3.5 flex flex-wrap items-center gap-2">
-            <span className="text-[12.5px] font-semibold text-sand-100/60">
-              {t.home.mostSearched}
-            </span>
-            {quickSearches.map((q) => (
-              <Link
-                key={q.label}
-                href={q.href}
-                className="rounded-full border border-gold-500/30 px-3 py-1.5 text-[12.5px] font-medium text-sand-100 no-underline transition hover:bg-gold-500/15 hover:no-underline"
-              >
-                {q.label}
-              </Link>
-            ))}
-          </div>
+          {/* One tap into each search people actually type. Counted against
+              live inventory: a search with nothing behind it is not offered.
+              One scrolling row on a phone rather than three wrapped ones —
+              the listings belong on the first screen, not below the chips. */}
+          {popular.length > 0 && (
+            <nav
+              aria-label={t.home.mostSearched}
+              className="-mx-4 mt-3 flex items-center gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] md:mx-0 md:mt-4 md:flex-wrap md:overflow-visible md:px-0"
+            >
+              <span className="shrink-0 text-[12.5px] font-semibold text-sand-100/70">
+                {t.home.mostSearched}
+              </span>
+              {popular.map((q) => (
+                <Link
+                  key={q.id}
+                  href={q.href}
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-gold-500/45 bg-night-900/55 px-3.5 py-2 text-[13px] font-semibold text-sand-50 no-underline transition hover:bg-gold-500/20 hover:no-underline"
+                >
+                  {q.label}
+                  <span className="rounded-full bg-gold-500/25 px-1.5 text-[11.5px] font-bold text-gold-300">
+                    {arNum(q.count, locale)}
+                  </span>
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
       </section>
+
+      {/* ================= LISTINGS ================= */}
+      {/* Straight after the search: real rest houses — photo, place, guests
+          and price — are what a visitor from an ad is looking for, so they
+          start on the first screen of a phone. A swipeable row there (one card
+          and the edge of the next, which is what says "swipe"), the grid from
+          `sm` up. */}
+      {featured.length > 0 && (
+        <section className="mx-auto max-w-[1280px] px-4 pt-6 md:px-10 md:pt-14">
+          <div className="mb-3.5 flex items-end justify-between gap-3 md:mb-5.5">
+            <div className="min-w-0">
+              <div className="mb-1 inline-flex items-center gap-2 text-[12px] font-bold tracking-wide text-bronze md:mb-2 md:text-[12.5px]">
+                <span className="h-px w-5.5 bg-gold-500" aria-hidden />
+                {t.home.featuredEyebrow}
+              </div>
+              <h2 className="m-0 font-display text-[clamp(19px,2.6vw,30px)] font-extrabold text-ink">
+                {t.home.featuredTitle}
+              </h2>
+            </div>
+            <ButtonLink href="/listings" variant="secondary" size="sm" className="shrink-0">
+              {t.home.browseAll(arNum(stats.total, locale))}
+              {/* The arrow points forward along the reading direction, so it
+                  flips with the document rather than always pointing left. */}
+              <Icon name={locale === "ar" ? "arrow_back" : "arrow_forward"} size={18} />
+            </ButtonLink>
+          </div>
+
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3.5 overflow-x-auto px-4 pb-2 [scrollbar-width:none] sm:mx-0 sm:grid sm:grid-cols-2 sm:gap-5 sm:overflow-visible sm:px-0 sm:pb-0 lg:grid-cols-4">
+            {featured.map((listing, i) => (
+              <div key={listing.id} className="grid w-[80%] shrink-0 snap-start sm:w-auto">
+                <ListingCard
+                  listing={toCardData(listing)}
+                  showVerifiedBadge
+                  // The first two are on screen at load, on a phone and a laptop.
+                  priority={i < 2}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ================= CATEGORIES ================= */}
       <section className="mx-auto max-w-[1280px] px-4 pt-10 md:px-10 md:pt-18">
@@ -249,41 +305,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ================= FEATURED ================= */}
-      {featured.length > 0 && (
-        <section className="mx-auto max-w-[1280px] px-4 pt-10 md:px-10 md:pt-18">
-          <div className="mb-5.5 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="mb-2 inline-flex items-center gap-2 text-[12.5px] font-bold tracking-wide text-bronze">
-                <span className="h-px w-5.5 bg-gold-500" aria-hidden />
-                {t.home.featuredEyebrow}
-              </div>
-              <h2 className="m-0 font-display text-[clamp(21px,2.6vw,30px)] font-extrabold text-ink">
-                {t.home.featuredTitle}
-              </h2>
-            </div>
-            <ButtonLink href="/listings" variant="secondary">
-              {t.common.viewAll}
-              {/* The arrow points forward along the reading direction, so it
-                  flips with the document rather than always pointing left. */}
-              <Icon name={locale === "ar" ? "arrow_back" : "arrow_forward"} size={18} />
-            </ButtonLink>
-          </div>
-
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {featured.map((listing, i) => (
-              <ListingCard
-                key={listing.id}
-                listing={toCardData(listing)}
-                showVerifiedBadge
-                // First two cards are usually in view on a laptop.
-                priority={i < 2}
-              />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* ================= WHY BOOK WITH US ================= */}
       <section className="relative mt-12 overflow-hidden bg-night-900 md:mt-22">
         <div className="bg-sadu pointer-events-none absolute inset-0 opacity-65" aria-hidden />
@@ -309,37 +330,6 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ================= TESTIMONIALS ================= */}
-      <section className="mx-auto max-w-[1280px] px-4 py-11 md:px-10 md:py-20">
-        <h2 className="m-0 mb-6.5 font-display text-[clamp(21px,2.6vw,30px)] font-extrabold text-ink">
-          {t.home.testimonialsTitle}
-        </h2>
-        <div className="grid gap-4.5 md:grid-cols-3">
-          {testimonials.map((item) => (
-            <figure
-              key={item.name}
-              className="m-0 flex flex-col gap-4 rounded-[20px] border border-line bg-surface p-6 shadow-e1"
-            >
-              <span className="font-display text-[40px] leading-[0.7] text-gold-300" aria-hidden>
-                ”
-              </span>
-              <blockquote className="m-0 text-[15px] leading-[1.9] text-ink">
-                {item.quote}
-              </blockquote>
-              <figcaption className="mt-auto flex items-center gap-3 border-t border-line pt-3.5">
-                <span className="grid size-10 place-items-center rounded-full bg-sand-200 text-bronze">
-                  <Icon name="person" size={22} />
-                </span>
-                <span>
-                  <span className="block text-[14px] font-bold text-ink">{item.name}</span>
-                  <span className="block text-[12.5px] text-muted">{item.role}</span>
-                </span>
-              </figcaption>
-            </figure>
-          ))}
         </div>
       </section>
 

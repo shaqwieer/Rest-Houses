@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** The value assembled by `googleAdsSendTo` from the settings row. */
-const SEND_TO = "AW-950802645/dVoECJ30sOQcENWxsMUD";
+const SEND_TO = "AW-950802645/AbCdEfGh12ijKLmnOpQr";
 
 function browserWith(gtag?: ReturnType<typeof vi.fn>, alreadyReported = false) {
   const values = new Map<string, string>();
@@ -36,7 +36,12 @@ describe("Booking Request Google Ads conversion", () => {
     expect(report("RQ-1001", SEND_TO)).toBe(true);
     expect(report("RQ-1001", SEND_TO)).toBe(false);
     expect(gtag).toHaveBeenCalledTimes(1);
-    expect(gtag).toHaveBeenCalledWith("event", "conversion", { send_to: SEND_TO });
+    expect(gtag).toHaveBeenCalledWith("event", "conversion", {
+      send_to: SEND_TO,
+      // Google Ads de-duplicates on this, so a repeat that slips past the
+      // browser's guards is still counted once.
+      transaction_id: "RQ-1001",
+    });
   });
 
   /**
@@ -56,6 +61,7 @@ describe("Booking Request Google Ads conversion", () => {
 
     expect(gtag).toHaveBeenCalledWith("event", "conversion", {
       send_to: "AW-111111111/someOtherLabel",
+      transaction_id: "RQ-1001",
     });
   });
 

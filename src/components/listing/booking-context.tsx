@@ -99,6 +99,8 @@ export function BookingProvider({
   serviceFeePercent,
   depositPercent,
   capacity,
+  initialRange,
+  initialGuests,
   children,
 }: {
   /** This listing's slug and name — the label on the availability event. */
@@ -116,14 +118,26 @@ export function BookingProvider({
   serviceFeePercent: number;
   depositPercent: number;
   capacity: number;
+  /**
+   * A stay the guest already searched for — the dates and head count from a
+   * results page, carried in on the card link. The page checks the range is
+   * still open before passing it; anything it could not vouch for arrives as
+   * undefined and the calendar starts empty, as it always did.
+   */
+  initialRange?: { checkIn: ISODate; checkOut: ISODate };
+  initialGuests?: number;
   children: React.ReactNode;
 }) {
-  const [range, setRangeState] = useState<DateRange>({ checkIn: null, checkOut: null });
+  const [range, setRangeState] = useState<DateRange>(
+    () => initialRange ?? { checkIn: null, checkOut: null },
+  );
   const [stayType, setStayTypeState] = useState<StayType>("overnight");
   // Default to a sensible share of the venue rather than 1 — these are group
   // venues, and the design's mock shows "٣٠ ضيفًا" pre-filled.
   const [guests, setGuests] = useState(() =>
-    Math.min(capacity, Math.max(1, Math.round(capacity / 2))),
+    initialGuests
+      ? Math.min(capacity, Math.max(1, Math.floor(initialGuests)))
+      : Math.min(capacity, Math.max(1, Math.round(capacity / 2))),
   );
 
   const dayUseAvailable = dayUsePrice > 0;

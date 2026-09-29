@@ -102,13 +102,10 @@ export const en: Dictionary = {
 
   /* ------------------------------------------------------------------ home */
   home: {
-    verifiedBadge: (listings, cities) =>
-      `${listings} verified rest houses across ${cities} emirates`,
+    inventoryBadge: (listings, cities) =>
+      `${listings} rest houses, chalets & farms across ${cities} emirates`,
     mostSearched: "Most searched:",
-    quickPool: "With a pool",
-    quickLahbab: "Lahbab",
-    quickWedding: "Wedding venue",
-    quickCamp: "Winter camp",
+    browseAll: (n) => `Browse all (${n})`,
 
     categoriesTitle: "Browse by occasion",
     categoriesSubtitle: "Pick the occasion and we'll show you what's available",
@@ -133,20 +130,6 @@ export const en: Dictionary = {
     why4Title: "Fast confirmation from the owner",
     why4Body:
       "Your request reaches the owner directly on WhatsApp with every detail already filled in, so you hear back quickly.",
-
-    testimonialsTitle: "What our guests say",
-    testimonial1Quote:
-      "The best thing about this platform is that every rest house is genuinely verified — the photos match reality exactly, which is rare.",
-    testimonial1Name: "Mohammed Al Rumaithi",
-    testimonial1Role: "Guest since 2023",
-    testimonial2Quote:
-      "I organise more than twenty events a year, and the calendar here saves me hours of phone calls. I see what's free instantly and send the request on WhatsApp.",
-    testimonial2Name: "Shaikha Al Muhairi",
-    testimonial2Role: "Event planner",
-    testimonial3Quote:
-      "I booked in two minutes from my phone. The owner confirmed within fifteen minutes and sent an exact location on the map.",
-    testimonial3Name: "Abdulaziz Al Suwaidi",
-    testimonial3Role: "Guest since 2024",
 
     ctaTitle: "Haven't found the right rest house? Message us",
     ctaBody:
@@ -187,15 +170,16 @@ export const en: Dictionary = {
     resetFilters: "Reset filters",
     filters: "Filters",
     sortResults: "Sort results",
-    headingCity: (city) => `Rest houses available in ${city}`,
-    headingAll: "Rest houses available across the UAE",
+    resultsHeading: (farm, pool, place, query) =>
+      `${farm ? "Farms" : "Rest houses & chalets"}${pool ? " with a private pool" : ""} for rent${
+        place ? ` in ${place}` : query ? "" : " across the UAE"
+      }${query ? ` — “${query}”` : ""}`,
     emptyBodyLong: "Try widening the price range or removing some amenities.",
-    metaTitleCity: (city) => `Rest houses in ${city}`,
-    metaTitleAll: "Browse rest houses",
     metaDescCity: (city, site) =>
       `Rest houses and chalets to rent in ${city} — clear pricing, a live calendar, and direct booking on WhatsApp from ${site}.`,
     destination: "Destination",
     searchButton: "Search",
+    anyDate: "Any date",
   },
 
   /* -------------------------------------------------------------- favorites */
@@ -366,6 +350,7 @@ export const en: Dictionary = {
       ". This rest house offers no free cancellation, and no deposit is required.",
     submit: "Send request on WhatsApp",
     submitting: "Sending your request…",
+    sendFailed: "Your request couldn't be sent — check your connection and press send again. Your details are still in the form.",
     noPaymentOnline:
       "No payment is taken on the site — the owner will contact you to confirm.",
     summaryTitle: "Booking summary",

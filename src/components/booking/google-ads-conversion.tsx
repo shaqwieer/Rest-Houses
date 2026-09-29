@@ -28,6 +28,13 @@ const reportedBookings = new Set<string>();
  * back/forward navigation, and accidental duplicate calls in the same tab. If
  * storage is unavailable, the in-memory guard still protects this page load.
  *
+ * ─── `transaction_id` is the third guard, and the only one Google holds ──────
+ * The reference is sent as the conversion's transaction id. Google Ads counts
+ * one conversion per transaction id per conversion action, so a repeat that
+ * gets past both browser guards — a second tab, a cleared session, a retry
+ * from a different device — is dropped on Google's side instead of counted.
+ * No `value`: a request is not revenue until the owner confirms it.
+ *
  * This is the Google Ads conversion specifically. The same moment is reported
  * to Meta, TikTok and Snapchat through `track("BookingRequested")` — see
  * src/lib/tracking-events.ts — because a Google Ads conversion has a `send_to`
@@ -68,7 +75,7 @@ export function reportBookingRequestConversion(reference: string, sendTo: string
   }
 
   try {
-    gtag("event", "conversion", { send_to: sendTo });
+    gtag("event", "conversion", { send_to: sendTo, transaction_id: reference });
   } catch {
     // Analytics failures must not affect a successful booking.
   }

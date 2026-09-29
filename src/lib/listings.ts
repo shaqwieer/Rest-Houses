@@ -7,6 +7,7 @@ import {
   cityLabel,
   DEFAULT_PHOTO_URL,
   getAmenities,
+  getListingType,
   type AvailabilityStatus,
   type SortId,
 } from "./constants";
@@ -14,6 +15,7 @@ import { DEFAULT_LOCALE, localized, type Locale } from "./i18n/config";
 import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import { resolveDayUseCheckOut } from "./policies";
 import type { ISODate } from "./dates";
+import type { ListingFilters } from "./search";
 import { nightsInRange, occupiedDays, todayISO } from "./dates";
 
 /**
@@ -207,19 +209,11 @@ export function localizeListing(
 /* Filters                                                                    */
 /* -------------------------------------------------------------------------- */
 
-export type ListingFilters = {
-  city?: string; // "all" or a CITIES id
-  category?: string; // "all" or a CATEGORIES id
-  maxPrice?: number;
-  minCapacity?: number;
-  amenities?: string[];
-  sort?: SortId;
-  /** Free-text search over name and area. */
-  q?: string;
-  /** Only listings free for every night of this range. */
-  availableFrom?: ISODate;
-  availableTo?: ISODate;
-};
+/**
+ * Defined beside the parser in ./search.ts, which the browser also imports —
+ * re-exported here so the read side keeps one import for its filters.
+ */
+export type { ListingFilters } from "./search";
 
 const SORT_ORDER: Record<SortId, Prisma.ListingOrderByWithRelationInput[]> = {
   // "Best match" = high rating weighted by how many reviews back it up.
@@ -253,6 +247,7 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
   const {
     city,
     category,
+    type,
     maxPrice,
     minCapacity,
     amenities = [],
@@ -273,6 +268,11 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
   if (typeof minCapacity === "number" && minCapacity > 0) {
     sqlFilters.capacity = { gte: minCapacity };
   }
+  // Each text condition is its own `OR`, so they are collected here and AND-ed
+  // together below — two `OR`s in one object would overwrite each other, and a
+  // farm search for «حتا» would quietly become a search for either.
+  const textMatches: Prisma.ListingWhereInput[] = [];
+
   if (q && q.trim()) {
     const term = q.trim();
     // Both languages, always — not just the visitor's current one. Someone
@@ -280,13 +280,29 @@ export async function findListings(filters: ListingFilters = {}): Promise<Listin
     // sent, and the reverse is just as common here. Searching all four columns
     // costs nothing at this catalogue size and removes a whole class of
     // "I searched for it and it wasn't there".
-    sqlFilters.OR = [
-      { name: { contains: term, mode: "insensitive" } },
-      { nameEn: { contains: term, mode: "insensitive" } },
-      { area: { contains: term, mode: "insensitive" } },
-      { areaEn: { contains: term, mode: "insensitive" } },
-    ];
+    textMatches.push({
+      OR: [
+        { name: { contains: term, mode: "insensitive" } },
+        { nameEn: { contains: term, mode: "insensitive" } },
+        { area: { contains: term, mode: "insensitive" } },
+        { areaEn: { contains: term, mode: "insensitive" } },
+      ],
+    });
   }
+
+  // "Farms": the owner named it one, in either language. Name only — an area
+  // line like «قرب المزارع» describes the neighbourhood, not the property.
+  const listingType = getListingType(type);
+  if (listingType) {
+    textMatches.push({
+      OR: listingType.terms.flatMap((term) => [
+        { name: { contains: term, mode: "insensitive" as const } },
+        { nameEn: { contains: term, mode: "insensitive" as const } },
+      ]),
+    });
+  }
+
+  if (textMatches.length > 0) sqlFilters.AND = textMatches;
 
   const rows = await prisma.listing.findMany({
     where: withPublicListingWhere(sqlFilters),

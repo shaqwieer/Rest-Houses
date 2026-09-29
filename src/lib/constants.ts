@@ -108,6 +108,35 @@ export function categoryLabel(id: string, locale: Locale = DEFAULT_LOCALE): stri
   return label(getCategory(id), locale);
 }
 
+/**
+ * Kinds of property a guest searches for by name — "مزارع للإيجار".
+ *
+ * Not a category: categories are occasions an owner ticks («عائلية»,
+ * «أعراس»), while "a farm" is what the owner *called* the place, and that is
+ * the only place the fact is recorded — «مزرعة الريف الأخضر», «فلج فارم»,
+ * "Golden Dunes Farm". So a type is matched against the listing's name in both
+ * languages, never inferred from anything else. A listing that is not named as
+ * a farm is not shown as one, which is what keeps a paid "farms" search from
+ * landing on rest houses.
+ *
+ * `terms` covers the spellings owners actually use: the ة/ه ending, the plural,
+ * the transliteration and the English word.
+ */
+export type ListingType = { id: string; ar: string; en: string; terms: readonly string[] };
+
+export const LISTING_TYPES: readonly ListingType[] = [
+  {
+    id: "farm",
+    ar: "مزارع",
+    en: "Farms",
+    terms: ["مزرعة", "مزرعه", "مزارع", "فارم", "farm"],
+  },
+] as const;
+
+export function getListingType(id: string | undefined | null): ListingType | undefined {
+  return id ? LISTING_TYPES.find((t) => t.id === id) : undefined;
+}
+
 export type City = { id: string; ar: string; en: string };
 
 /**

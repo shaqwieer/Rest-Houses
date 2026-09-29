@@ -95,10 +95,9 @@ const FALLBACK = {
   gtmContainerId: "",
   // The owner dashboard loads no pixel until an operator switches it on.
   ownerAreaTracking: false,
-  heroTitle: "استراحتك في قلب الصحراء",
-  heroTitleAlt: "تبدأ بحجز واحد",
-  heroSubtitle:
-    "اختر من بين استراحات وشاليهات مختارة بعناية في لهباب وليوا والعين — أسعار واضحة، تقويم متاح لحظيًا، وتأكيد مباشر مع المالك.",
+  heroTitle: "استراحات وشاليهات ومزارع للإيجار في الإمارات",
+  heroTitleAlt: "",
+  heroSubtitle: "قارن الأسعار والتوافر، واختر المكان المناسب لموعدك وعدد ضيوفك.",
   heroImageUrl: null,
   footerAbout:
     "منصّة إماراتية لحجز الاستراحات والشاليهات الصحراوية — موثّقة ميدانيًا وبأسعار واضحة.",
@@ -113,10 +112,9 @@ const FALLBACK = {
   seoTitleEn: "Book rest houses and chalets in the UAE",
   seoDescriptionEn:
     "Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.",
-  heroTitleEn: "Your rest house in the heart of the desert",
-  heroTitleAltEn: "is one booking away",
-  heroSubtitleEn:
-    "Choose from carefully selected rest houses and chalets in Lahbab, Liwa and Al Ain — clear pricing, a live calendar, and direct confirmation with the owner.",
+  heroTitleEn: "Rest houses, chalets and farms for rent in the UAE",
+  heroTitleAltEn: "",
+  heroSubtitleEn: "Compare prices and availability, and choose the place that suits your dates and your group.",
   footerAboutEn:
     "An Emirati platform for booking desert rest houses and chalets — verified in person, with clear pricing.",
 

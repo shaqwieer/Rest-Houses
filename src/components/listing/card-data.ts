@@ -28,6 +28,13 @@ export type ListingCardData = {
   nameEn: string | null;
   areaEn: string | null;
   pricePerNight: number;
+  /**
+   * The two rates that can make a night cost something other than
+   * `pricePerNight`. The card does not print them; it only needs to know
+   * whether they exist, so it can say «من» instead of implying one fixed price.
+   */
+  weekendPrice: number;
+  holidayPrice: number;
   capacity: number;
   rating: number;
   reviewsCount: number;
@@ -46,6 +53,8 @@ export function toCardData(listing: ListingCardData): ListingCardData {
     nameEn: listing.nameEn,
     areaEn: listing.areaEn,
     pricePerNight: listing.pricePerNight,
+    weekendPrice: listing.weekendPrice,
+    holidayPrice: listing.holidayPrice,
     capacity: listing.capacity,
     rating: listing.rating,
     reviewsCount: listing.reviewsCount,

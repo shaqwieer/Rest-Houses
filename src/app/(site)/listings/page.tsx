@@ -7,13 +7,35 @@ import { ResultsToolbar } from "@/components/listing/results-toolbar";
 import { TrackEvent } from "@/components/site/track-event";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
-import { findListings, localizeListing, type ListingFilters } from "@/lib/listings";
+import { findListings, localizeListing } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { localizeSettings } from "@/lib/settings";
 import { getI18n } from "@/lib/i18n/server";
-import { cityLabel, isSortId, normalizeCityId } from "@/lib/constants";
+import { cityLabel, getListingType, label } from "@/lib/constants";
 import { arNum } from "@/lib/format";
-import { arDayMonth, isISODate } from "@/lib/dates";
+import { arDayMonth } from "@/lib/dates";
+import { parseListingFilters, stayQuery, type ListingFilters } from "@/lib/search";
+import type { Dictionary } from "@/lib/i18n";
+import type { Locale } from "@/lib/i18n/config";
+
+/**
+ * What this results page is, in words — the heading and the page title.
+ *
+ * Named after the search rather than always "rest houses in the UAE", because
+ * every popular-search link on the home page, and every Google Ads ad group
+ * pointed at one, lands here: «مزارع للإيجار» should open on a page that says
+ * "farms for rent". Only a pool is called out of the amenities — it is the one
+ * people search for by name.
+ */
+function resultsHeading(filters: ListingFilters, t: Dictionary, locale: Locale): string {
+  const place = filters.city && filters.city !== "all" ? cityLabel(filters.city, locale) : null;
+  return t.listings.resultsHeading(
+    filters.type === "farm",
+    (filters.amenities ?? []).includes("pool"),
+    place,
+    filters.q?.trim() || null,
+  );
+}
 
 export async function generateMetadata({
   searchParams,
@@ -23,49 +45,25 @@ export async function generateMetadata({
   const sp = await searchParams;
   const [settings, { t, locale }] = await Promise.all([getSettings(), getI18n()]);
   const s = localizeSettings(settings, locale);
-  const city = normalizeCityId(typeof sp.city === "string" ? sp.city : undefined);
+  const filters = parseListingFilters(sp);
+  const city = filters.city && filters.city !== "all" ? filters.city : undefined;
 
-  // A city-filtered view gets its own title/description so each is a distinct,
-  // indexable landing page rather than duplicate content.
-  const title =
-    city && city !== "all"
-      ? t.listings.metaTitleCity(cityLabel(city, locale))
-      : t.listings.metaTitleAll;
-
-  return {
-    title,
-    description:
-      city && city !== "all"
-        ? t.listings.metaDescCity(cityLabel(city, locale), s.siteName)
-        : s.seoDescription || undefined,
-    alternates: { canonical: city && city !== "all" ? `/listings?city=${city}` : "/listings" },
-  };
-}
-
-/** Read the query string into typed filters, ignoring anything malformed. */
-function parseFilters(sp: Record<string, string | string[] | undefined>): ListingFilters {
-  const str = (k: string) => (typeof sp[k] === "string" ? (sp[k] as string) : undefined);
-  const num = (k: string) => {
-    const v = Number(str(k));
-    return Number.isFinite(v) && v > 0 ? v : undefined;
-  };
-
-  const from = str("from");
-  const to = str("to");
+  // Each landing view — an emirate, farms, farms in an emirate — gets its own
+  // title and canonical, so each is a distinct page rather than duplicate
+  // content. Dates, guests and sort stay out of the canonical: they narrow the
+  // same page, they do not make a new one.
+  const canonical = new URLSearchParams();
+  if (city) canonical.set("city", city);
+  if (filters.type) canonical.set("type", filters.type);
+  const canonicalQuery = canonical.toString();
 
   return {
-    // A bookmarked ?city=alain link still resolves — see normalizeCityId.
-    city: normalizeCityId(str("city")),
-    category: str("category"),
-    maxPrice: num("maxPrice"),
-    minCapacity: num("capacity"),
-    amenities: (str("amenities") ?? "").split(",").filter(Boolean),
-    sort: isSortId(str("sort")) ? str("sort")! : "reco",
-    q: str("q"),
-    // Only honour a date range if BOTH ends are valid dates in order.
-    availableFrom: isISODate(from) && isISODate(to) && from! < to! ? from : undefined,
-    availableTo: isISODate(from) && isISODate(to) && from! < to! ? to : undefined,
-  } as ListingFilters;
+    title: resultsHeading(filters, t, locale),
+    description: city
+      ? t.listings.metaDescCity(cityLabel(city, locale), s.siteName)
+      : s.seoDescription || undefined,
+    alternates: { canonical: canonicalQuery ? `/listings?${canonicalQuery}` : "/listings" },
+  };
 }
 
 export default async function ListingsPage({
@@ -74,7 +72,7 @@ export default async function ListingsPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [sp, { t, locale }] = await Promise.all([searchParams, getI18n()]);
-  const filters = parseFilters(sp);
+  const filters = parseListingFilters(sp);
   const listings = await findListings(filters);
 
   // The marker popups are prose too — an English visitor panning the map should
@@ -93,10 +91,8 @@ export default async function ListingsPage({
     };
   });
 
-  const heading =
-    filters.city && filters.city !== "all"
-      ? t.listings.headingCity(cityLabel(filters.city, locale))
-      : t.listings.headingAll;
+  const heading = resultsHeading(filters, t, locale);
+  const listingType = getListingType(filters.type);
 
   const dateLine =
     filters.availableFrom && filters.availableTo
@@ -112,6 +108,7 @@ export default async function ListingsPage({
    * with junk parameters reports what was honoured, not what was typed.
    */
   const searchTerm = [
+    listingType ? label(listingType, locale) : null,
     filters.city && filters.city !== "all" ? cityLabel(filters.city, locale) : null,
     filters.q || null,
     dateLine,
@@ -136,6 +133,7 @@ export default async function ListingsPage({
    */
   const searchKey = [
     filters.city ?? "",
+    filters.type ?? "",
     filters.q ?? "",
     filters.availableFrom ?? "",
     filters.availableTo ?? "",
@@ -178,7 +176,6 @@ export default async function ListingsPage({
               {t.common.results(arNum(listings.length, locale), listings.length)}
             </span>
             {dateLine && <> · {dateLine}</>}
-            {filters.q && <> · «{filters.q}»</>}
           </p>
 
           <div className="flex flex-wrap items-center gap-2.5 pb-3.5">
@@ -212,6 +209,9 @@ export default async function ListingsPage({
                   listing={toCardData(listing)}
                   showCityBadge
                   priority={i < 3}
+                  // The dates and guest count searched for ride along into the
+                  // rest house's page, so its calendar opens on them.
+                  linkQuery={stayQuery(filters)}
                 />
               ))}
             </div>

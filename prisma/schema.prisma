@@ -256,9 +256,9 @@ model SiteSettings {
   checkOutTimeEn   String? @default("12 noon")
   seoTitleEn       String? @default("Book rest houses and chalets in the UAE")
   seoDescriptionEn String? @default("Verified desert rest houses and chalets across Abu Dhabi, Dubai, Sharjah, Ras Al Khaimah, Ajman, Umm Al Quwain and Fujairah — clear pricing, a live calendar, and direct confirmation on WhatsApp.")
-  heroTitleEn      String? @default("Your rest house in the heart of the desert")
-  heroTitleAltEn   String? @default("is one booking away")
-  heroSubtitleEn   String? @default("Choose from carefully selected rest houses and chalets in Lahbab, Liwa and Al Ain — clear pricing, a live calendar, and direct confirmation with the owner.")
+  heroTitleEn      String? @default("Rest houses, chalets and farms for rent in the UAE")
+  heroTitleAltEn   String? @default("")
+  heroSubtitleEn   String? @default("Compare prices and availability, and choose the place that suits your dates and your group.")
   footerAboutEn    String? @default("An Emirati platform for booking desert rest houses and chalets — verified in person, with clear pricing.")
 
   // Contact — whatsappNumber drives every wa.me deep link on the site
@@ -514,10 +514,13 @@ model SiteSettings {
   // never covered by it: staff are not an audience.
   ownerAreaTracking Boolean @default(false)
 
-  // Home hero copy (editable so the front page can change without a deploy)
-  heroTitle    String  @default("استراحتك في قلب الصحراء")
-  heroTitleAlt String  @default("تبدأ بحجز واحد")
-  heroSubtitle String  @default("اختر من بين استراحات وشاليهات مختارة بعناية في لهباب وليوا والعين — أسعار واضحة، تقويم متاح لحظيًا، وتأكيد مباشر مع المالك.")
+  // Home hero copy (editable so the front page can change without a deploy).
+  // The defaults name what the site rents, in the words people search with —
+  // see migration 20260929090000_search_intent_hero. The second line is
+  // optional; the home page renders nothing for an empty one.
+  heroTitle    String  @default("استراحات وشاليهات ومزارع للإيجار في الإمارات")
+  heroTitleAlt String  @default("")
+  heroSubtitle String  @default("قارن الأسعار والتوافر، واختر المكان المناسب لموعدك وعدد ضيوفك.")
   heroImageUrl String?
   footerAbout  String  @default("منصّة إماراتية لحجز الاستراحات والشاليهات الصحراوية — موثّقة ميدانيًا وبأسعار واضحة.")
 
