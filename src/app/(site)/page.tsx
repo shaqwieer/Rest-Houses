@@ -334,7 +334,9 @@ export default async function HomePage() {
       </section>
 
       {/* ================= CTA ================= */}
-      <section className="mx-auto max-w-[1280px] px-4 pb-12 md:px-10 md:pb-20">
+      {/* Top padding of its own: the section above ends on a full-bleed dark
+          band, and without it this dark card sits flush against that band. */}
+      <section className="mx-auto max-w-[1280px] px-4 pt-11 pb-12 md:px-10 md:pt-20 md:pb-20">
         <div className="relative flex flex-wrap items-center justify-between gap-6 overflow-hidden rounded-[28px] bg-linear-[135deg,var(--night-800),var(--night-600)] p-7 md:p-13">
           <div className="bg-sadu pointer-events-none absolute inset-0 opacity-50" aria-hidden />
           <div className="relative max-w-[44ch]">
