@@ -52,6 +52,14 @@ const nextConfig: NextConfig = {
    */
   output: "standalone",
 
+  /**
+   * The HEIC decoder (src/lib/storage/optimize.ts) is libheif compiled with
+   * emscripten. Left to the bundler, an emscripten loader is the kind of module
+   * that breaks quietly; external, it is loaded by Node from node_modules as it
+   * is in the tests, and the standalone tracer copies it into the image.
+   */
+  serverExternalPackages: ["heic-decode", "libheif-js"],
+
   images: {
     // Local uploads (/uploads/**) are served straight from /public and need no
     // entry here. Add the host of whichever CDN you switch the storage adapter

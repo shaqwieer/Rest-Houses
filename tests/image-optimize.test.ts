@@ -1,6 +1,10 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
-import { optimizeImage, OptimizingStorage, prepareLogo } from "@/lib/storage/optimize";
+import { DatabaseStorageAdapter } from "@/lib/storage/database";
+import { normalizeUpload, optimizeImage, OptimizingStorage, prepareLogo } from "@/lib/storage/optimize";
+import { sniffImageType } from "@/lib/storage/sniff";
 import {
   ALLOWED_LOGO_TYPES,
   assertValidImage,
@@ -292,5 +296,156 @@ describe("OptimizingStorage", () => {
 
     await expect(new OptimizingStorage(inner).save(bad)).rejects.toBeInstanceOf(UploadError);
     expect(inner.saved).toBeNull();
+  });
+});
+
+/**
+ * The bytes decide, not the name.
+ *
+ * The production case this was written for: five iPhone photos whose bytes were
+ * HEIC and whose names ended in .webp. The browser labelled them image/webp,
+ * every check passed, and they were stored and served as WebP — empty frames
+ * for every guest not on Safari.
+ *
+ * `fixtures/synthetic.heic` is a generated 320×240 gradient (pillow-heif), with
+ * the same `ftyp heic / mif1 heic miaf` header an iPhone writes. Nobody's photo.
+ */
+const HEIC_FIXTURE = readFileSync(path.join(__dirname, "fixtures", "synthetic.heic"));
+
+function heicAs(type: string, name = "IMG_0001.webp"): File {
+  return new File([new Uint8Array(HEIC_FIXTURE)], name, { type });
+}
+
+/** An ISO-BMFF `ftyp` box with the given major and compatible brands. */
+function ftyp(major: string, ...compatible: string[]): Uint8Array {
+  const size = 16 + compatible.length * 4;
+  const bytes = new Uint8Array(size + 8);
+  new DataView(bytes.buffer).setUint32(0, size);
+  bytes.set(new TextEncoder().encode(`ftyp${major}\0\0\0\0${compatible.join("")}`), 4);
+  return bytes;
+}
+
+async function sniffedTypeOf(file: File) {
+  return sniffImageType(new Uint8Array(await file.arrayBuffer()));
+}
+
+describe("sniffImageType", () => {
+  const solid = () => sharp({ create: { width: 8, height: 8, channels: 3, background: "#C9A44C" } });
+
+  it("recognises every format we store by its signature", async () => {
+    expect(sniffImageType(await solid().jpeg().toBuffer())).toBe("image/jpeg");
+    expect(sniffImageType(await solid().png().toBuffer())).toBe("image/png");
+    expect(sniffImageType(await solid().webp().toBuffer())).toBe("image/webp");
+    expect(sniffImageType(await solid().avif().toBuffer())).toBe("image/avif");
+  });
+
+  it("recognises an iPhone HEIC", () => {
+    expect(sniffImageType(HEIC_FIXTURE)).toBe("image/heic");
+  });
+
+  it("calls a file AVIF whenever it lists an AVIF brand, even beside the generic mif1", () => {
+    // Both formats carry mif1, so the brand list has to be read as a whole.
+    expect(sniffImageType(ftyp("mif1", "mif1", "avif", "miaf"))).toBe("image/avif");
+    expect(sniffImageType(ftyp("mif1", "mif1", "heic", "miaf"))).toBe("image/heic");
+  });
+
+  it("knows nothing about anything else", () => {
+    expect(sniffImageType(new Uint8Array(1024))).toBeNull();
+    expect(sniffImageType(new TextEncoder().encode("%PDF-1.7 not an image"))).toBeNull();
+    expect(sniffImageType(ftyp("isom", "mp41"))).toBeNull(); // an MP4
+    expect(sniffImageType(new Uint8Array([0xff, 0xd8]))).toBeNull(); // too short to judge
+  });
+});
+
+describe("normalizeUpload", () => {
+  it("converts an HEIC named .webp into a real WebP — the production case", async () => {
+    const result = await normalizeUpload(heicAs("image/webp"));
+
+    expect(result.type).toBe("image/webp");
+    expect(await sniffedTypeOf(result)).toBe("image/webp");
+    const meta = await sharp(Buffer.from(await result.arrayBuffer())).metadata();
+    expect([meta.width, meta.height]).toEqual([320, 240]);
+  });
+
+  it("converts HEIC however the browser labelled it", async () => {
+    for (const type of ["image/heic", "image/heif", "", "image/jpeg"]) {
+      const result = await normalizeUpload(heicAs(type, "IMG_0001.heic"));
+      expect(result.type).toBe("image/webp");
+      expect(result.name).toBe("IMG_0001.webp");
+      expect(await sniffedTypeOf(result)).toBe("image/webp");
+    }
+  });
+
+  it("relabels a mislabelled format we can serve, without touching its bytes", async () => {
+    const jpeg = await sharp({ create: { width: 8, height: 8, channels: 3, background: "#123" } })
+      .jpeg()
+      .toBuffer();
+    const result = await normalizeUpload(
+      new File([new Uint8Array(jpeg)], "photo.webp", { type: "image/webp" }),
+    );
+
+    expect(result.type).toBe("image/jpeg");
+    expect(result.name).toBe("photo.jpg");
+    expect(Buffer.from(await result.arrayBuffer()).equals(jpeg)).toBe(true);
+  });
+
+  it("returns a correctly labelled file untouched", async () => {
+    const photo = await makePhoto(64, 48);
+    expect(await normalizeUpload(photo)).toBe(photo);
+  });
+
+  it("refuses an HEIC it cannot decode rather than storing it as it came", async () => {
+    // Header intact, image data cut off: sniffs as HEIC, cannot be decoded.
+    const truncated = new File([new Uint8Array(HEIC_FIXTURE.subarray(0, 300))], "cut.webp", {
+      type: "image/webp",
+    });
+    await expect(normalizeUpload(truncated)).rejects.toMatchObject({ code: "BAD_FORMAT" });
+  });
+});
+
+describe("OptimizingStorage with an HEIC upload", () => {
+  class Spy implements StorageAdapter {
+    readonly name = "spy";
+    saved: File | null = null;
+    async save(file: File): Promise<StoredFile> {
+      this.saved = file;
+      return { url: "/x", key: "x", bytes: file.size };
+    }
+    async delete(): Promise<void> {}
+  }
+
+  it("stores a WebP even though the HEIC is far below the recompression threshold", async () => {
+    // ~2 KB: `optimizeImage` alone would have passed it through byte-identical,
+    // which is exactly how the production photos slipped by.
+    const inner = new Spy();
+    await new OptimizingStorage(inner).save(heicAs("image/webp"));
+
+    expect(inner.saved!.type).toBe("image/webp");
+    expect(await sniffedTypeOf(inner.saved!)).toBe("image/webp");
+  });
+
+  it("accepts an HEIC the browser labelled honestly", async () => {
+    const inner = new Spy();
+    await new OptimizingStorage(inner).save(heicAs("image/heic", "IMG_0001.HEIC"));
+    expect(await sniffedTypeOf(inner.saved!)).toBe("image/webp");
+  });
+
+  it("hands nothing to storage when the HEIC is broken", async () => {
+    const inner = new Spy();
+    const truncated = new File([new Uint8Array(HEIC_FIXTURE.subarray(0, 300))], "cut.heic", {
+      type: "image/heic",
+    });
+
+    await expect(new OptimizingStorage(inner).save(truncated)).rejects.toBeInstanceOf(UploadError);
+    expect(inner.saved).toBeNull();
+  });
+});
+
+describe("DatabaseStorageAdapter", () => {
+  it("refuses to store bytes under a label they do not match", async () => {
+    // The undecorated path (IMAGE_OPTIMIZE=off). Refused before any row is written.
+    await expect(new DatabaseStorageAdapter().save(heicAs("image/webp"))).rejects.toMatchObject({
+      code: "BAD_FORMAT",
+    });
   });
 });

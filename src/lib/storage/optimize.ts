@@ -1,6 +1,8 @@
+import decodeHeic from "heic-decode";
 import sharp from "sharp";
+import { EXT_BY_SNIFFED_TYPE, sniffImageType } from "./sniff";
 import type { StorageAdapter, StoredFile } from "./types";
-import { UploadError, assertValidImage, looksLikeSvg } from "./types";
+import { UploadError, assertUploadable, assertValidImage, looksLikeSvg } from "./types";
 
 /**
  * Recompressing an upload before it is stored.
@@ -101,6 +103,68 @@ export async function optimizeImage(file: File): Promise<File> {
     // merely larger than it could have been.
     return file;
   }
+}
+
+/**
+ * An HEIC photo, decoded and stored as WebP.
+ *
+ * HEIC is what an iPhone shoots, and only Safari can display it — Chrome,
+ * Edge and Firefox on Android and Windows show an empty frame. So it is never
+ * stored as it arrived, whatever its size: unlike `optimizeImage` there is no
+ * skip threshold, because a small HEIC is just as invisible as a large one.
+ *
+ * sharp cannot do this on its own. Its prebuilt libvips carries libheif for
+ * AVIF only — HEVC decoding is left out for patent reasons, and sharp reports
+ * "Support for this compression format has not been built in". `heic-decode`
+ * is libheif compiled to wasm, with the wasm inlined into its JS, so it needs
+ * no native build and no file lookup at runtime.
+ *
+ * libheif applies the container's rotation and mirroring while decoding, so
+ * the pixels arrive upright and there is no EXIF left to `rotate()` by. The
+ * same step drops every piece of metadata, GPS included, as `optimizeImage`
+ * does.
+ *
+ * Throws rather than falling back. Storing the original on failure is the very
+ * bug this exists to close.
+ */
+async function heicToWebp(bytes: Uint8Array, name: string): Promise<File> {
+  let output: Buffer;
+  try {
+    const { width, height, data } = await decodeHeic({ buffer: bytes });
+    output = await sharp(Buffer.from(data.buffer, data.byteOffset, data.byteLength), {
+      raw: { width, height, channels: 4 },
+    })
+      .resize({ width: MAX_EDGE, height: MAX_EDGE, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: QUALITY, effort: 5 })
+      .toBuffer();
+  } catch {
+    throw new UploadError("The HEIC photo could not be converted", "BAD_FORMAT");
+  }
+
+  const base = name.replace(/\.[^.]+$/, "") || "photo";
+  return new File([new Uint8Array(output)], `${base}.webp`, { type: "image/webp" });
+}
+
+/**
+ * The upload as what its bytes are, rather than what its name says.
+ *
+ * Four outcomes, chosen by `sniffImageType`:
+ *   * a format we store, correctly labelled — returned untouched;
+ *   * a format we store under the wrong label (a JPEG named .webp) — relabelled,
+ *     bytes unchanged, so it is served with a Content-Type a browser believes;
+ *   * HEIC, however it was labelled — converted to WebP;
+ *   * anything else — refused. It was never going to render.
+ */
+export async function normalizeUpload(file: File): Promise<File> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const real = sniffImageType(bytes);
+
+  if (!real) throw new UploadError("Unsupported image format", "BAD_FORMAT");
+  if (real === "image/heic") return heicToWebp(bytes, file.name);
+  if (real === file.type) return file;
+
+  const base = file.name.replace(/\.[^.]+$/, "") || "photo";
+  return new File([bytes], `${base}.${EXT_BY_SNIFFED_TYPE[real]}`, { type: real });
 }
 
 /**
@@ -210,9 +274,12 @@ export async function prepareLogo(file: File): Promise<File> {
  * `assertValidImage` normally runs inside the wrapped adapter's own `save()`.
  * That is too late here: this decorator would already have handed up to
  * MAX_UPLOAD_BYTES of unvalidated, possibly-hostile bytes to an image decoder.
- * So the same assertion runs here, before sharp sees anything. The inner
- * adapter still repeats it — it must stay usable undecorated, and the check is
- * a few comparisons.
+ * So the size checks run here, before any decoder sees anything. The format
+ * check waits one step: the claimed type is only the file's extension, so the
+ * bytes are sniffed and normalised first (`normalizeUpload` — an HEIC named
+ * .webp becomes a real WebP) and the allow-list is then applied to what the
+ * file actually is. The inner adapter still repeats the assertion — it must stay
+ * usable undecorated, and the check is a few comparisons.
  */
 export class OptimizingStorage implements StorageAdapter {
   readonly name: string;
@@ -222,8 +289,10 @@ export class OptimizingStorage implements StorageAdapter {
   }
 
   async save(file: File, opts?: { folder?: string }): Promise<StoredFile> {
-    assertValidImage(file);
-    return this.inner.save(await optimizeImage(file), opts);
+    assertUploadable(file);
+    const real = await normalizeUpload(file);
+    assertValidImage(real);
+    return this.inner.save(await optimizeImage(real), opts);
   }
 
   delete(keyOrUrl: string): Promise<void> {

@@ -98,6 +98,26 @@ export class UploadError extends Error {
 }
 
 /**
+ * The checks that do not depend on what the file claims to be: present,
+ * non-empty, under the size cap.
+ *
+ * Split out for `OptimizingStorage`, which must refuse an oversized body before
+ * reading it but cannot judge the format until it has sniffed the bytes — the
+ * claimed type is only the extension talking (see src/lib/storage/sniff.ts).
+ */
+export function assertUploadable(file: File): void {
+  if (!file || typeof file.size !== "number") {
+    throw new UploadError("No valid file was sent", "NO_FILE");
+  }
+  if (file.size === 0) {
+    throw new UploadError("The file is empty", "EMPTY");
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new UploadError("The image exceeds the size limit", "TOO_LARGE");
+  }
+}
+
+/**
  * Shared validation so every adapter enforces the same limits.
  *
  * `accept` widens the format list for one caller only — the logo upload, which
@@ -108,15 +128,7 @@ export function assertValidImage(
   file: File,
   accept: readonly string[] = ALLOWED_IMAGE_TYPES,
 ): void {
-  if (!file || typeof file.size !== "number") {
-    throw new UploadError("No valid file was sent", "NO_FILE");
-  }
-  if (file.size === 0) {
-    throw new UploadError("The file is empty", "EMPTY");
-  }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    throw new UploadError("The image exceeds the size limit", "TOO_LARGE");
-  }
+  assertUploadable(file);
   if (!accept.includes(file.type)) {
     throw new UploadError("Unsupported image format", "BAD_FORMAT");
   }

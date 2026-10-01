@@ -1,5 +1,6 @@
 import { prisma } from "../prisma";
-import { assertValidImage, type StorageAdapter, type StoredFile } from "./types";
+import { sniffImageType } from "./sniff";
+import { UploadError, assertValidImage, type StorageAdapter, type StoredFile } from "./types";
 
 /**
  * Database storage adapter — image bytes live in the `StoredImage` table.
@@ -23,6 +24,15 @@ export class DatabaseStorageAdapter implements StorageAdapter {
 
     const folder = (opts?.folder ?? "listings").replace(/[^a-z0-9-]/gi, "") || "listings";
     const bytes = Buffer.from(await file.arrayBuffer());
+
+    // The stored label is what /api/images serves as Content-Type, under
+    // `nosniff` and an immutable year-long cache, so it must be the truth.
+    // `OptimizingStorage` has already normalised anything it passes in; this
+    // catches the undecorated path (IMAGE_OPTIMIZE=off), where an HEIC named
+    // .webp would otherwise be stored and served as WebP.
+    if (sniffImageType(bytes) !== file.type) {
+      throw new UploadError("Unsupported image format", "BAD_FORMAT");
+    }
 
     const row = await prisma.storedImage.create({
       data: {
