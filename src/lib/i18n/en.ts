@@ -571,6 +571,7 @@ export const en: Dictionary = {
     overview: "Overview",
     listings: "Rest houses",
     calendar: "Calendar",
+    holidays: "Global calendar",
     requests: "Requests",
     insights: "Analytics",
     settings: "Settings",
@@ -1671,6 +1672,27 @@ export const en: Dictionary = {
     backHome: "Back to the home page",
   },
 
+  /* -------------------------------------------------------------- holidays */
+  holidays: {
+    title: "Global calendar",
+    intro:
+      "Mark public holidays and big occasions once and they apply to every rest house, charged at the occasion rate set in each listing's settings.",
+    tapHint:
+      "Type the occasion's name, then tap its days on the calendar. Tapping a marked day removes it from every rest house.",
+    publicHoliday: "Public holiday",
+    upcoming: "Upcoming holidays",
+    none: "No public holidays marked yet.",
+    appliedTo: (n: string, total: string) => `Applied to ${n} of ${total} rest houses`,
+    remove: "Remove this holiday from every rest house",
+    added: (n: string) => `Holiday added to ${n} rest houses`,
+    removed: "Holiday removed from every rest house",
+    noRateTitle: (n: string) => `${n} rest houses have no occasion rate`,
+    noRateBody:
+      "These listings have no occasion rate set, so they keep their normal price on holidays. Add one in the listing's settings.",
+    ownerNote:
+      "Owners keep the final say: they can unmark any day on their own calendar or add occasions of their own, and editing here never overrides that. New rest houses pick up upcoming holidays automatically.",
+  },
+
   /* ----------------------------------------------------------------- audit */
   audit: {
     BOOKING_STAGE_ADVANCED: "Booking step completed",
@@ -1690,6 +1712,8 @@ export const en: Dictionary = {
     PAYMENT_REFUNDED: "Payment refunded",
     PAYMENT_LINK_ISSUED: "Payment link issued",
     PAYMENT_LINK_REVOKED: "Payment link revoked",
+    PUBLIC_HOLIDAY_ADDED: "Public holiday added",
+    PUBLIC_HOLIDAY_REMOVED: "Public holiday removed",
     PAYMENT_NEEDS_REVIEW: "Payment needs review",
     OWNER_APPROVED: "Owner approved",
     OWNER_REJECTED: "Owner request rejected",

@@ -798,6 +798,11 @@ export const AUDIT_ACTIONS = [
   // is the one payment entry that is a WORK QUEUE rather than a record: an
   // operator has to refund or rebook. See `confirmBookingForPayment`.
   "PAYMENT_NEEDS_REVIEW",
+  // A date marked or unmarked on «التقويم الشامل» (/admin/holidays). One line
+  // per date, not per listing: the copies it fans out are the consequence, and
+  // the date and label travel in `metadata`.
+  "PUBLIC_HOLIDAY_ADDED",
+  "PUBLIC_HOLIDAY_REMOVED",
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 

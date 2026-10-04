@@ -48,6 +48,7 @@ type AdminTabKey =
   | "overview"
   | "listings"
   | "calendar"
+  | "holidays"
   | "requests"
   | "owners"
   | "ownerRequests"
@@ -73,6 +74,8 @@ const TABS: {
   { href: "/admin/owner-requests", labelKey: "ownerRequests", icon: "badge", primary: true },
   { href: "/admin/owners", labelKey: "owners", icon: "group" },
   { href: "/admin/calendar", labelKey: "calendar", icon: "calendar_month" },
+  // Platform-wide public holidays, copied into every listing's calendar.
+  { href: "/admin/holidays", labelKey: "holidays", icon: "celebration" },
   { href: "/admin/customers", labelKey: "customers", icon: "contact_phone" },
   { href: "/admin/payments", labelKey: "payments", icon: "payments" },
   { href: "/admin/reviews", labelKey: "reviews", icon: "rate_review" },

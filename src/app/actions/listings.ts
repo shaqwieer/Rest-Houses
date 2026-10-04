@@ -6,6 +6,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireApprovedOwner, AuthorizationError } from "@/lib/auth";
 import { getTakenSlugs } from "@/lib/listings";
+import { copyPublicHolidaysTo } from "@/lib/public-holidays";
 import { uniqueSlug } from "@/lib/slug";
 import { stringifyIdList } from "@/lib/json-list";
 import { auditData } from "@/lib/audit";
@@ -777,6 +778,7 @@ export async function saveListing(formData: FormData): Promise<ActionResult> {
     const created = await prisma.listing.create({
       data: { ...common, slug, ...(ownerId !== undefined ? { ownerId } : {}) },
     });
+    await copyPublicHolidaysTo(created.id);
 
     await prisma.auditLog.create({
       data: auditData({
@@ -897,6 +899,7 @@ export async function saveOwnerListing(formData: FormData): Promise<ActionResult
       // ownerId comes from the session, never the form.
       data: { ...common, slug, ownerId: owner.id },
     });
+    await copyPublicHolidaysTo(created.id);
 
     await prisma.auditLog.create({
       data: auditData({

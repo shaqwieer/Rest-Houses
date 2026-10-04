@@ -1038,10 +1038,40 @@ model SpecialDay {
   date  String // YYYY-MM-DD
   label String @default("")
 
+  // Set when this row was copied from a platform-wide `PublicHoliday` rather
+  // than marked by the owner. Removing the holiday deletes exactly these rows
+  // (the cascade) and leaves an owner's own mark on the same date alone. NULL
+  // on every row an owner made, including one re-marked after opting out.
+  publicHolidayId String?
+  publicHoliday   PublicHoliday? @relation(fields: [publicHolidayId], references: [id], onDelete: Cascade)
+
   createdAt DateTime @default(now())
 
   @@unique([listingId, date])
   @@index([listingId, date])
+  @@index([publicHolidayId])
+}
+
+// ---------------------------------------------------------------------------
+// PublicHoliday — a date the operator marks once for the whole platform, on
+// /admin/holidays («التقويم الشامل»).
+//
+// Not read by pricing. Marking one copies a `SpecialDay` into every listing
+// (and into each listing created later), and from then on that copy is the
+// owner's like any other: they can unmark it, relabel it by re-marking, or add
+// days of their own. So the owner keeps the final say, and pricing keeps its
+// single source — `SpecialDay` × `Listing.holidayPrice`.
+//
+// One row per date, the same "YYYY-MM-DD" string as everywhere else here.
+// ---------------------------------------------------------------------------
+model PublicHoliday {
+  id    String @id @default(cuid())
+  date  String @unique // YYYY-MM-DD
+  label String @default("")
+
+  specialDays SpecialDay[]
+
+  createdAt DateTime @default(now())
 }
 
 // ---------------------------------------------------------------------------
