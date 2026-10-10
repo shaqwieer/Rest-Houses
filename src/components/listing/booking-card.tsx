@@ -36,6 +36,7 @@ export function CalendarSection({
     stayType,
     setStayType,
     dayUseAvailable,
+    dayUseWeekdaysOnly,
     weekendMode,
     specialDays,
     priceFor,
@@ -120,6 +121,15 @@ export function CalendarSection({
             label={t.listing.stayDayUse}
           />
         </div>
+      )}
+
+      {/* The weekend days are greyed out below in this mode; say why, or a free
+          Friday that cannot be tapped reads as a broken calendar. */}
+      {isDayUse && dayUseWeekdaysOnly && (
+        <p className="m-0 mb-3 flex items-start gap-2 rounded-xl bg-sand-100 px-3.5 py-2.5 text-[12.5px] font-semibold text-muted">
+          <Icon name="info" size={17} className="mt-0.5 shrink-0" />
+          {t.listing.dayUseWeekdaysOnly}
+        </p>
       )}
 
       <AvailabilityCalendar

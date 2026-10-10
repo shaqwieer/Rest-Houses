@@ -14,7 +14,7 @@ import {
 } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { googleAdsSendTo } from "@/lib/tracking";
-import { quote, resolveDepositPercent } from "@/lib/pricing";
+import { dayUseRate, quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
 import { arDayMonth, isISODate, todayISO, toWeekendMode } from "@/lib/dates";
@@ -78,8 +78,15 @@ export default async function BookPage({
    * string alone would render a form quoting a day price the owner never set —
    * and the server action refuses such a request anyway, so the guest would
    * fill it in and only then be told no.
+   *
+   * Asked through `dayUseRate` for the day in the link, not by reading the
+   * weekday column: a rest house may take day bookings on weekdays only, and
+   * its weekend days must be refused here the same way the action refuses them.
    */
-  const dayUse = sp.dayUse === "1" && listing.dayUsePrice > 0;
+  const dayUse =
+    sp.dayUse === "1" &&
+    isISODate(from) &&
+    dayUseRate({ ...listing, weekendMode: toWeekendMode(listing.weekendMode) }, from) > 0;
 
   /**
    * Arriving here without a usable range means the visitor deep-linked or the

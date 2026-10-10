@@ -49,6 +49,12 @@ type BookingContextValue = {
   setStayType: (t: StayType) => void;
   /** False when this listing has no day rate — the toggle is not rendered. */
   dayUseAvailable: boolean;
+  /**
+   * True when the listing takes day bookings on weekdays but has no weekend day
+   * rate — the calendar then greys out its weekend days in day-use mode, and
+   * the guest is told why rather than left to guess.
+   */
+  dayUseWeekdaysOnly: boolean;
   guests: number;
   setGuests: (n: number) => void;
   /** null until the selection is complete for the current stay type. */
@@ -141,6 +147,7 @@ export function BookingProvider({
   );
 
   const dayUseAvailable = dayUsePrice > 0;
+  const dayUseWeekdaysOnly = dayUseAvailable && dayUseWeekendPrice <= 0;
 
   // Rebuilt from the serialised pairs. A Map cannot cross the server/client
   // boundary, and rebuilding it once here beats doing it inside the quote memo,
@@ -270,6 +277,7 @@ export function BookingProvider({
       stayType,
       setStayType,
       dayUseAvailable,
+      dayUseWeekdaysOnly,
       guests,
       setGuests: (n) => setGuests(Math.min(Math.max(1, n), capacity)),
       currentQuote,
@@ -286,6 +294,7 @@ export function BookingProvider({
       stayType,
       setStayType,
       dayUseAvailable,
+      dayUseWeekdaysOnly,
       guests,
       currentQuote,
       unavailableDates,

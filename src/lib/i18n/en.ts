@@ -264,6 +264,8 @@ export const en: Dictionary = {
     stayOvernight: "Overnight",
     stayDayUse: "Day only",
     dayUsePickOneDay: "Pick a single day — no overnight stay",
+    dayUseNotOffered: "Day bookings are not offered on this day",
+    dayUseWeekdaysOnly: "Day bookings are not available on weekend days",
     dayUsePickDay: "Pick a day",
     dayUseLine: "One day, no overnight stay",
     dayUseLeaveBy: (time: string) => `Leave by ${time}`,
@@ -820,7 +822,7 @@ export const en: Dictionary = {
     dayUseCheckOutNotSet: "No day bookings",
     dayUseCardTitle: "Day booking, no overnight stay (optional)",
     dayUseCardHint:
-      "Rates for arriving and leaving on the same day. Leave at zero if you don't offer this — none of it then appears on the rest house's page.",
+      "Rates for arriving and leaving on the same day. Leave at zero if you don't offer this — none of it then appears on the rest house's page. A weekend rate of zero means guests cannot make a day booking on weekend days.",
     dayUsePriceLabel: "Weekday rate (AED)",
     dayUseWeekendPriceLabel: "Weekend rate (AED)",
     dayUseCheckOutLabel: "Leave by",

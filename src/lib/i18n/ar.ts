@@ -334,6 +334,8 @@ export const ar = {
     stayOvernight: "مع مبيت",
     stayDayUse: "بدون مبيت",
     dayUsePickOneDay: "اختر يومًا واحدًا — الحجز بدون مبيت",
+    dayUseNotOffered: "لا يتوفّر الحجز بدون مبيت في هذا اليوم",
+    dayUseWeekdaysOnly: "الحجز بدون مبيت غير متاح في أيام نهاية الأسبوع",
     dayUsePickDay: "اختر اليوم",
     dayUseLine: "حجز يوم واحد بدون مبيت",
     dayUseLeaveBy: (time: string) => `المغادرة قبل ${time}`,
@@ -945,7 +947,7 @@ export const ar = {
     // ---- day-use card in the listing editor
     dayUseCardTitle: "الحجز بدون مبيت (اختياري)",
     dayUseCardHint:
-      "أسعار الحضور والمغادرة في نفس اليوم. اتركها صفرًا إن كنت لا تقدّم هذا الخيار — عندها لا يظهر منها شيء في صفحة الاستراحة.",
+      "أسعار الحضور والمغادرة في نفس اليوم. اتركها صفرًا إن كنت لا تقدّم هذا الخيار — عندها لا يظهر منها شيء في صفحة الاستراحة. وإذا تركت سعر نهاية الأسبوع صفرًا فلن يستطيع الضيف الحجز بدون مبيت في أيام نهاية الأسبوع.",
     dayUsePriceLabel: "سعر أيام الأسبوع (د.إ)",
     dayUseWeekendPriceLabel: "سعر نهاية الأسبوع (د.إ)",
     dayUseCheckOutLabel: "وقت الخروج",

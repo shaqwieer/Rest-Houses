@@ -66,7 +66,7 @@ export type QuoteInput = {
   dayUse?: boolean;
   /** Weekday day-use rate. 0 means the listing does not offer day use. */
   dayUsePrice?: number | null;
-  /** Weekend day-use rate. 0 or missing → same as dayUsePrice. */
+  /** Weekend day-use rate. 0 or missing → no day use on weekend days. */
   dayUseWeekendPrice?: number | null;
 };
 
@@ -152,6 +152,13 @@ export function nightRate(
  * `createBookingRequest` need the same answer: the guard refuses a day-use
  * request on a listing whose rate is 0, and it must ask the question exactly the
  * way the pricing does or the two can disagree about whether a booking is free.
+ *
+ * The weekend rate does NOT fall back to the weekday one. An owner who types 0
+ * for the weekend is saying the rest house takes no day bookings on those days
+ * — the weekend is when it sells whole nights — and quoting the weekday figure
+ * there instead turned that into a Friday booked at the Tuesday price. This is
+ * the opposite of `weekendPrice` in `nightRate`, where 0 does mean "same as the
+ * weekday rate": a night always has a price, a day booking need not exist.
  */
 export function dayUseRate(
   listing: {
@@ -165,8 +172,10 @@ export function dayUseRate(
   const base = listing.dayUsePrice ?? 0;
   if (base <= 0) return 0; // not offered — see Listing.dayUsePrice in the schema
 
+  if (!isWeekend(date, listing.weekendMode)) return base;
+
   const weekendRate = listing.dayUseWeekendPrice ?? 0;
-  return isWeekend(date, listing.weekendMode) && weekendRate > 0 ? weekendRate : base;
+  return weekendRate > 0 ? weekendRate : 0; // 0 → no day use on the weekend
 }
 
 /**

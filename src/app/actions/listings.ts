@@ -444,8 +444,8 @@ function fieldErrorsFrom(error: z.ZodError): Record<string, string> {
  *
  * Almost always a typo — someone swapped the two boxes — and it would publish a
  * Friday price cheaper than a Tuesday one. 0 stays legal in both pairs and keeps
- * its own meaning: "same as the weekday rate" for `weekendPrice`, "day-use not
- * offered" for `dayUseWeekendPrice`.
+ * its own meaning: "same as the weekday rate" for `weekendPrice`, "no day use on
+ * weekend days" for `dayUseWeekendPrice` (see `dayUseRate` in src/lib/pricing.ts).
  *
  * Shared by the admin and owner paths so the two cannot drift into enforcing
  * different rules on the same columns.

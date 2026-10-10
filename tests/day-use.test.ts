@@ -224,14 +224,34 @@ describe("dayUseRate", () => {
     ).toBe(900);
   });
 
-  /** A blank weekend rate falls back to the weekday one rather than to 0. */
-  it("falls back to the weekday rate when no weekend rate is set", () => {
+  /**
+   * A weekend rate of 0 is "no day bookings on the weekend", NOT "same as the
+   * weekday rate". It used to fall back, and a rest house that typed 0 there
+   * was booked for a Friday at its weekday price.
+   */
+  it("is 0 on a weekend day when no weekend rate is set", () => {
     expect(
       dayUseRate(
         { dayUsePrice: 600, dayUseWeekendPrice: 0, weekendMode: "short" },
         futureSaturday(),
       ),
+    ).toBe(0);
+  });
+
+  it("still offers the weekdays of a listing with no weekend rate", () => {
+    expect(
+      dayUseRate(
+        { dayUsePrice: 600, dayUseWeekendPrice: 0, weekendMode: "short" },
+        futureWeekday(),
+      ),
     ).toBe(600);
+  });
+
+  /** Which days are closed follows the listing's own weekend — Sunday again. */
+  it("closes Sunday only on a long weekend when no weekend rate is set", () => {
+    const rates = { dayUsePrice: 600, dayUseWeekendPrice: 0 };
+    expect(dayUseRate({ ...rates, weekendMode: "short" }, futureSunday())).toBe(600);
+    expect(dayUseRate({ ...rates, weekendMode: "long" }, futureSunday())).toBe(0);
   });
 });
 
@@ -395,6 +415,34 @@ describe("createBookingRequest (day use)", () => {
 
     expect(result.ok).toBe(false);
     expect(await prisma.bookingRequest.count()).toBe(0);
+  });
+
+  /**
+   * The reported case: a weekday day rate, 0 for the weekend, and a guest asking
+   * for a Saturday. That request used to be stored at the weekday price. The
+   * same listing must still take the weekday.
+   */
+  it("refuses a weekend day booking when the listing has no weekend day rate", async () => {
+    const listing = await createListing({
+      pricePerNight: 2000,
+      dayUsePrice: 1000,
+      dayUseWeekendPrice: 0,
+    });
+    const saturday = futureSaturday();
+    const { createBookingRequest } = await import("@/app/actions/booking");
+
+    const refused = await createBookingRequest(
+      bookingForm(listing.id, { checkIn: saturday, checkOut: saturday, dayUse: "on" }),
+    );
+    expect(refused.ok).toBe(false);
+    expect(await prisma.bookingRequest.count()).toBe(0);
+
+    const weekday = futureWeekday();
+    const taken = await createBookingRequest(
+      bookingForm(listing.id, { checkIn: weekday, checkOut: weekday, dayUse: "on" }),
+    );
+    expect(taken.ok).toBe(true);
+    expect((await prisma.bookingRequest.findFirst())!.total).toBe(1000);
   });
 
   /**

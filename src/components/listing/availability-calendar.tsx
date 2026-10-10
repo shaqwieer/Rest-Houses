@@ -220,11 +220,22 @@ export function AvailabilityCalendar({
                   cell.iso > value.checkIn &&
                   cell.iso < value.checkOut;
 
-                const disabled = cell.isPast || cell.isUnavailable;
                 const occasion = specialDays?.get(cell.iso);
                 // A past occasion is history and marking it only adds noise.
                 const isSpecial = occasion !== undefined && !cell.isPast;
-                const price = !disabled && priceFor ? priceFor(cell.iso) : 0;
+                const price =
+                  !cell.isPast && !cell.isUnavailable && priceFor ? priceFor(cell.iso) : 0;
+                // A day booking on a day the listing has no day rate for — a
+                // rest house that takes them on weekdays only. The server
+                // refuses that day by asking the same question (`dayUseRate`),
+                // so it cannot be picked here either.
+                const notOffered =
+                  singleDay &&
+                  priceFor !== undefined &&
+                  !cell.isPast &&
+                  !cell.isUnavailable &&
+                  price <= 0;
+                const disabled = cell.isPast || cell.isUnavailable || notOffered;
 
                 return (
                   <button
@@ -234,12 +245,23 @@ export function AvailabilityCalendar({
                     disabled={disabled}
                     aria-label={`${cell.dayNumber}${
                   cell.isUnavailable ? ` — ${t.listing.dayBooked}` : ""
-                }${isSpecial ? ` — ${occasion || t.listing.occasionNight}` : ""}`}
-                    title={isSpecial ? occasion || t.listing.occasionNight : undefined}
+                }${notOffered ? ` — ${t.listing.dayUseNotOffered}` : ""}${
+                  isSpecial ? ` — ${occasion || t.listing.occasionNight}` : ""
+                }`}
+                    title={
+                      notOffered
+                        ? t.listing.dayUseNotOffered
+                        : isSpecial
+                          ? occasion || t.listing.occasionNight
+                          : undefined
+                    }
                     aria-pressed={isStart || isEnd}
                     className={clsx(
                       "relative flex h-12.5 flex-col items-center justify-center rounded-xl border text-[14px] font-bold leading-none transition",
-                      cell.isPast && "cursor-not-allowed border-transparent bg-transparent text-off",
+                      // Muted like a past day, not struck through in red: the
+                      // day is free, it just is not sold this way.
+                      (cell.isPast || notOffered) &&
+                        "cursor-not-allowed border-transparent bg-transparent text-off",
                       !cell.isPast &&
                         cell.isUnavailable &&
                         "cursor-not-allowed border-busy bg-busy-bg text-busy line-through decoration-[1.5px]",
