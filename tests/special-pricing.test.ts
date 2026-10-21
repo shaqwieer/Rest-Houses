@@ -385,6 +385,13 @@ describe("owner access to the calendar actions", () => {
 
     expect(result.ok).toBe(true);
     expect(await prisma.availability.count({ where: { listingId: listing.id, date } })).toBe(1);
+
+    // And says so in the activity log, under the owner's name.
+    const entry = await prisma.auditLog.findFirstOrThrow();
+    expect(entry.action).toBe("DAYS_BLOCKED");
+    expect(entry.actorId).toBe(user.id);
+    expect(entry.entityId).toBe(listing.id);
+    expect(JSON.parse(entry.metadata)).toEqual({ date });
   });
 
   it("refuses an owner acting on another owner's listing", async () => {
@@ -403,9 +410,10 @@ describe("owner access to the calendar actions", () => {
 
     expect((await toggleBlockedDate(otherListing.id, date)).ok).toBe(false);
     expect((await toggleSpecialDate(otherListing.id, date)).ok).toBe(false);
-    // Nothing was written to either table.
+    // Nothing was written to either table, nor to the log.
     expect(await prisma.availability.count()).toBe(0);
     expect(await prisma.specialDay.count()).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(0);
   });
 
   it("refuses a suspended owner even on their own listing", async () => {
@@ -418,6 +426,75 @@ describe("owner access to the calendar actions", () => {
     const { toggleBlockedDate } = await import("@/app/actions/availability");
     expect((await toggleBlockedDate(listing.id, addDays(todayISO(), 5))).ok).toBe(false);
     expect(await prisma.availability.count()).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("logs freeing a day as its own line", async () => {
+    const { owner, user } = await createOwner({ email: "free@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    sessionUser.current = { id: user.id };
+
+    const date = addDays(todayISO(), 5);
+    const { toggleBlockedDate } = await import("@/app/actions/availability");
+    await toggleBlockedDate(listing.id, date);
+    await toggleBlockedDate(listing.id, date);
+
+    // By action rather than by createdAt: two taps can land in the same millisecond.
+    const entries = await prisma.auditLog.findMany({ select: { action: true } });
+    expect(entries.map((e) => e.action).sort()).toEqual(["DAYS_BLOCKED", "DAYS_UNBLOCKED"]);
+  });
+
+  it("logs a range by the nights it changed, and nothing when it changed none", async () => {
+    const { owner, user } = await createOwner({ email: "range@test.ae" });
+    const listing = await createListing({ ownerId: owner.id });
+    sessionUser.current = { id: user.id };
+
+    const from = addDays(todayISO(), 10);
+    const to = addDays(todayISO(), 15); // exclusive: five nights, the 10th to the 14th
+    const { toggleBlockedDate, setRangeBlocked } = await import("@/app/actions/availability");
+
+    // One night already closed, so the range closes four.
+    await toggleBlockedDate(listing.id, addDays(todayISO(), 12));
+    await prisma.auditLog.deleteMany();
+
+    await setRangeBlocked(listing.id, from, to, true);
+    const blocked = await prisma.auditLog.findFirstOrThrow();
+    expect(blocked.action).toBe("DAYS_BLOCKED");
+    // The last night, not the exclusive end the editor sends.
+    expect(JSON.parse(blocked.metadata)).toEqual({
+      from,
+      to: addDays(todayISO(), 14),
+      days: 4,
+    });
+
+    // Already closed: the action succeeds and the log stays as it was.
+    expect((await setRangeBlocked(listing.id, from, to, true)).ok).toBe(true);
+    expect(await prisma.auditLog.count()).toBe(1);
+
+    await setRangeBlocked(listing.id, from, to, false);
+    const freed = await prisma.auditLog.findFirstOrThrow({ where: { action: "DAYS_UNBLOCKED" } });
+    expect(JSON.parse(freed.metadata).days).toBe(5);
+  });
+
+  it("keeps the label of an occasion night that was unmarked", async () => {
+    const { owner, user } = await createOwner({ email: "label@test.ae" });
+    const listing = await createListing({ ownerId: owner.id, holidayPrice: 3000 });
+    sessionUser.current = { id: user.id };
+
+    const date = addDays(todayISO(), 30);
+    const { toggleSpecialDate } = await import("@/app/actions/availability");
+    await toggleSpecialDate(listing.id, date, "عيد الفطر");
+    await toggleSpecialDate(listing.id, date);
+
+    const unmarked = await prisma.auditLog.findFirstOrThrow({
+      where: { action: "SPECIAL_DAYS_UNMARKED" },
+    });
+    expect(JSON.parse(unmarked.metadata)).toEqual({
+      date,
+      label: "عيد الفطر",
+      publicHoliday: false,
+    });
+    expect(await prisma.auditLog.count({ where: { action: "SPECIAL_DAYS_MARKED" } })).toBe(1);
   });
 
   it("lets an owner mark and unmark an occasion night", async () => {

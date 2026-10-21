@@ -773,6 +773,14 @@ export const AUDIT_ACTIONS = [
   // because both change who can read a listing's calendar.
   "CALENDAR_EXPORT_ENABLED",
   "CALENDAR_EXPORT_DISABLED",
+  // Calendar edits by hand, owner or operator (src/app/actions/availability.ts):
+  // closing nights and pricing them as occasions. One line per tap or per
+  // "rest of the month" button, with the date — or the first and last night
+  // and how many changed — in `metadata`.
+  "DAYS_BLOCKED",
+  "DAYS_UNBLOCKED",
+  "SPECIAL_DAYS_MARKED",
+  "SPECIAL_DAYS_UNMARKED",
   // Payments. Every movement of money leaves a line here, whether a gateway or
   // a person caused it — which is the point: "who confirmed this booking" must
   // be answerable when the answer is "a Telr webhook did". The actor on a

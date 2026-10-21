@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { authorizeListing } from "@/lib/listing-access";
+import { auditData } from "@/lib/audit";
 import { isISODate, nightsInRange, todayISO, type ISODate } from "@/lib/dates";
 import { LOCAL_SOURCE_KEY } from "@/lib/constants";
 import type { ActionResult } from "./listings";
@@ -35,6 +36,14 @@ import { getI18n } from "@/lib/i18n/server";
  * imported hold, as two rows. Freeing the owner's block then leaves the day
  * closed, because the other reason is still true. That is the honest answer,
  * and the calendar shows the imported hold so it does not look like a bug.
+ *
+ * ─── Every change here leaves a line in the activity log ────────────────────
+ * Closing a night takes it off the market, so "who closed this, and when" has
+ * to be answerable after the fact — by the operator, about an owner, and the
+ * other way round. Each write shares a transaction with its log row (see
+ * src/lib/audit.ts), and an action that changed nothing writes no row: "blocked
+ * the rest of October" on a month that was already closed would be a line
+ * describing something that did not happen.
  */
 
 /** Toggle a single day blocked/free. The core interaction of the calendar tab. */
@@ -46,7 +55,7 @@ export async function toggleBlockedDate(
 
   const access = await authorizeListing(listingId, t);
   if (!access.ok) return { ok: false, error: access.error };
-  const { listing } = access;
+  const { listing, actor } = access;
 
   if (!isISODate(date)) return { ok: false, error: t.validation.invalidDate };
   if (date < todayISO()) return { ok: false, error: t.validation.dateNotEditable };
@@ -68,14 +77,38 @@ export async function toggleBlockedDate(
         error: t.validation.dayHeldByBooking,
       };
     }
-    await prisma.availability.delete({ where: { id: existing.id } });
+    await prisma.$transaction([
+      prisma.availability.delete({ where: { id: existing.id } }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor,
+          action: "DAYS_UNBLOCKED",
+          entityType: "Listing",
+          entityId: listingId,
+          summary: listing.name,
+          metadata: { date },
+        }),
+      }),
+    ]);
   } else {
     // An imported hold on this day does not stop the owner adding their own
     // block. The two are independent reasons and each owns its row; if the
     // Airbnb booking is later cancelled, the owner's block must survive it.
-    await prisma.availability.create({
-      data: { listingId, date, status: "BLOCKED", sourceKey: LOCAL_SOURCE_KEY },
-    });
+    await prisma.$transaction([
+      prisma.availability.create({
+        data: { listingId, date, status: "BLOCKED", sourceKey: LOCAL_SOURCE_KEY },
+      }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor,
+          action: "DAYS_BLOCKED",
+          entityType: "Listing",
+          entityId: listingId,
+          summary: listing.name,
+          metadata: { date },
+        }),
+      }),
+    ]);
   }
 
   revalidateCalendar(listing.slug);
@@ -108,7 +141,7 @@ export async function setRangeBlocked(
 
   const access = await authorizeListing(listingId, t);
   if (!access.ok) return { ok: false, error: access.error };
-  const { listing } = access;
+  const { listing, actor } = access;
 
   if (!isISODate(from) || !isISODate(to) || from >= to) {
     return { ok: false, error: t.validation.invalidRange };
@@ -120,6 +153,19 @@ export async function setRangeBlocked(
     return { ok: false, error: t.validation.noEditableDays };
   }
   if (dates.length > 400) return { ok: false, error: t.validation.rangeTooLong };
+
+  // The nights actually acted on, not the arguments: `to` is exclusive (the
+  // editor sends the first of next month) and `from` may have been clipped to
+  // today, so either would put a day in the log that nothing touched.
+  const rangeLog = (action: "DAYS_BLOCKED" | "DAYS_UNBLOCKED", days: number) =>
+    auditData({
+      actor,
+      action,
+      entityType: "Listing",
+      entityId: listingId,
+      summary: listing.name,
+      metadata: { from: dates[0], to: dates[dates.length - 1], days },
+    });
 
   if (blocked) {
     // Insert only the days that aren't already recorded.
@@ -144,26 +190,37 @@ export async function setRangeBlocked(
     const missing = dates.filter((d) => !already.has(d));
 
     if (missing.length > 0) {
-      await prisma.availability.createMany({
-        data: missing.map((date) => ({
-          listingId,
-          date,
-          status: "BLOCKED",
-          sourceKey: LOCAL_SOURCE_KEY,
-        })),
-      });
+      await prisma.$transaction([
+        prisma.availability.createMany({
+          data: missing.map((date) => ({
+            listingId,
+            date,
+            status: "BLOCKED",
+            sourceKey: LOCAL_SOURCE_KEY,
+          })),
+        }),
+        prisma.auditLog.create({ data: rangeLog("DAYS_BLOCKED", missing.length) }),
+      ]);
     }
   } else {
     // Only clear owner-BLOCKED days. Confirmed BOOKED days stay put, and so do
     // EXTERNAL ones — "free the rest of the month" is the owner speaking about
     // their own calendar, and it cannot release a night Airbnb has sold.
-    await prisma.availability.deleteMany({
-      where: {
-        listingId,
-        date: { in: dates },
-        status: "BLOCKED",
-        sourceKey: LOCAL_SOURCE_KEY,
-      },
+    //
+    // Interactive rather than an array because the log row needs the count:
+    // how many of these days were actually closed is only known once they go.
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.availability.deleteMany({
+        where: {
+          listingId,
+          date: { in: dates },
+          status: "BLOCKED",
+          sourceKey: LOCAL_SOURCE_KEY,
+        },
+      });
+      if (count > 0) {
+        await tx.auditLog.create({ data: rangeLog("DAYS_UNBLOCKED", count) });
+      }
     });
   }
 
@@ -199,7 +256,7 @@ export async function toggleSpecialDate(
 
   const access = await authorizeListing(listingId, t);
   if (!access.ok) return { ok: false, error: access.error };
-  const { listing } = access;
+  const { listing, actor } = access;
 
   if (!isISODate(date)) return { ok: false, error: t.validation.invalidDate };
   // Repricing a night in the past changes nothing that can still be booked, and
@@ -208,15 +265,45 @@ export async function toggleSpecialDate(
 
   const existing = await prisma.specialDay.findUnique({
     where: { listingId_date: { listingId, date } },
-    select: { id: true },
+    select: { id: true, label: true, publicHolidayId: true },
   });
 
   if (existing) {
-    await prisma.specialDay.delete({ where: { id: existing.id } });
+    await prisma.$transaction([
+      prisma.specialDay.delete({ where: { id: existing.id } }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor,
+          action: "SPECIAL_DAYS_UNMARKED",
+          entityType: "Listing",
+          entityId: listingId,
+          summary: listing.name,
+          // The label it had, so the line still says which Eid; and whether
+          // it was this listing's copy of a platform holiday — an owner opting
+          // out of «التقويم الشامل» rather than undoing their own mark.
+          metadata: {
+            date,
+            label: existing.label,
+            publicHoliday: existing.publicHolidayId !== null,
+          },
+        }),
+      }),
+    ]);
   } else {
-    await prisma.specialDay.create({
-      data: { listingId, date, label: label.trim().slice(0, 60) },
-    });
+    const clean = label.trim().slice(0, 60);
+    await prisma.$transaction([
+      prisma.specialDay.create({ data: { listingId, date, label: clean } }),
+      prisma.auditLog.create({
+        data: auditData({
+          actor,
+          action: "SPECIAL_DAYS_MARKED",
+          entityType: "Listing",
+          entityId: listingId,
+          summary: listing.name,
+          metadata: { date, label: clean },
+        }),
+      }),
+    ]);
   }
 
   revalidateCalendar(listing.slug);
@@ -240,7 +327,7 @@ export async function setRangeSpecial(
 
   const access = await authorizeListing(listingId, t);
   if (!access.ok) return { ok: false, error: access.error };
-  const { listing } = access;
+  const { listing, actor } = access;
 
   if (!isISODate(from) || !isISODate(to) || from >= to) {
     return { ok: false, error: t.validation.invalidRange };
@@ -250,6 +337,23 @@ export async function setRangeSpecial(
   const dates = nightsInRange(from, to).filter((d) => d >= today);
   if (dates.length === 0) return { ok: false, error: t.validation.noEditableDays };
   if (dates.length > 400) return { ok: false, error: t.validation.rangeTooLong };
+
+  const clean = label.trim().slice(0, 60);
+
+  // The nights acted on, for the same reason as in `setRangeBlocked`.
+  const rangeLog = (
+    action: "SPECIAL_DAYS_MARKED" | "SPECIAL_DAYS_UNMARKED",
+    days: number,
+    extra: Record<string, unknown> = {},
+  ) =>
+    auditData({
+      actor,
+      action,
+      entityType: "Listing",
+      entityId: listingId,
+      summary: listing.name,
+      metadata: { from: dates[0], to: dates[dates.length - 1], days, ...extra },
+    });
 
   if (special) {
     // Read first, then insert the gaps — the same shape as `setRangeBlocked`
@@ -263,12 +367,24 @@ export async function setRangeSpecial(
     const missing = dates.filter((d) => !already.has(d));
 
     if (missing.length > 0) {
-      await prisma.specialDay.createMany({
-        data: missing.map((date) => ({ listingId, date, label: label.trim().slice(0, 60) })),
-      });
+      await prisma.$transaction([
+        prisma.specialDay.createMany({
+          data: missing.map((date) => ({ listingId, date, label: clean })),
+        }),
+        prisma.auditLog.create({
+          data: rangeLog("SPECIAL_DAYS_MARKED", missing.length, { label: clean }),
+        }),
+      ]);
     }
   } else {
-    await prisma.specialDay.deleteMany({ where: { listingId, date: { in: dates } } });
+    await prisma.$transaction(async (tx) => {
+      const { count } = await tx.specialDay.deleteMany({
+        where: { listingId, date: { in: dates } },
+      });
+      if (count > 0) {
+        await tx.auditLog.create({ data: rangeLog("SPECIAL_DAYS_UNMARKED", count) });
+      }
+    });
   }
 
   revalidateCalendar(listing.slug);
