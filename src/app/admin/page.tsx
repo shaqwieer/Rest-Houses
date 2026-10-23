@@ -9,7 +9,7 @@ import { bookingFilterWhere } from "@/lib/booking-view";
 import { bookingDisplayStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { localized } from "@/lib/i18n/config";
-import { arDelta, arDeltaPercent, arNum, arPercent } from "@/lib/format";
+import { arDelta, arDeltaPercent, arNum } from "@/lib/format";
 import { arDayMonth, arFullDate, arMonthLabel, monthRange, todayISO } from "@/lib/dates";
 import type { TopListing } from "@/lib/admin-queries";
 import type { Dictionary } from "@/lib/i18n";
@@ -29,7 +29,8 @@ import type { Dictionary } from "@/lib/i18n";
  *    5–8   how big the platform is: owners, rest houses, confirmed bookings,
  *          reviews.
  *    9     of those confirmed bookings, the ones still being worked.
- *    10–13 this calendar month and the next: how full, and what it is worth.
+ *    10–13 this calendar month and the next: how many bookings, and what they
+ *          are worth.
  *    14–15 next month against this one.
  *    16–17 which rest house is carrying the month.
  *
@@ -38,16 +39,16 @@ import type { Dictionary } from "@/lib/i18n";
  * ─── Why every month here is a CALENDAR month ────────────────────────────────
  * The operator asked for 1/8–31/8 and 1/9–30/9 explicitly, and they were right
  * to: a rolling thirty-day window starting on the 12th compares two arbitrary
- * stretches and gets the denominator wrong as well, since August has 31 nights
- * to sell and September 30. `monthRange` supplies both boundaries and the day
- * count; `monthPerformance` does the counting. Neither is fooled by an operator
- * opening the page on the 31st.
+ * stretches. `monthRange` supplies both boundaries; `monthPerformance` does the
+ * counting. Neither is fooled by an operator opening the page on the 31st.
  *
- * The weekly-occupancy chart that used to sit under these tiles is gone. It
- * measured the next four weeks from today, which after this change would put a
- * second, differently-based occupancy figure on the same screen as tiles 10–13
- * — the page disagreeing with itself, which is the one thing a dashboard cannot
- * do and stay trusted.
+ * ─── Why 10–17 are counts and money, not occupancy ───────────────────────────
+ * Tiles 10 and 12 used to be occupancy percentages. The operator replaced them
+ * with booking counts: occupancy counted nights imported from other platforms'
+ * calendars, which re-sync on their own, so the percentage moved on days when
+ * nothing on this platform had. Everything from tile 10 on now counts confirmed
+ * bookings made HERE and nothing else — see `monthPerformance` for why a
+ * month's figure only moves when one of its bookings does.
  */
 
 /** What one tile needs to render. */
@@ -91,6 +92,8 @@ export default async function AdminOverviewPage() {
     confirmedActive,
     recent,
     hiddenCount,
+    current,
+    ahead,
   ] = await Promise.all([
     prisma.bookingRequest.count({ where: { status: "NEW" } }),
     ownerCounts(),
@@ -122,23 +125,16 @@ export default async function AdminOverviewPage() {
       include: { listing: { select: { name: true } } },
     }),
     hiddenByOwnerStateCount(),
-  ]);
-
-  // Sequential rather than inside the Promise.all above: both need
-  // `publishedCount` for their denominator, and computing occupancy against a
-  // capacity read in a different transaction is how the two silently disagree.
-  const [current, ahead] = await Promise.all([
-    monthPerformance(thisMonth, publishedCount),
-    monthPerformance(nextMonth, publishedCount),
+    monthPerformance(thisMonth),
+    monthPerformance(nextMonth),
   ]);
 
   const thisMonthLabel = arMonthLabel(thisMonth.year, thisMonth.month, locale);
   const nextMonthLabel = arMonthLabel(nextMonth.year, nextMonth.month, locale);
 
-  // Occupancy is compared in POINTS. Both figures are already percentages, and
-  // the ratio of two percentages ("occupancy rose 40%") is a sentence nobody
-  // can act on — the gap between them is the thing an operator reads.
-  const occupancyPoints = ahead.occupancyPct - current.occupancyPct;
+  // Bookings are compared as a plain DIFFERENCE — "3 fewer" — which is what the
+  // operator asked for, and which still reads when this month has none.
+  const bookingsDiff = ahead.bookings - current.bookings;
 
   // Revenue is compared RELATIVELY, which needs a non-zero base. A month with
   // no confirmed bookings yet has no percentage to be up from, so the tile says
@@ -228,10 +224,12 @@ export default async function AdminOverviewPage() {
 
     /* ---- 10–13 · this month and the next -------------------------------- */
     {
-      label: t.admin.statOccupancyThisMonth,
-      value: arPercent(current.occupancyPct, locale),
-      sub: t.admin.statWholeMonth(thisMonthLabel),
-      icon: "donut_large",
+      // No link, for the same reason as tile 7: the requests page has no view
+      // filtered to one month's check-ins, so nothing it opens shows this number.
+      label: t.admin.statBookingsThisMonth,
+      value: arNum(current.bookings, locale),
+      sub: t.admin.statBookingsMonthSub(thisMonthLabel),
+      icon: "event_available",
     },
     {
       label: t.admin.statRevenueThisMonth,
@@ -241,10 +239,10 @@ export default async function AdminOverviewPage() {
       href: "/admin/payments",
     },
     {
-      label: t.admin.statOccupancyNextMonth,
-      value: arPercent(ahead.occupancyPct, locale),
-      sub: t.admin.statWholeMonth(nextMonthLabel),
-      icon: "donut_large",
+      label: t.admin.statBookingsNextMonth,
+      value: arNum(ahead.bookings, locale),
+      sub: t.admin.statBookingsMonthSub(nextMonthLabel),
+      icon: "event_available",
     },
     {
       label: t.admin.statRevenueNextMonth,
@@ -256,15 +254,15 @@ export default async function AdminOverviewPage() {
 
     /* ---- 14–15 · next month against this one ---------------------------- */
     {
-      label: t.admin.statOccupancyChange,
-      value: arDelta(occupancyPoints, locale),
-      sub: t.admin.statOccupancyChangeSub,
+      label: t.admin.statBookingsChange,
+      value: arDelta(bookingsDiff, locale),
+      sub: t.admin.statBookingsChangeSub,
       // `swap_vert` rather than a directional arrow: the icon set has no
       // trending pair, and an arrow that points left or right means opposite
       // things in the two languages this site renders in. The sign on the
       // figure and its colour carry the direction instead.
       icon: "swap_vert",
-      tone: occupancyPoints === 0 ? undefined : occupancyPoints > 0 ? "up" : "down",
+      tone: bookingsDiff === 0 ? undefined : bookingsDiff > 0 ? "up" : "down",
     },
     {
       label: t.admin.statRevenueChange,

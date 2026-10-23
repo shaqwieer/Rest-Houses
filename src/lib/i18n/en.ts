@@ -628,16 +628,18 @@ export const en: Dictionary = {
     statOccupancySub: "next 30 days",
     statRevenue: "Expected revenue",
     statRevenueSub: "AED — confirmed bookings",
-    statOccupancyThisMonth: "Occupancy this month",
-    statOccupancyNextMonth: "Occupancy next month",
+    statBookingsThisMonth: "Bookings this month",
+    statBookingsNextMonth: "Bookings next month",
     statRevenueThisMonth: "Revenue this month",
     statRevenueNextMonth: "Revenue next month",
     /** Says out loud that the month is counted whole — elapsed days included. */
     statWholeMonth: (month) => `${month} — the whole month`,
+    /** Reads on from the figure above it: "20 / confirmed, starting in October 2026". */
+    statBookingsMonthSub: (month) => `confirmed, starting in ${month}`,
     statRevenueMonthSub: (month) => `AED — confirmed bookings starting in ${month}`,
-    statOccupancyChange: "Occupancy: next vs this month",
-    /** Points, not percent: the gap between two percentages is not a ratio. */
-    statOccupancyChangeSub: "difference in occupancy points",
+    statBookingsChange: "Bookings: next vs this month",
+    /** A count of bookings, signed — not a percentage. */
+    statBookingsChangeSub: "difference in number of bookings",
     statRevenueChange: "Revenue: next vs this month",
     statRevenueChangeSub: "relative change on this month",
 

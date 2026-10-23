@@ -739,16 +739,18 @@ export const ar = {
     statOccupancySub: "٣٠ يومًا القادمة",
     statRevenue: "الإيراد المتوقّع",
     statRevenueSub: "درهم — حجوزات مؤكدة",
-    statOccupancyThisMonth: "إشغال الشهر الحالي",
-    statOccupancyNextMonth: "إشغال الشهر القادم",
+    statBookingsThisMonth: "حجوزات الشهر الحالي",
+    statBookingsNextMonth: "حجوزات الشهر القادم",
     statRevenueThisMonth: "إيراد الشهر الحالي",
     statRevenueNextMonth: "إيراد الشهر القادم",
     /** Says out loud that the month is counted whole — elapsed days included. */
     statWholeMonth: (month: string) => `${month} — الشهر كاملًا`,
+    /** Reads on from the figure above it: "٢٠ / حجز مؤكد في أكتوبر ٢٠٢٦". */
+    statBookingsMonthSub: (month: string) => `حجز مؤكد في ${month}`,
     statRevenueMonthSub: (month: string) => `درهم — حجوزات مؤكدة في ${month}`,
-    statOccupancyChange: "الإشغال: القادم مقابل الحالي",
-    /** Points, not percent: the gap between two percentages is not a ratio. */
-    statOccupancyChangeSub: "فرق نقاط الإشغال",
+    statBookingsChange: "الحجوزات: القادم مقابل الحالي",
+    /** A count of bookings, signed — not a percentage. */
+    statBookingsChangeSub: "فرق عدد الحجوزات",
     statRevenueChange: "الإيراد: القادم مقابل الحالي",
     statRevenueChangeSub: "تغيّر نسبي عن الشهر الحالي",
 

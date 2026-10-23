@@ -369,75 +369,59 @@ export type TopListing = {
 
 export type MonthPerformance = {
   range: MonthRange;
-  /** Nights sold across published listings. */
-  bookedNights: number;
-  /** Nights there were to sell: published listings × days in the month. */
-  capacityNights: number;
-  occupancyPct: number;
-  /** Gross value of confirmed stays *starting* in this month. */
+  /** Gross value of confirmed platform bookings *starting* in this month. */
   revenue: number;
+  /** How many of those bookings there are. */
   bookings: number;
   topByRevenue: TopListing | null;
   topByBookings: TopListing | null;
 };
 
 /**
- * How one calendar month looks across the whole platform: how full it is, what
- * it is worth, and which rest house is carrying it.
+ * How one calendar month looks across the whole platform: how many bookings it
+ * holds, what they are worth, and which rest house is carrying it.
  *
- * ─── The two rules the occupancy figure obeys ────────────────────────────────
- * Both are the same ones `getOwnerInsights` obeys, restated here only because
- * this query is scoped to the platform rather than to an owner — the reasoning
- * behind them lives in src/lib/owner-insights.ts and must not drift from it.
+ * ─── Only bookings made on this platform ─────────────────────────────────────
+ * `source: "RIHLA"`. A booking an owner recorded by hand — taken over WhatsApp,
+ * or on Airbnb or Booking.com, which the dashboard calls «حجز خارجي» — belongs
+ * in that owner's own figures, and the owner dashboard counts it. It is not
+ * business this platform did, and the operator asked for it to stay off this
+ * page. Days an imported iCal feed closed are further out still: they carry no
+ * booking at all. That is also why occupancy is no longer reported here — it
+ * counted those days as sold, and they re-sync every fifteen minutes, so the
+ * figure moved with no booking on the platform changing.
  *
- *  1. A night imported from Airbnb or Booking.com (`EXTERNAL`) counts as sold.
- *     It is a night the rest house cannot be let for. Owner *blocks* stay out:
- *     a day closed for maintenance is not demand.
- *  2. `distinct` on (listingId, date), not a row count. Since imported
- *     calendars arrived, a row is a *reason* a day is closed rather than the day
- *     itself — a night booked here and also present in a feed is two rows and
- *     one night, and counting rows would push occupancy past 100%.
- *
- * ─── Numerator and denominator are scoped identically ────────────────────────
- * Both sides count PUBLISHED listings only. An unpublished rest house is not
- * being offered, so its nights belong in neither; letting them into the
- * numerator while the denominator excludes them is the other way an occupancy
- * figure quietly exceeds 100%.
+ * ─── A figure that only moves when a booking does ────────────────────────────
+ * Every condition below is a fact about the booking itself: its status, its
+ * source, and the month its stay starts in. Nothing reads today's date or the
+ * state of a listing, so a month's figure does not shrink as its days go by,
+ * and does not move because a rest house was unpublished or its owner's
+ * membership lapsed — which is why there is deliberately no
+ * `listing: { published: true }` here. It changes when a booking is confirmed,
+ * cancelled or deleted. A finished stay stays CONFIRMED (its *stage* moves, not
+ * its status), so the stays already behind us keep counting.
  *
  * ─── "Revenue" here is gross booking value ───────────────────────────────────
  * `total` — what the guest pays, the value the platform is handling — matching
- * the tile this replaces and /admin/payments beside it. NOT the platform's own
- * income, which is `commissionDue` and has its own page. And a month is the
- * month a stay *starts* in, the same convention the owner dashboard uses.
+ * /admin/payments beside it. NOT the platform's own income, which is
+ * `commissionDue` and has its own page. And a month is the month a stay
+ * *starts* in, the same convention the owner dashboard uses.
  */
-export async function monthPerformance(
-  range: MonthRange,
-  publishedCount: number,
-): Promise<MonthPerformance> {
-  const [bookedDays, byListing] = await Promise.all([
-    prisma.availability.findMany({
-      where: {
-        status: { in: ["BOOKED", "EXTERNAL"] },
-        date: { gte: range.from, lt: range.to },
-        listing: { published: true },
-      },
-      select: { listingId: true, date: true },
-      distinct: ["listingId", "date"],
-    }),
-    // Grouped in SQL rather than read and summed: unlike the owner dashboard —
-    // which needs one window of rows for a dozen different slices — this wants
-    // two aggregates and a maximum, and the platform's whole booking table is
-    // the input rather than one owner's slice of it.
-    prisma.bookingRequest.groupBy({
-      by: ["listingId"],
-      where: { status: "CONFIRMED", checkIn: { gte: range.from, lt: range.to } },
-      _sum: { total: true },
-      _count: { _all: true },
-    }),
-  ]);
-
-  const capacityNights = publishedCount * range.days;
-  const bookedNights = bookedDays.length;
+export async function monthPerformance(range: MonthRange): Promise<MonthPerformance> {
+  // Grouped in SQL rather than read and summed: unlike the owner dashboard —
+  // which needs one window of rows for a dozen different slices — this wants
+  // two aggregates and a maximum, and the platform's whole booking table is the
+  // input rather than one owner's slice of it.
+  const byListing = await prisma.bookingRequest.groupBy({
+    by: ["listingId"],
+    where: {
+      status: "CONFIRMED",
+      source: "RIHLA",
+      checkIn: { gte: range.from, lt: range.to },
+    },
+    _sum: { total: true },
+    _count: { _all: true },
+  });
 
   const revenue = byListing.reduce((sum, row) => sum + (row._sum.total ?? 0), 0);
   const bookings = byListing.reduce((sum, row) => sum + row._count._all, 0);
@@ -471,9 +455,6 @@ export async function monthPerformance(
 
   return {
     range,
-    bookedNights,
-    capacityNights,
-    occupancyPct: capacityNights > 0 ? Math.round((bookedNights / capacityNights) * 100) : 0,
     revenue,
     bookings,
     topByRevenue: decorate(bestRevenue, (row) => row._sum.total ?? 0),

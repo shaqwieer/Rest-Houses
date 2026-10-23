@@ -160,7 +160,7 @@ export type MonthRange = {
   from: ISODate;
   /** First day of the NEXT month. Exclusive. */
   to: ISODate;
-  /** Days in the month: 28, 29, 30 or 31. The occupancy denominator. */
+  /** Days in the month: 28, 29, 30 or 31. */
   days: number;
   year: number;
   /** 0-indexed, ready for `monthNames` / `arMonthLabel`. */
