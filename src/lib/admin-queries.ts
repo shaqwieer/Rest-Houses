@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { normalizePhone } from "./phone";
 import { isOwnerActive } from "./owners";
+import { bookingFilterWhere } from "./booking-view";
 import type { MonthRange } from "./dates";
 
 /**
@@ -356,6 +357,38 @@ export async function revenueTotals() {
 }
 
 /* -------------------------------------------------------------------------- */
+/* The overview's booking figures — platform bookings only                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Bookings made on this platform, as opposed to the ones an owner recorded by
+ * hand — taken over WhatsApp, or on Airbnb or Booking.com, which the dashboard
+ * calls «حجز خارجي». Those belong in that owner's own figures, and the owner
+ * dashboard counts them. They are not business this platform did, and the
+ * operator asked for every booking figure on the admin overview to leave them
+ * out. One constant so the overview's tiles cannot disagree about it.
+ */
+const PLATFORM_BOOKINGS = { source: "RIHLA" } satisfies Prisma.BookingRequestWhereInput;
+
+/**
+ * Tiles 7 and 9 of the overview: every confirmed platform booking whatever
+ * stage it has reached, and the subset still being worked.
+ *
+ * `inProgress` is the "مؤكد" chip's predicate narrowed to platform bookings, so
+ * it is no longer the number that chip shows — the requests page lists
+ * recorded bookings too. That is why the tile does not link there.
+ */
+export async function confirmedBookingCounts(): Promise<{ all: number; inProgress: number }> {
+  const [all, inProgress] = await Promise.all([
+    prisma.bookingRequest.count({ where: { status: "CONFIRMED", ...PLATFORM_BOOKINGS } }),
+    prisma.bookingRequest.count({
+      where: { ...bookingFilterWhere("CONFIRMED"), ...PLATFORM_BOOKINGS },
+    }),
+  ]);
+  return { all, inProgress };
+}
+
+/* -------------------------------------------------------------------------- */
 /* One calendar month, across the whole platform                              */
 /* -------------------------------------------------------------------------- */
 
@@ -382,14 +415,10 @@ export type MonthPerformance = {
  * holds, what they are worth, and which rest house is carrying it.
  *
  * ─── Only bookings made on this platform ─────────────────────────────────────
- * `source: "RIHLA"`. A booking an owner recorded by hand — taken over WhatsApp,
- * or on Airbnb or Booking.com, which the dashboard calls «حجز خارجي» — belongs
- * in that owner's own figures, and the owner dashboard counts it. It is not
- * business this platform did, and the operator asked for it to stay off this
- * page. Days an imported iCal feed closed are further out still: they carry no
- * booking at all. That is also why occupancy is no longer reported here — it
- * counted those days as sold, and they re-sync every fifteen minutes, so the
- * figure moved with no booking on the platform changing.
+ * `PLATFORM_BOOKINGS` above. Days an imported iCal feed closed are further out
+ * still: they carry no booking at all. That is also why occupancy is no longer
+ * reported here — it counted those days as sold, and they re-sync every fifteen
+ * minutes, so the figure moved with no booking on the platform changing.
  *
  * ─── A figure that only moves when a booking does ────────────────────────────
  * Every condition below is a fact about the booking itself: its status, its
@@ -416,7 +445,7 @@ export async function monthPerformance(range: MonthRange): Promise<MonthPerforma
     by: ["listingId"],
     where: {
       status: "CONFIRMED",
-      source: "RIHLA",
+      ...PLATFORM_BOOKINGS,
       checkIn: { gte: range.from, lt: range.to },
     },
     _sum: { total: true },

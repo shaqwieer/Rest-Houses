@@ -1,13 +1,14 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it } from "vitest";
 import { createListing, ensureSchema, prisma, resetDatabase, seedSettings } from "./db";
-import { monthPerformance } from "@/lib/admin-queries";
+import { confirmedBookingCounts, monthPerformance } from "@/lib/admin-queries";
 import { addDays, monthRange, todayISO } from "@/lib/dates";
 
 /**
- * Tiles 10–17 of the admin overview: one calendar month's bookings, what they
- * are worth, and which rest house is carrying it.
+ * The admin overview's booking figures: tiles 7 and 9 (confirmed bookings, and
+ * the ones still being worked), and 10–17 (one calendar month's bookings, what
+ * they are worth, and which rest house is carrying it).
  *
- * The operator's two complaints about the figures this replaced are the two
+ * The operator's two complaints about the figures these replaced are the two
  * things worth pinning down:
  *
  *  • bookings recorded as «حجز خارجي» (WhatsApp, Airbnb, Booking.com) are not
@@ -63,6 +64,41 @@ async function booking(
     },
   });
 }
+
+describe("confirmedBookingCounts", () => {
+  it("counts confirmed platform bookings, and the ones still being worked", async () => {
+    const listing = await createListing();
+
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000 });
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, stage: "DONE" });
+
+    expect(await confirmedBookingCounts()).toEqual({ all: 2, inProgress: 1 });
+  });
+
+  it("leaves every booking recorded from outside the platform out of both", async () => {
+    const listing = await createListing();
+
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000 });
+    for (const source of ["DIRECT", "AIRBNB", "BOOKING", "OTHER"]) {
+      // One still in progress and one finished from each, so neither tile can
+      // pass by excluding only one stage.
+      await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source });
+      await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source, stage: "DONE" });
+    }
+
+    expect(await confirmedBookingCounts()).toEqual({ all: 1, inProgress: 1 });
+  });
+
+  it("counts only confirmed bookings", async () => {
+    const listing = await createListing();
+
+    for (const status of ["NEW", "REJECTED", "CANCELLED"]) {
+      await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, status });
+    }
+
+    expect(await confirmedBookingCounts()).toEqual({ all: 0, inProgress: 0 });
+  });
+});
 
 describe("monthPerformance", () => {
   it("counts confirmed platform bookings that start in the month, and sums their value", async () => {

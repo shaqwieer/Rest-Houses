@@ -4,8 +4,12 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { StatusBadge } from "@/components/ui/badge";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
-import { hiddenByOwnerStateCount, monthPerformance, ownerCounts } from "@/lib/admin-queries";
-import { bookingFilterWhere } from "@/lib/booking-view";
+import {
+  confirmedBookingCounts,
+  hiddenByOwnerStateCount,
+  monthPerformance,
+  ownerCounts,
+} from "@/lib/admin-queries";
 import { bookingDisplayStatus } from "@/lib/constants";
 import { getI18n } from "@/lib/i18n/server";
 import { localized } from "@/lib/i18n/config";
@@ -46,9 +50,14 @@ import type { Dictionary } from "@/lib/i18n";
  * Tiles 10 and 12 used to be occupancy percentages. The operator replaced them
  * with booking counts: occupancy counted nights imported from other platforms'
  * calendars, which re-sync on their own, so the percentage moved on days when
- * nothing on this platform had. Everything from tile 10 on now counts confirmed
- * bookings made HERE and nothing else — see `monthPerformance` for why a
- * month's figure only moves when one of its bookings does.
+ * nothing on this platform had. See `monthPerformance` for why a month's figure
+ * now only moves when one of its bookings does.
+ *
+ * ─── Every booking figure counts platform bookings only ──────────────────────
+ * Tiles 7, 9 and 10–17 leave out the bookings owners record by hand («حجز
+ * خارجي»), at the operator's request — `PLATFORM_BOOKINGS` in admin-queries.
+ * Tile 1 needs no such rule: a recorded booking is created already confirmed,
+ * so it is never a new request.
  */
 
 /** What one tile needs to render. */
@@ -87,9 +96,8 @@ export default async function AdminOverviewPage() {
     pendingReviews,
     listingCount,
     publishedCount,
-    confirmedAll,
+    confirmed,
     reviewCount,
-    confirmedActive,
     recent,
     hiddenCount,
     current,
@@ -109,16 +117,12 @@ export default async function AdminOverviewPage() {
     prisma.review.count({ where: { status: "PENDING" } }),
     prisma.listing.count(),
     prisma.listing.count({ where: { published: true } }),
-    // Tile 7: every confirmed booking, whatever stage it has reached — the ones
-    // still being worked AND the ones finished. Tile 9 below is the subset that
-    // still needs somebody, and the two are deliberately different queries.
-    prisma.bookingRequest.count({ where: { status: "CONFIRMED" } }),
+    // Tiles 7 and 9: every confirmed platform booking, whatever stage it has
+    // reached, and the subset that still needs somebody.
+    confirmedBookingCounts(),
     // What a visitor can actually read. `published` is the column every public
     // query filters on, so this tile and the catalogue agree.
     prisma.review.count({ where: { published: true } }),
-    // The same predicate as the "مؤكد" chip this tile links to, so the figure
-    // here and the number of rows on the page it opens are the same figure.
-    prisma.bookingRequest.count({ where: bookingFilterWhere("CONFIRMED") }),
     prisma.bookingRequest.findMany({
       orderBy: { createdAt: "desc" },
       take: 5,
@@ -201,7 +205,7 @@ export default async function AdminOverviewPage() {
       // requests page has no view that shows exactly this number — a tile
       // reading 11 that opens a list of 4 is worse than one that does not open.
       label: t.admin.statConfirmedAll,
-      value: arNum(confirmedAll, locale),
+      value: arNum(confirmed.all, locale),
       sub: t.admin.statConfirmedAllSub,
       icon: "task_alt",
     },
@@ -215,11 +219,13 @@ export default async function AdminOverviewPage() {
 
     /* ---- 9 · still being worked ----------------------------------------- */
     {
+      // No link since this became platform-only: the "مؤكد" chip on the
+      // requests page also lists recorded bookings, so it opens on a bigger
+      // number than this tile shows — the same rule as tile 7.
       label: t.admin.statConfirmed,
-      value: arNum(confirmedActive, locale),
+      value: arNum(confirmed.inProgress, locale),
       sub: t.admin.statConfirmedSub,
       icon: "schedule",
-      href: "/admin/requests?status=CONFIRMED",
     },
 
     /* ---- 10–13 · this month and the next -------------------------------- */
