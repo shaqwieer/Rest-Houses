@@ -32,7 +32,7 @@ export async function loadCalendarBoard(listingId: string) {
     }),
     prisma.specialDay.findMany({
       where: { listingId, date: { gte: todayISO() } },
-      select: { date: true, label: true },
+      select: { date: true, label: true, price: true },
       orderBy: { date: "asc" },
     }),
     listCalendarFeeds(listingId),

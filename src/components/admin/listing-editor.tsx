@@ -65,6 +65,9 @@ export type ListingDraft = {
   weekendPrice: number;
   /** Occasion rate — Eid, National Day. 0 = not offered. Days set on the calendar. */
   holidayPrice: number;
+  /** The rates for a stay of two nights or more — weekday, weekend. 0 = not offered. */
+  multiNightPrice: number;
+  multiNightWeekendPrice: number;
   /** Which days `weekendPrice` covers — "short" (Sat+Sun) or "long" (+Friday). */
   weekendMode: WeekendMode;
   /**
@@ -552,6 +555,52 @@ export function ListingEditor({
               className="font-bold"
             />
           </Field>
+        </div>
+
+        {/* ---- two nights or more ----
+            Directly under the price ladder it discounts, and in its own dashed
+            card like day use below: optional, inert at 0, and most owners will
+            scroll straight past it. */}
+        <div className="rounded-[20px] border border-dashed border-sand-300 bg-sand-50 p-3.5">
+          <div className="mb-1.5 flex items-center gap-2">
+            <Icon name="savings" size={18} className="text-bronze" />
+            <span className="text-[12.5px] font-bold text-bronze">{t.admin.multiNightTitle}</span>
+          </div>
+          <p className="m-0 mb-3 text-[11.5px] leading-relaxed text-muted">
+            {t.admin.multiNightIntro}
+          </p>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              label={t.admin.multiNightPriceLabel}
+              hint={t.admin.multiNightPriceHint}
+              error={errors.multiNightPrice}
+            >
+              <TextInput
+                name="multiNightPrice"
+                type="number"
+                min={0}
+                defaultValue={draft.multiNightPrice}
+                invalid={Boolean(errors.multiNightPrice)}
+                className="font-bold"
+              />
+            </Field>
+
+            <Field
+              label={t.admin.multiNightWeekendPriceLabel}
+              hint={t.admin.multiNightWeekendPriceHint}
+              error={errors.multiNightWeekendPrice}
+            >
+              <TextInput
+                name="multiNightWeekendPrice"
+                type="number"
+                min={0}
+                defaultValue={draft.multiNightWeekendPrice}
+                invalid={Boolean(errors.multiNightWeekendPrice)}
+                className="font-bold"
+              />
+            </Field>
+          </div>
         </div>
 
         {/* ---- weekend days + this rest house's own stay policy ----

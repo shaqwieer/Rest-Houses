@@ -781,6 +781,8 @@ export const AUDIT_ACTIONS = [
   "DAYS_UNBLOCKED",
   "SPECIAL_DAYS_MARKED",
   "SPECIAL_DAYS_UNMARKED",
+  // An occasion night already marked, given a new name or a price of its own.
+  "SPECIAL_DAY_UPDATED",
   // Payments. Every movement of money leaves a line here, whether a gateway or
   // a person caused it — which is the point: "who confirmed this booking" must
   // be answerable when the answer is "a Telr webhook did". The actor on a
@@ -819,6 +821,12 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 /** Deposit percentage bounds — enforced server-side wherever one is accepted. */
 export const DEPOSIT_PERCENT_MIN = 0;
 export const DEPOSIT_PERCENT_MAX = 100;
+
+/**
+ * How many nights a stay needs before a listing's multi-night rate applies —
+ * «ليلتين أو أكثر». See `Listing.multiNightPrice` in prisma/schema.prisma.
+ */
+export const MULTI_NIGHT_MIN_NIGHTS = 2;
 
 /** Sort options for the listings page — ids appear in the URL (?sort=low). */
 export const SORT_OPTIONS = [

@@ -10,7 +10,7 @@ import {
 import { humanCheckFields } from "./human-check";
 import { resetRateLimits, resetSpentChallenges } from "@/lib/security";
 import { addDays, todayISO } from "@/lib/dates";
-import { nightRate, quote, resolveCommissionPercent } from "@/lib/pricing";
+import { multiNightOffer, nightRate, quote, resolveCommissionPercent } from "@/lib/pricing";
 import { getSpecialDays } from "@/lib/listings";
 
 /**
@@ -91,7 +91,7 @@ describe("nightRate", () => {
   });
 
   it("charges the occasion rate on a marked weekday", () => {
-    const marked = new Map([[WEEKDAY, "عيد الفطر"]]);
+    const marked = new Map([[WEEKDAY, { label: "عيد الفطر" }]]);
     const result = nightRate(listing, WEEKDAY, marked);
     expect(result.amount).toBe(2500);
     expect(result.special).toBe("عيد الفطر");
@@ -100,7 +100,7 @@ describe("nightRate", () => {
   it("lets the occasion rate OUTRANK the weekend rate", () => {
     // Eid falling on a Saturday is still Eid. The other order would charge the
     // lower of the two on precisely the nights demand is highest.
-    const marked = new Map([[WEEKEND, "عيد الأضحى"]]);
+    const marked = new Map([[WEEKEND, { label: "عيد الأضحى" }]]);
     const result = nightRate(listing, WEEKEND, marked);
     expect(result.amount).toBe(2500);
     expect(result.weekend).toBe(true);
@@ -111,7 +111,7 @@ describe("nightRate", () => {
     // 0 means "not offered" throughout this schema. Marking a day on a listing
     // that never set a rate must not make the night free.
     const noRate = { ...listing, holidayPrice: 0 };
-    const marked = new Map([[WEEKDAY, "عيد"]]);
+    const marked = new Map([[WEEKDAY, { label: "عيد" }]]);
     expect(nightRate(noRate, WEEKDAY, marked).amount).toBe(1000);
     expect(nightRate(noRate, WEEKEND, marked).amount).toBe(1400);
   });
@@ -126,7 +126,7 @@ describe("nightRate", () => {
 
     expect(nightRate(listing, SUNDAY).amount).toBe(1000); // short — a weekday
     expect(nightRate(sharjah, SUNDAY).amount).toBe(1400);
-    expect(nightRate(sharjah, SUNDAY, new Map([[SUNDAY, ""]])).amount).toBe(2500);
+    expect(nightRate(sharjah, SUNDAY, new Map([[SUNDAY, { label: "" }]])).amount).toBe(2500);
   });
 });
 
@@ -141,7 +141,7 @@ describe("quote with occasion nights", () => {
       weekendPrice: 1400,
       weekendMode: "short",
       holidayPrice: 2500,
-      specialDays: new Map([["2026-08-13", "اليوم الوطني"]]),
+      specialDays: new Map([["2026-08-13", { label: "اليوم الوطني" }]]),
       serviceFeePercent: 0,
       depositPercent: 30,
     });
@@ -540,5 +540,336 @@ describe("owner access to the calendar actions", () => {
 
     const { toggleSpecialDate } = await import("@/app/actions/availability");
     expect((await toggleSpecialDate(listing.id, addDays(todayISO(), -1))).ok).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* A day's own occasion price                                                 */
+/* -------------------------------------------------------------------------- */
+
+describe("nightRate with a day's own occasion price", () => {
+  const listing = {
+    pricePerNight: 1000,
+    weekendPrice: 1400,
+    holidayPrice: 5000,
+    weekendMode: "short" as const,
+  };
+  const NEW_YEARS_EVE = "2026-12-31"; // a Thursday
+
+  it("charges the day's own price over the listing's occasion rate", () => {
+    // The request this exists for: public holidays at 5,000, New Year at 8,000.
+    const marked = new Map([[NEW_YEARS_EVE, { label: "رأس السنة", price: 8000 }]]);
+    const result = nightRate(listing, NEW_YEARS_EVE, marked);
+    expect(result.amount).toBe(8000);
+    expect(result.special).toBe("رأس السنة");
+  });
+
+  it("falls back to the listing's occasion rate when the day has none", () => {
+    const marked = new Map([[NEW_YEARS_EVE, { label: "", price: null }]]);
+    expect(nightRate(listing, NEW_YEARS_EVE, marked).amount).toBe(5000);
+  });
+
+  it("charges the day's own price even on a listing with no occasion rate", () => {
+    const noRate = { ...listing, holidayPrice: 0 };
+    const marked = new Map([[NEW_YEARS_EVE, { label: "", price: 8000 }]]);
+    expect(nightRate(noRate, NEW_YEARS_EVE, marked).amount).toBe(8000);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Two nights or more                                                         */
+/* -------------------------------------------------------------------------- */
+
+describe("the two-nights-or-more rate", () => {
+  // 2026-08-12 is a Wednesday, 2026-08-15 a Saturday.
+  const WEDNESDAY = "2026-08-12";
+  const SATURDAY = "2026-08-15";
+  const listing = {
+    pricePerNight: 1000,
+    weekendPrice: 1400,
+    holidayPrice: 3000,
+    multiNightPrice: 800,
+    multiNightWeekendPrice: 1200,
+    weekendMode: "short" as "short" | "long",
+  };
+  const stay = (checkIn: string, checkOut: string, rates: Partial<typeof listing> = {}) =>
+    quote({
+      checkIn,
+      checkOut,
+      ...listing,
+      ...rates,
+      serviceFeePercent: 0,
+      depositPercent: 30,
+    });
+
+  it("does not apply to a single night", () => {
+    expect(nightRate(listing, WEDNESDAY).amount).toBe(1000);
+    expect(nightRate(listing, WEDNESDAY, undefined, 1).amount).toBe(1000);
+    expect(stay(WEDNESDAY, "2026-08-13").subtotal).toBe(1000);
+  });
+
+  it("charges the long-stay rates on every night of a two-night stay", () => {
+    // Wed 12th → Fri 14th: Wednesday and Thursday, both weekdays.
+    const weekdays = stay(WEDNESDAY, "2026-08-14");
+    expect(weekdays.breakdown.map((n) => n.amount)).toEqual([800, 800]);
+    expect(weekdays.breakdown.every((n) => n.multiNight)).toBe(true);
+    expect(weekdays.multiNightSavings).toBe(400);
+
+    // Fri 14th → Sun 16th: Friday and Saturday, both weekend nights.
+    const weekend = stay("2026-08-14", "2026-08-16");
+    expect(weekend.breakdown.map((n) => n.amount)).toEqual([1200, 1200]);
+    expect(weekend.multiNightSavings).toBe(400);
+  });
+
+  it("keeps the normal weekend rate when only the weekday figure is set", () => {
+    // The listing has its own weekend rate and said nothing about weekends:
+    // falling back to 800 would hand out 600 off the busiest night.
+    const q = stay("2026-08-13", "2026-08-16", { multiNightWeekendPrice: 0 });
+    // Thursday, Friday, Saturday.
+    expect(q.breakdown.map((n) => n.amount)).toEqual([800, 1400, 1400]);
+    expect(q.multiNightSavings).toBe(200);
+  });
+
+  it("gives the weekend the weekday figure when the listing has no weekend rate", () => {
+    const q = stay("2026-08-13", "2026-08-16", { weekendPrice: 0, multiNightWeekendPrice: 0 });
+    expect(q.breakdown.map((n) => n.amount)).toEqual([800, 800, 800]);
+  });
+
+  it("follows the listing's own weekend — a long-weekend Sunday is a weekend night", () => {
+    // Sat 15th → Mon 17th. Sunday is the only day the two modes disagree about.
+    expect(stay(SATURDAY, "2026-08-17").breakdown.map((n) => n.amount)).toEqual([1200, 800]);
+    expect(
+      stay(SATURDAY, "2026-08-17", { weekendMode: "long" }).breakdown.map((n) => n.amount),
+    ).toEqual([1200, 1200]);
+  });
+
+  it("leaves an occasion night at the occasion rate, and counts it towards the two", () => {
+    // New Year's Eve and the night after: the 31st is marked, the 1st is not.
+    const q = quote({
+      checkIn: "2026-12-31",
+      checkOut: "2027-01-02",
+      ...listing,
+      specialDays: new Map([["2026-12-31", { label: "رأس السنة", price: 8000 }]]),
+      serviceFeePercent: 0,
+      depositPercent: 30,
+    });
+    // Friday 1 Jan 2027 is a weekend night under the short mode too.
+    expect(q.breakdown.map((n) => n.amount)).toEqual([8000, 1200]);
+    expect(q.breakdown[0].multiNight).toBeUndefined();
+    expect(q.multiNightSavings).toBe(200);
+  });
+
+  it("never charges a long-stay rate above the night's normal one", () => {
+    // A row that predates validation, or a direct database edit: ignored, not
+    // charged.
+    const q = stay(WEDNESDAY, "2026-08-14", { multiNightPrice: 1100 });
+    expect(q.subtotal).toBe(2000);
+    expect(q.multiNightSavings).toBe(0);
+  });
+
+  it("prices exactly as before when neither rate is set", () => {
+    const q = stay(WEDNESDAY, "2026-08-16", { multiNightPrice: 0, multiNightWeekendPrice: 0 });
+    expect(q.subtotal).toBe(1000 + 1000 + 1400 + 1400);
+    expect(q.multiNightSavings).toBe(0);
+  });
+
+  it("does not touch a day-use booking", () => {
+    const q = quote({
+      checkIn: WEDNESDAY,
+      checkOut: WEDNESDAY,
+      ...listing,
+      dayUse: true,
+      dayUsePrice: 500,
+      serviceFeePercent: 0,
+      depositPercent: 30,
+    });
+    expect(q.subtotal).toBe(500);
+    expect(q.multiNightSavings).toBe(0);
+  });
+});
+
+describe("multiNightOffer", () => {
+  const base = { pricePerNight: 1000, weekendPrice: 1400 };
+
+  it("is null when the listing offers no long-stay rate", () => {
+    expect(multiNightOffer(base)).toBeNull();
+    expect(multiNightOffer({ ...base, multiNightPrice: 0, multiNightWeekendPrice: 0 })).toBeNull();
+  });
+
+  it("reports what each kind of night will actually be charged", () => {
+    expect(
+      multiNightOffer({ ...base, multiNightPrice: 800, multiNightWeekendPrice: 1200 }),
+    ).toEqual({ weekday: 800, weekend: 1200 });
+    // Weekend keeps its normal rate: advertised as weekdays only.
+    expect(multiNightOffer({ ...base, multiNightPrice: 800 })).toEqual({
+      weekday: 800,
+      weekend: 0,
+    });
+    // No weekend rate of its own: the weekday figure covers the weekend too.
+    expect(
+      multiNightOffer({ pricePerNight: 1000, weekendPrice: 0, multiNightPrice: 800 }),
+    ).toEqual({ weekday: 800, weekend: 800 });
+  });
+
+  it("does not advertise a figure the quote would refuse to charge", () => {
+    expect(multiNightOffer({ ...base, multiNightPrice: 1000 })).toBeNull();
+  });
+});
+
+describe("createBookingRequest and the new rates", () => {
+  it("stores the two-nights-or-more rate, read from the DATABASE", async () => {
+    const listing = await createListing({ pricePerNight: 1000 });
+    await prisma.listing.update({ where: { id: listing.id }, data: { multiNightPrice: 800 } });
+
+    // A Monday-to-Wednesday stay, so both nights are weekdays whatever today is.
+    let checkIn = addDays(todayISO(), 14);
+    while (new Date(`${checkIn}T00:00:00Z`).getUTCDay() !== 1) checkIn = addDays(checkIn, 1);
+
+    const { createBookingRequest } = await import("@/app/actions/booking");
+    const result = await createBookingRequest(
+      bookingForm(listing.id, checkIn, addDays(checkIn, 2)),
+    );
+    expect(result.ok).toBe(true);
+
+    const booking = await prisma.bookingRequest.findFirstOrThrow();
+    expect(booking.subtotal).toBe(1600);
+  });
+
+  it("stores a day's own occasion price, read from the DATABASE", async () => {
+    const listing = await createListing({ pricePerNight: 1000, holidayPrice: 5000 });
+    const checkIn = addDays(todayISO(), 7);
+
+    await prisma.specialDay.create({
+      data: { listingId: listing.id, date: checkIn, label: "رأس السنة", price: 8000 },
+    });
+
+    const { createBookingRequest } = await import("@/app/actions/booking");
+    await createBookingRequest(bookingForm(listing.id, checkIn, addDays(checkIn, 1)));
+
+    const booking = await prisma.bookingRequest.findFirstOrThrow();
+    expect(booking.subtotal).toBe(8000);
+  });
+});
+
+describe("pricing one occasion day from the calendar", () => {
+  async function ownerListing(email: string) {
+    const { owner, user } = await createOwner({ email });
+    const listing = await createListing({ ownerId: owner.id, holidayPrice: 5000 });
+    sessionUser.current = { id: user.id };
+    return listing;
+  }
+
+  it("marks a day with a price of its own", async () => {
+    const listing = await ownerListing("price@test.ae");
+    const date = addDays(todayISO(), 30);
+    const { toggleSpecialDate } = await import("@/app/actions/availability");
+
+    expect((await toggleSpecialDate(listing.id, date, "رأس السنة", 8000)).ok).toBe(true);
+    const row = await prisma.specialDay.findFirstOrThrow({ where: { listingId: listing.id } });
+    expect(row.price).toBe(8000);
+
+    const days = await getSpecialDays(listing.id);
+    expect(days.get(date)).toEqual({ label: "رأس السنة", price: 8000 });
+  });
+
+  it("stores no price when none was given, so the listing's rate applies", async () => {
+    const listing = await ownerListing("noprice@test.ae");
+    const { toggleSpecialDate } = await import("@/app/actions/availability");
+
+    await toggleSpecialDate(listing.id, addDays(todayISO(), 30), "عيد", 0);
+    const row = await prisma.specialDay.findFirstOrThrow({ where: { listingId: listing.id } });
+    expect(row.price).toBeNull();
+  });
+
+  it("refuses a day price below the weekday rate, and writes nothing", async () => {
+    const listing = await ownerListing("typo@test.ae");
+    const date = addDays(todayISO(), 30);
+    const { toggleSpecialDate } = await import("@/app/actions/availability");
+
+    expect((await toggleSpecialDate(listing.id, date, "", 800)).ok).toBe(false);
+    expect((await toggleSpecialDate(listing.id, date, "", 1500.5)).ok).toBe(false);
+    expect(await prisma.specialDay.count()).toBe(0);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("re-prices a public holiday's copy and takes it off the platform calendar", async () => {
+    // The whole request: the platform marks New Year for everyone at the
+    // owner's 5,000, and this owner wants 8,000 on that one night.
+    const listing = await ownerListing("newyear@test.ae");
+    const date = addDays(todayISO(), 30);
+    const holiday = await prisma.publicHoliday.create({ data: { date, label: "رأس السنة" } });
+    await prisma.specialDay.create({
+      data: { listingId: listing.id, date, label: "رأس السنة", publicHolidayId: holiday.id },
+    });
+
+    const { updateSpecialDate } = await import("@/app/actions/availability");
+    expect((await updateSpecialDate(listing.id, date, "رأس السنة", 8000)).ok).toBe(true);
+
+    const row = await prisma.specialDay.findFirstOrThrow({ where: { listingId: listing.id } });
+    expect(row.price).toBe(8000);
+    expect(row.publicHolidayId).toBeNull();
+
+    // The operator removing the holiday later must not take the 8,000 with it.
+    await prisma.publicHoliday.delete({ where: { id: holiday.id } });
+    expect(await prisma.specialDay.count({ where: { listingId: listing.id } })).toBe(1);
+
+    const log = await prisma.auditLog.findFirstOrThrow({
+      where: { action: "SPECIAL_DAY_UPDATED" },
+    });
+    expect(JSON.parse(log.metadata)).toMatchObject({
+      date,
+      price: 8000,
+      previous: { label: "رأس السنة", price: null },
+      publicHoliday: true,
+    });
+  });
+
+  it("writes nothing when an edit changes nothing", async () => {
+    const listing = await ownerListing("same@test.ae");
+    const date = addDays(todayISO(), 30);
+    const { toggleSpecialDate, updateSpecialDate } = await import("@/app/actions/availability");
+    await toggleSpecialDate(listing.id, date, "عيد", 6000);
+    await prisma.auditLog.deleteMany();
+
+    expect((await updateSpecialDate(listing.id, date, "عيد", 6000)).ok).toBe(true);
+    expect(await prisma.auditLog.count()).toBe(0);
+  });
+
+  it("refuses to edit a day that is not marked", async () => {
+    const listing = await ownerListing("gone@test.ae");
+    const { updateSpecialDate } = await import("@/app/actions/availability");
+
+    expect((await updateSpecialDate(listing.id, addDays(todayISO(), 30), "", 8000)).ok).toBe(
+      false,
+    );
+    expect(await prisma.specialDay.count()).toBe(0);
+  });
+
+  it("refuses an owner editing another owner's day", async () => {
+    const { owner: theirs } = await createOwner({ email: "theirs@test.ae" });
+    const other = await createListing({ ownerId: theirs.id });
+    const date = addDays(todayISO(), 30);
+    await prisma.specialDay.create({ data: { listingId: other.id, date } });
+    await ownerListing("mine@test.ae");
+
+    const { updateSpecialDate } = await import("@/app/actions/availability");
+    expect((await updateSpecialDate(other.id, date, "", 9000)).ok).toBe(false);
+    expect((await prisma.specialDay.findFirstOrThrow()).price).toBeNull();
+  });
+
+  it("marks a range at one price without re-pricing a day already set", async () => {
+    const listing = await ownerListing("range-price@test.ae");
+    const from = addDays(todayISO(), 30);
+    const { toggleSpecialDate, setRangeSpecial } = await import("@/app/actions/availability");
+
+    await toggleSpecialDate(listing.id, addDays(from, 2), "رأس السنة", 8000);
+    await setRangeSpecial(listing.id, from, addDays(from, 4), true, "", 6000);
+
+    const rows = await prisma.specialDay.findMany({
+      where: { listingId: listing.id },
+      orderBy: { date: "asc" },
+      select: { price: true },
+    });
+    expect(rows.map((r) => r.price)).toEqual([6000, 6000, 8000, 6000]);
   });
 });

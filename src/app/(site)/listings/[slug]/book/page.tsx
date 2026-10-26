@@ -14,7 +14,7 @@ import {
 } from "@/lib/listings";
 import { getSettings } from "@/lib/settings";
 import { googleAdsSendTo } from "@/lib/tracking";
-import { dayUseRate, quote, resolveDepositPercent } from "@/lib/pricing";
+import { dayUseRate, multiNightOffer, quote, resolveDepositPercent } from "@/lib/pricing";
 import { cityLabel } from "@/lib/constants";
 import { arNum, arRating } from "@/lib/format";
 import { arDayMonth, isISODate, todayISO, toWeekendMode } from "@/lib/dates";
@@ -145,6 +145,8 @@ export default async function BookPage({
     // when it recomputes this total for real.
     weekendMode: toWeekendMode(listing.weekendMode),
     holidayPrice: listing.holidayPrice,
+    multiNightPrice: listing.multiNightPrice,
+    multiNightWeekendPrice: listing.multiNightWeekendPrice,
     specialDays,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,
@@ -152,6 +154,12 @@ export default async function BookPage({
     dayUsePrice: listing.dayUsePrice,
     dayUseWeekendPrice: listing.dayUseWeekendPrice,
   });
+
+  // The rate the "N nights ×" line names — the discounted weekday rate when the
+  // two-nights-or-more offer applied, for the reason given in booking-card.tsx.
+  const offer = multiNightOffer(listing);
+  const nightlyShown =
+    q.multiNightSavings > 0 && offer?.weekday ? offer.weekday : listing.pricePerNight;
 
   const l = localizeListing(listing, locale);
   const where = l.area;
@@ -253,13 +261,21 @@ export default async function BookPage({
                 dayUse
                   ? t.listing.dayUseLine
                   : t.listing.nightsLine(
-                      arNum(listing.pricePerNight, locale),
+                      arNum(nightlyShown, locale),
                       arNum(q.nights, locale),
                       q.nights,
                     )
               }
               value={arNum(q.subtotal, locale)}
             />
+            {/* Already inside the subtotal above; said as a saving so it is not
+                subtracted twice. */}
+            {q.multiNightSavings > 0 && (
+              <p className="m-0 mb-2.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-ok">
+                <Icon name="savings" size={14} className="shrink-0" />
+                {t.listing.multiNightSavingsLine(arNum(q.multiNightSavings, locale))}
+              </p>
+            )}
             {dayUse && l.dayUseCheckOutTime && (
               <SummaryRow
                 label={t.listing.dayUseCheckOut}

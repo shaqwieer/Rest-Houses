@@ -233,6 +233,13 @@ export const en: Dictionary = {
     occasionNightShort: "Occasion",
     occasionLine: (occasion, price, nights, count) =>
       `${occasion} — ${price} AED × ${nights} ${count === 1 ? "night" : "nights"}`,
+    multiNightOfferTitle: "Special rate for 2 nights or more",
+    multiNightOfferAll: (price) => `${price} AED per night`,
+    multiNightOfferWeekday: (price) => `Weekdays ${price} AED per night`,
+    multiNightOfferWeekend: (price) => `Weekends ${price} AED per night`,
+    multiNightOfferBoth: (weekday, weekend) =>
+      `Weekdays ${weekday} · weekends ${weekend} AED per night`,
+    multiNightSavingsLine: (amount) => `2+ night rate — you save ${amount} AED`,
     serviceFee: (pct) => `Service fee (${pct}%)`,
     total: "Total",
     depositLine: (pct, amount) =>
@@ -795,6 +802,14 @@ export const en: Dictionary = {
       "For Eid al-Fitr and al-Adha, National Day and New Year. Leave at zero for no special rate, then pick the days on the calendar.",
     weekendPriceLabel: "Weekend price",
     weekendPriceHint: "Leave at zero to match the weekday rate",
+    multiNightTitle: "Special rate for 2 nights or more",
+    multiNightIntro:
+      "A lower nightly rate when a guest books two nights or more — say 800 instead of 1,000. It is applied automatically to the price the guest sees. Occasion days keep the occasion rate.",
+    multiNightPriceLabel: "Nightly rate — weekdays (AED)",
+    multiNightPriceHint: "Leave at zero for no special rate",
+    multiNightWeekendPriceLabel: "Nightly rate — weekends (AED)",
+    multiNightWeekendPriceHint:
+      "Leave at zero to keep the normal weekend rate. If the weekend has no rate of its own, the weekday figure applies to it.",
     platformFallbackHint: "Used for rest houses whose owner has not set their own",
     weekendModeLabel: "Weekend days",
     weekendModeHint: "The days the weekend price applies to",
@@ -1344,12 +1359,19 @@ export const en: Dictionary = {
     modeBlock: "Block days",
     modeSpecial: "Occasion days",
     specialModeHint:
-      "Tap the occasions and public holidays that should charge the occasion rate instead of the normal one. A booked day can be marked too — price and availability are separate questions.",
+      "Tap the occasions and public holidays that should charge the occasion rate instead of the normal one, and give any day a price of its own. Tap a marked day to change its price or unmark it. A booked day can be marked too — price and availability are separate questions.",
     occasionName: "Occasion name (optional)",
     occasionPlaceholder: "e.g. Eid al-Fitr, National Day, New Year",
-    holidayRateActive: (price) => `Occasion rate for this rest house: ${price} AED per night`,
+    occasionPrice: "Price for this day (optional)",
+    occasionPriceFallback: (price) =>
+      `Leave blank to use the general occasion rate: ${price} AED per night`,
+    occasionPriceNoFallback: "Leave blank for no special price on this day",
     holidayRateMissing:
-      "This rest house has no occasion rate set, so the price will not change. Add one in the listing settings, just after the weekend price.",
+      "This rest house has no general occasion rate, so a marked day only costs more if you give it a price of its own. The general rate can be added in the listing settings, just after the weekend price.",
+    editOccasionTitle: (date) => `Occasion day — ${date}`,
+    removeOccasion: "Unmark this day",
+    occasionSaved: "Occasion day saved",
+    occasionNoPrice: "No special price",
     specialDay: "Occasion day",
     specialDaysCount: (n) => `${n} occasion days`,
     markRestOfMonth: "Mark rest of month",
@@ -1423,6 +1445,10 @@ export const en: Dictionary = {
     capacityRequired: "A capacity is required",
     holidayBelowWeekday: "The occasion price is lower than the normal nightly rate — check the figures",
     holidayBelowWeekdayShort: "Below the normal rate",
+    multiNightAboveRegular:
+      "The 2+ night rate can't be higher than the normal rate for the same night — check the figures",
+    multiNightAboveRegularShort: "Higher than the normal rate",
+    occasionPriceInvalid: "That day price isn't valid — enter a whole number of dirhams",
     weekendBelowWeekday: "The weekend rate can't be lower than the weekday rate",
     weekendBelowWeekdayShort: "Lower than the weekday rate",
     depositRange: "The deposit percentage must be between 0 and 100",
@@ -1714,6 +1740,7 @@ export const en: Dictionary = {
     DAYS_UNBLOCKED: "Calendar days unblocked",
     SPECIAL_DAYS_MARKED: "Occasion days marked",
     SPECIAL_DAYS_UNMARKED: "Occasion days unmarked",
+    SPECIAL_DAY_UPDATED: "Occasion day edited",
     PAYMENT_INITIATED: "Payment started",
     PAYMENT_SETTLED: "Payment received",
     PAYMENT_FAILED: "Payment failed",

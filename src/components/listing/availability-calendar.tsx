@@ -6,6 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { useLocale } from "@/lib/i18n/provider";
 import { arNum } from "@/lib/format";
 import { dayNames, dayNamesShort } from "@/lib/constants";
+import type { SpecialDays } from "@/lib/pricing";
 import {
   addDays,
   arMonthLabel,
@@ -60,7 +61,7 @@ export function AvailabilityCalendar({
    */
   weekendMode = DEFAULT_WEEKEND_MODE,
   /**
-   * Nights the owner marked as a big occasion, date → occasion name.
+   * Nights the owner marked as a big occasion, date → occasion name and rate.
    *
    * Shown so a guest learns *before* picking the dates that Eid costs more,
    * rather than watching the total jump once the range is set. The rate itself
@@ -80,7 +81,7 @@ export function AvailabilityCalendar({
   months?: number;
   singleDay?: boolean;
   weekendMode?: WeekendMode;
-  specialDays?: ReadonlyMap<ISODate, string>;
+  specialDays?: SpecialDays;
   priceFor?: (iso: ISODate) => number;
 }) {
   const today = todayISO();
@@ -220,7 +221,7 @@ export function AvailabilityCalendar({
                   cell.iso > value.checkIn &&
                   cell.iso < value.checkOut;
 
-                const occasion = specialDays?.get(cell.iso);
+                const occasion = specialDays?.get(cell.iso)?.label;
                 // A past occasion is history and marking it only adds noise.
                 const isSpecial = occasion !== undefined && !cell.isPast;
                 const price =

@@ -174,6 +174,11 @@ export async function createBookingRequest(
       // total that gets stored, and omitting it would charge Eid at the
       // ordinary rate however the owner priced it.
       holidayPrice: true,
+      // The two-nights-or-more rates, for the same reason again: the guest was
+      // shown the discounted total, and leaving these out would store the full
+      // price behind that preview.
+      multiNightPrice: true,
+      multiNightWeekendPrice: true,
       dayUsePrice: true,
       dayUseWeekendPrice: true,
       depositPercent: true,
@@ -290,6 +295,8 @@ export async function createBookingRequest(
     weekendPrice: listing.weekendPrice,
     weekendMode,
     holidayPrice: listing.holidayPrice,
+    multiNightPrice: listing.multiNightPrice,
+    multiNightWeekendPrice: listing.multiNightWeekendPrice,
     specialDays,
     serviceFeePercent: settings.serviceFeePercent,
     depositPercent,

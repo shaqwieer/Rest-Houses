@@ -2,7 +2,15 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
 import type { DateRange } from "./availability-calendar";
-import { dayUseRate, nightRate, quote, type Quote } from "@/lib/pricing";
+import {
+  dayUseRate,
+  multiNightOffer,
+  nightRate,
+  quote,
+  type Quote,
+  type SpecialDayInfo,
+  type SpecialDays,
+} from "@/lib/pricing";
 import { track } from "@/lib/tracking-events";
 import type { ISODate, WeekendMode } from "@/lib/dates";
 
@@ -80,11 +88,19 @@ type BookingContextValue = {
    * see the authority note at the top of src/lib/pricing.ts. Nothing here is
    * trusted for the stored total.
    */
-  specialDays: ReadonlyMap<ISODate, string>;
+  specialDays: SpecialDays;
+  /**
+   * The two-nights-or-more rates a guest will be charged, so the calendar can
+   * advertise the offer before anything is picked. null = not offered. See
+   * `multiNightOffer` in src/lib/pricing.ts.
+   */
+  multiNightOffer: { weekday: number; weekend: number } | null;
   /**
    * What one calendar day costs in the current stay type, shown under the day
    * number in each cell. The same `nightRate` / `dayUseRate` the quote walks,
-   * so the figure in a cell is exactly what that night adds to the total.
+   * so the figure in a cell is exactly what that night adds to the total —
+   * inside a selected stay long enough for the multi-night rate, the
+   * discounted figure, read straight off the quote.
    */
   priceFor: (iso: ISODate) => number;
 };
@@ -99,6 +115,8 @@ export function BookingProvider({
   weekendPrice,
   weekendMode,
   holidayPrice,
+  multiNightPrice,
+  multiNightWeekendPrice,
   specialDays,
   dayUsePrice,
   dayUseWeekendPrice,
@@ -117,8 +135,10 @@ export function BookingProvider({
   weekendPrice: number;
   weekendMode: WeekendMode;
   holidayPrice: number;
+  multiNightPrice: number;
+  multiNightWeekendPrice: number;
   /** Serialised as pairs: a Map cannot cross the server/client boundary. */
-  specialDays: [ISODate, string][];
+  specialDays: [ISODate, SpecialDayInfo][];
   dayUsePrice: number;
   dayUseWeekendPrice: number;
   serviceFeePercent: number;
@@ -153,6 +173,11 @@ export function BookingProvider({
   // boundary, and rebuilding it once here beats doing it inside the quote memo,
   // which would make a fresh Map on every keystroke and defeat the memo.
   const specialDayMap = useMemo(() => new Map(specialDays), [specialDays]);
+
+  const offer = useMemo(
+    () => multiNightOffer({ pricePerNight, weekendPrice, multiNightPrice, multiNightWeekendPrice }),
+    [pricePerNight, weekendPrice, multiNightPrice, multiNightWeekendPrice],
+  );
 
   const setStayType = useCallback((next: StayType) => {
     setStayTypeState(next);
@@ -202,24 +227,6 @@ export function BookingProvider({
     [isDayUse, slug, listingName],
   );
 
-  const priceFor = useCallback(
-    (iso: ISODate) =>
-      isDayUse
-        ? dayUseRate({ dayUsePrice, dayUseWeekendPrice, weekendMode }, iso)
-        : nightRate({ pricePerNight, weekendPrice, holidayPrice, weekendMode }, iso, specialDayMap)
-            .amount,
-    [
-      isDayUse,
-      dayUsePrice,
-      dayUseWeekendPrice,
-      pricePerNight,
-      weekendPrice,
-      holidayPrice,
-      weekendMode,
-      specialDayMap,
-    ],
-  );
-
   const ready = isDayUse
     ? Boolean(range.checkIn)
     : Boolean(range.checkIn && range.checkOut);
@@ -236,6 +243,8 @@ export function BookingProvider({
       weekendPrice,
       weekendMode,
       holidayPrice,
+      multiNightPrice,
+      multiNightWeekendPrice,
       specialDays: specialDayMap,
       serviceFeePercent,
       depositPercent,
@@ -250,12 +259,48 @@ export function BookingProvider({
     weekendPrice,
     weekendMode,
     holidayPrice,
+    multiNightPrice,
+    multiNightWeekendPrice,
     specialDayMap,
     dayUsePrice,
     dayUseWeekendPrice,
     serviceFeePercent,
     depositPercent,
   ]);
+
+  // The nights of the selected stay at what the quote charged for them. A cell
+  // outside the stay has no stay length to price against, so it shows the night
+  // on its own — the figure a guest starting a new selection there would pay.
+  const quotedNights = useMemo(
+    () =>
+      new Map(
+        (currentQuote && !currentQuote.dayUse ? currentQuote.breakdown : []).map((n) => [
+          n.date,
+          n.amount,
+        ]),
+      ),
+    [currentQuote],
+  );
+
+  const priceFor = useCallback(
+    (iso: ISODate) =>
+      isDayUse
+        ? dayUseRate({ dayUsePrice, dayUseWeekendPrice, weekendMode }, iso)
+        : (quotedNights.get(iso) ??
+          nightRate({ pricePerNight, weekendPrice, holidayPrice, weekendMode }, iso, specialDayMap)
+            .amount),
+    [
+      isDayUse,
+      dayUsePrice,
+      dayUseWeekendPrice,
+      pricePerNight,
+      weekendPrice,
+      holidayPrice,
+      weekendMode,
+      specialDayMap,
+      quotedNights,
+    ],
+  );
 
   const bookingQuery = useMemo(() => {
     const p = new URLSearchParams();
@@ -286,6 +331,7 @@ export function BookingProvider({
       ready,
       weekendMode,
       specialDays: specialDayMap,
+      multiNightOffer: offer,
       priceFor,
     }),
     [
@@ -303,6 +349,7 @@ export function BookingProvider({
       capacity,
       weekendMode,
       specialDayMap,
+      offer,
       priceFor,
     ],
   );

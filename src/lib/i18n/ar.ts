@@ -302,6 +302,16 @@ export const ar = {
         many: "ليلة",
         other: "ليلة",
       })}`,
+    // ---- سعر خاص لليلتين أو أكثر. «ليلتين» مكتوبة هنا نصًّا، فإن تغيّر
+    // MULTI_NIGHT_MIN_NIGHTS في src/lib/constants.ts تتغيّر هذه معه.
+    multiNightOfferTitle: "سعر خاص عند حجز ليلتين أو أكثر",
+    multiNightOfferAll: (price: string) => `${price} د.إ لليلة`,
+    multiNightOfferWeekday: (price: string) => `أيام الأسبوع ${price} د.إ لليلة`,
+    multiNightOfferWeekend: (price: string) => `نهاية الأسبوع ${price} د.إ لليلة`,
+    multiNightOfferBoth: (weekday: string, weekend: string) =>
+      `أيام الأسبوع ${weekday} · نهاية الأسبوع ${weekend} د.إ لليلة`,
+    /** "سعر الليلتين أو أكثر — وفّرت ٤٠٠ د.إ" */
+    multiNightSavingsLine: (amount: string) => `سعر الليلتين أو أكثر — وفّرت ${amount} د.إ`,
     serviceFee: (pct: string) => `رسوم الخدمة (${pct}٪)`,
     total: "الإجمالي",
     depositLine: (pct: string, amount: string) =>
@@ -913,6 +923,15 @@ export const ar = {
       "لعيد الفطر والأضحى واليوم الوطني ورأس السنة. اتركه صفرًا إن لم ترغب بسعر خاص، ثم حدّد الأيام من التقويم.",
     weekendPriceLabel: "سعر نهاية الأسبوع",
     weekendPriceHint: "اتركه صفرًا ليساوي السعر العادي",
+    // ---- سعر خاص لليلتين أو أكثر
+    multiNightTitle: "سعر خاص عند حجز ليلتين أو أكثر",
+    multiNightIntro:
+      "سعر أقل لليلة عندما يحجز الضيف ليلتين أو أكثر — مثلًا ٨٠٠ بدل ١٬٠٠٠. يُحسب تلقائيًا في السعر الذي يراه الضيف. أيام المناسبات تبقى بسعر المناسبات.",
+    multiNightPriceLabel: "سعر الليلة — أيام الأسبوع (د.إ)",
+    multiNightPriceHint: "اتركه صفرًا إن لم ترغب بسعر خاص",
+    multiNightWeekendPriceLabel: "سعر الليلة — نهاية الأسبوع (د.إ)",
+    multiNightWeekendPriceHint:
+      "اتركه صفرًا ليبقى سعر نهاية الأسبوع العادي. إن لم يكن لنهاية الأسبوع سعر خاص، يُطبَّق عليها سعر أيام الأسبوع.",
     // ---- أيام نهاية الأسبوع: الجمعة والسبت لأغلب الاستراحات، وبعضها يضيف الأحد
     platformFallbackHint: "يُستخدم للاستراحات التي لم يحدّد مالكها قيمة خاصة",
     weekendModeLabel: "أيام نهاية الأسبوع",
@@ -1481,12 +1500,19 @@ export const ar = {
     modeBlock: "حظر الأيام",
     modeSpecial: "أيام المناسبات",
     specialModeHint:
-      "اضغط على أيام المناسبات والعطل الرسمية ليُطبَّق عليها سعر المناسبات بدل السعر العادي. اليوم المحجوز يمكن تعليمه أيضًا — السعر والإتاحة أمران منفصلان.",
+      "اضغط على أيام المناسبات والعطل الرسمية ليُطبَّق عليها سعر المناسبات بدل السعر العادي، ويمكنك أن تكتب لكل يوم سعره الخاص. اضغط على يوم معلَّم لتعديل سعره أو إلغائه. اليوم المحجوز يمكن تعليمه أيضًا — السعر والإتاحة أمران منفصلان.",
     occasionName: "اسم المناسبة (اختياري)",
     occasionPlaceholder: "مثال: عيد الفطر، اليوم الوطني، رأس السنة",
-    holidayRateActive: (price: string) => `سعر المناسبات لهذه الاستراحة: ${price} د.إ لليلة`,
+    occasionPrice: "سعر هذا اليوم (اختياري)",
+    occasionPriceFallback: (price: string) =>
+      `اتركه فارغًا ليُطبَّق سعر المناسبات العام: ${price} د.إ لليلة`,
+    occasionPriceNoFallback: "اتركه فارغًا إن لم ترغب بسعر خاص لهذا اليوم",
     holidayRateMissing:
-      "لم تُحدَّد قيمة «سعر المناسبات» لهذه الاستراحة بعد، فلن يتغيّر السعر. أضفها من إعدادات الاستراحة بعد سعر نهاية الأسبوع.",
+      "لم تُحدَّد قيمة «سعر المناسبات» العامة لهذه الاستراحة، فلن يتغيّر سعر اليوم إلا إذا كتبت له سعرًا خاصًا. يمكنك إضافة السعر العام من إعدادات الاستراحة بعد سعر نهاية الأسبوع.",
+    editOccasionTitle: (date: string) => `يوم مناسبة — ${date}`,
+    removeOccasion: "إلغاء تعليم اليوم",
+    occasionSaved: "حُفظ يوم المناسبة",
+    occasionNoPrice: "بدون سعر خاص",
     specialDay: "يوم مناسبة",
     specialDaysCount: (n: string) => `${n} يوم مناسبة`,
     markRestOfMonth: "تعليم بقية الشهر",
@@ -1571,6 +1597,10 @@ export const ar = {
     capacityRequired: "السعة مطلوبة",
     holidayBelowWeekday: "سعر المناسبات أقل من سعر الليلة العادية — تأكّد من الأرقام",
     holidayBelowWeekdayShort: "أقل من السعر العادي",
+    multiNightAboveRegular:
+      "سعر الليلتين أو أكثر لا يمكن أن يكون أعلى من السعر العادي لنفس الليلة — تأكّد من الأرقام",
+    multiNightAboveRegularShort: "أعلى من السعر العادي",
+    occasionPriceInvalid: "سعر اليوم غير صحيح — اكتب رقمًا صحيحًا بالدرهم",
     weekendBelowWeekday: "سعر نهاية الأسبوع لا يمكن أن يكون أقل من سعر الليلة العادية",
     weekendBelowWeekdayShort: "أقل من السعر العادي",
     depositRange: "نسبة العربون يجب أن تكون بين ٠ و ١٠٠",
@@ -1880,6 +1910,7 @@ export const ar = {
     DAYS_UNBLOCKED: "فك حظر أيام",
     SPECIAL_DAYS_MARKED: "تعليم أيام مناسبات",
     SPECIAL_DAYS_UNMARKED: "إلغاء تعليم أيام مناسبات",
+    SPECIAL_DAY_UPDATED: "تعديل يوم مناسبة",
     PAYMENT_INITIATED: "بدء عملية دفع",
     PAYMENT_SETTLED: "تأكيد استلام دفعة",
     PAYMENT_FAILED: "فشل عملية دفع",

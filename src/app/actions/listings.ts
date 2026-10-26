@@ -104,6 +104,9 @@ function listingSchema(t: Dictionary) {
     weekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
     // Occasion rate. 0 = not offered, exactly like weekendPrice above.
     holidayPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    // The two-nights-or-more rates, weekday and weekend. 0 = not offered.
+    multiNightPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    multiNightWeekendPrice: z.coerce.number().int().min(0).max(1_000_000).default(0),
     /**
      * Which days that weekend rate covers — "short" (Sat+Sun, the UAE weekend)
      * or "long" (Fri+Sat+Sun, Sharjah's).
@@ -354,6 +357,8 @@ function readListingForm(
     pricePerNight: formData.get("pricePerNight"),
     weekendPrice: formData.get("weekendPrice") ?? 0,
     holidayPrice: formData.get("holidayPrice") ?? 0,
+    multiNightPrice: formData.get("multiNightPrice") ?? 0,
+    multiNightWeekendPrice: formData.get("multiNightWeekendPrice") ?? 0,
     weekendMode: formData.get("weekendMode") ?? DEFAULT_WEEKEND_MODE,
     checkInHour: formData.get("checkInHour"),
     checkOutHour: formData.get("checkOutHour"),
@@ -473,6 +478,30 @@ function weekendRateProblem(data: ListingInput, t: Dictionary): ActionResult | n
     };
   }
 
+  // The two-nights-or-more rates run the other way: they are a discount, so
+  // the typo to catch is one ABOVE the rate it discounts — 1,800 typed for 800
+  // would advertise a long-stay offer that costs more. `nightRate` already
+  // ignores such a rate rather than charging it, so this is about the owner
+  // seeing their mistake, not about the money. Equal is allowed and simply
+  // changes nothing. The weekend figure is measured against the weekend rate
+  // the night would otherwise cost, which is the weekday rate when the listing
+  // has no weekend rate of its own.
+  if (data.multiNightPrice > 0 && data.multiNightPrice > data.pricePerNight) {
+    return {
+      ok: false,
+      error: t.validation.multiNightAboveRegular,
+      fieldErrors: { multiNightPrice: t.validation.multiNightAboveRegularShort },
+    };
+  }
+  const weekendRegular = data.weekendPrice > 0 ? data.weekendPrice : data.pricePerNight;
+  if (data.multiNightWeekendPrice > 0 && data.multiNightWeekendPrice > weekendRegular) {
+    return {
+      ok: false,
+      error: t.validation.multiNightAboveRegular,
+      fieldErrors: { multiNightWeekendPrice: t.validation.multiNightAboveRegularShort },
+    };
+  }
+
   if (
     data.dayUseWeekendPrice > 0 &&
     data.dayUsePrice > 0 &&
@@ -566,6 +595,8 @@ function listingColumns(
     pricePerNight: data.pricePerNight,
     weekendPrice: data.weekendPrice,
     holidayPrice: data.holidayPrice,
+    multiNightPrice: data.multiNightPrice,
+    multiNightWeekendPrice: data.multiNightWeekendPrice,
     // Which days that weekend rate covers, and the rest house's own arrival,
     // departure and free-cancellation policy. All in `common`: an owner in
     // Sharjah is the only person who knows their weekend is three days long,

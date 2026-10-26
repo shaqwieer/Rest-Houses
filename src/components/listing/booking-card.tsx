@@ -9,7 +9,33 @@ import { AvailabilityCalendar, type DateRange } from "./availability-calendar";
 import { arDayMonth } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
+import type { Dictionary } from "@/lib/i18n/ar";
+import type { Locale } from "@/lib/i18n/config";
 import type { ResolvedCancelPolicy } from "@/lib/policies";
+
+/**
+ * The two-nights-or-more offer as one phrase — "٨٠٠ د.إ لليلة", or the weekday
+ * and weekend figures side by side when they differ.
+ *
+ * A weekend figure of 0 means the weekend keeps its normal rate, so the phrase
+ * then names weekdays explicitly: "٨٠٠ د.إ لليلة" on its own would promise the
+ * discount on a Friday it does not cover.
+ */
+function multiNightOfferText(
+  offer: { weekday: number; weekend: number },
+  t: Dictionary,
+  locale: Locale,
+): string {
+  const { weekday, weekend } = offer;
+  if (weekday > 0 && weekend > 0) {
+    return weekday === weekend
+      ? t.listing.multiNightOfferAll(arNum(weekday, locale))
+      : t.listing.multiNightOfferBoth(arNum(weekday, locale), arNum(weekend, locale));
+  }
+  return weekday > 0
+    ? t.listing.multiNightOfferWeekday(arNum(weekday, locale))
+    : t.listing.multiNightOfferWeekend(arNum(weekend, locale));
+}
 
 /** The calendar section in the main column. Reads/writes the shared selection. */
 export function CalendarSection({
@@ -39,9 +65,10 @@ export function CalendarSection({
     dayUseWeekdaysOnly,
     weekendMode,
     specialDays,
+    multiNightOffer,
     priceFor,
   } = useBooking();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const isDayUse = stayType === "dayUse";
 
   // The notice describes the selection the guest arrived with, so it stops
@@ -75,6 +102,19 @@ export function CalendarSection({
             : t.listing.checkInOut(checkIn, checkOut)}
         </p>
       </div>
+
+      {/* The owner's two-nights-or-more rate, stated before anything is picked
+          so it can shape which dates a guest chooses. Not in day-use mode: a
+          day booking has no nights to count. */}
+      {multiNightOffer && !isDayUse && (
+        <p className="m-0 mb-3 flex items-start gap-2 rounded-xl border border-gold-500 bg-gold-100 px-3.5 py-2.5 text-[12.5px] leading-relaxed text-bronze">
+          <Icon name="savings" size={17} className="mt-0.5 shrink-0" />
+          <span>
+            <span className="font-bold">{t.listing.multiNightOfferTitle}:</span>{" "}
+            {multiNightOfferText(multiNightOffer, t, locale)}
+          </span>
+        </p>
+      )}
 
       {/* Somebody else took these dates between the calendar and the form. It
           is announced as an alert rather than shown as a passive note: the
@@ -216,10 +256,27 @@ export function BookingCard({
   /** "" when this listing has no usable WhatsApp number — hides the button. */
   ownerWhatsappHref: string;
 }) {
-  const { range, guests, setGuests, currentQuote, bookingQuery, ready, stayType } =
-    useBooking();
+  const {
+    range,
+    guests,
+    setGuests,
+    currentQuote,
+    bookingQuery,
+    ready,
+    stayType,
+    multiNightOffer,
+  } = useBooking();
   const { t, locale } = useLocale();
   const isDayUse = stayType === "dayUse";
+
+  // The per-night figure the "N nights ×" line names. Inside a stay the
+  // multi-night rate discounted, that is the discounted weekday rate — naming
+  // the full price beside a subtotal built from the lower one would read as a
+  // sum that does not add up.
+  const nightlyShown =
+    currentQuote && currentQuote.multiNightSavings > 0 && multiNightOffer?.weekday
+      ? multiNightOffer.weekday
+      : pricePerNight;
 
   /**
    * The occasion nights of this stay, collapsed to one row per
@@ -277,6 +334,14 @@ export function BookingCard({
           </span>
         )}
       </div>
+      {multiNightOffer && (
+        <p className="m-0 mt-1 flex items-start gap-1.5 text-[12px] font-semibold leading-relaxed text-ok">
+          <Icon name="savings" size={15} className="mt-0.5 shrink-0" />
+          <span>
+            {t.listing.multiNightOfferTitle}: {multiNightOfferText(multiNightOffer, t, locale)}
+          </span>
+        </p>
+      )}
 
       <div className="my-4 h-px bg-line" />
 
@@ -313,7 +378,7 @@ export function BookingCard({
               {currentQuote.dayUse
                 ? t.listing.dayUseLine
                 : t.listing.nightsLine(
-                    arNum(pricePerNight, locale),
+                    arNum(nightlyShown, locale),
                     arNum(currentQuote.nights, locale),
                     currentQuote.nights,
                   )}
@@ -351,6 +416,16 @@ export function BookingCard({
               <span className="font-bold">{arNum(line.amount * line.nights, locale)}</span>
             </div>
           ))}
+
+          {/* What the two-nights-or-more rate saved, already inside the
+              subtotal above — stated as a saving rather than as a minus line,
+              so nobody subtracts it a second time. */}
+          {currentQuote.multiNightSavings > 0 && (
+            <div className="mb-2 flex items-center gap-1.5 text-[12.5px] font-semibold text-ok">
+              <Icon name="savings" size={14} className="shrink-0" />
+              {t.listing.multiNightSavingsLine(arNum(currentQuote.multiNightSavings, locale))}
+            </div>
+          )}
 
           {/* The platform charges no service fee, so this row is normally
               absent and the total is simply the nights. It is still rendered

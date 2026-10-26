@@ -1,5 +1,5 @@
 import { isWeekend, nightsInRange, type ISODate, type WeekendMode } from "./dates";
-import { DEPOSIT_PERCENT_MAX, DEPOSIT_PERCENT_MIN } from "./constants";
+import { DEPOSIT_PERCENT_MAX, DEPOSIT_PERCENT_MIN, MULTI_NIGHT_MIN_NIGHTS } from "./constants";
 
 /**
  * Quote calculation — the single place a total is computed.
@@ -16,6 +16,22 @@ import { DEPOSIT_PERCENT_MAX, DEPOSIT_PERCENT_MIN } from "./constants";
  * from the database and ignores every number the form submitted. A total in a
  * hidden field is trivially editable; nothing here trusts one.
  */
+
+/**
+ * One night marked as an occasion: its name, and its own rate when it has one.
+ *
+ * `price` is `SpecialDay.price` — New Year's Eve at 8,000 on a listing whose
+ * `holidayPrice` is 5,000. null (or 0) means the night has no rate of its own
+ * and takes the listing's `holidayPrice`, which is what every day marked before
+ * the column existed, and every copy of a platform-wide holiday, resolves to.
+ */
+export type SpecialDayInfo = {
+  label: string;
+  price?: number | null;
+};
+
+/** The marked nights of a listing, by date. See `getSpecialDays` in src/lib/listings.ts. */
+export type SpecialDays = ReadonlyMap<ISODate, SpecialDayInfo>;
 
 export type QuoteInput = {
   checkIn: ISODate;
@@ -36,8 +52,19 @@ export type QuoteInput = {
   /** Occasion rate. 0 or missing → special days fall back to the normal rules. */
   holidayPrice?: number | null;
   /**
+   * The rates for a stay of `MULTI_NIGHT_MIN_NIGHTS` nights or more — weekday
+   * and weekend. 0 or missing → not offered. See `nightRate` for the fallback.
+   *
+   * Optional, unlike `weekendMode`, because leaving them out can only ever
+   * quote the full price. The stored total is still pinned to the database by
+   * a test in tests/special-pricing.test.ts, so the server action cannot quietly
+   * quote a different figure from the preview.
+   */
+  multiNightPrice?: number | null;
+  multiNightWeekendPrice?: number | null;
+  /**
    * The nights this listing has marked as a big occasion — Eid, National Day,
-   * New Year — each mapped to the occasion's name for the breakdown.
+   * New Year — each mapped to the occasion's name and its own rate, if any.
    *
    * A Set would have done for pricing alone; a Map carries the label so a guest
    * can be told *why* a night costs more instead of being shown an unexplained
@@ -51,7 +78,7 @@ export type QuoteInput = {
    * sent — otherwise a guest could book Eid at the weekday rate by editing a
    * hidden field. See the note at the top of this file.
    */
-  specialDays?: ReadonlyMap<ISODate, string>;
+  specialDays?: SpecialDays;
   serviceFeePercent: number;
   /** Already resolved through `resolveDepositPercent` — 0..100. */
   depositPercent: number;
@@ -89,34 +116,56 @@ export type Quote = {
    */
   dayUse: boolean;
   /**
+   * What the multi-night rate took off this stay, against pricing each of its
+   * nights on its own. 0 when the stay is too short or the listing offers no
+   * such rate — the price card shows its line only when this is not 0.
+   */
+  multiNightSavings: number;
+  /**
    * Per-night breakdown, so a weekend or occasion uplift can be shown.
    *
    * `special` carries the occasion's name when the night was charged at the
    * holiday rate, and is absent otherwise. A night can be both a weekend and an
    * occasion; `special` winning is what the rate did too, so a reader of the
    * breakdown never sees a "weekend" label on a night charged at the Eid rate.
+   *
+   * `multiNight` is set on a night charged at the multi-night rate.
    */
   breakdown: {
     date: ISODate;
     amount: number;
     weekend: boolean;
     special?: string;
+    multiNight?: boolean;
   }[];
 };
 
 /**
- * What one night costs — the single place the three price tiers are ordered.
+ * What one night costs — the single place the price tiers are ordered.
  *
- *     marked as an occasion, and holidayPrice is set  → holidayPrice
- *     a weekend night, and weekendPrice is set        → weekendPrice
- *     otherwise                                       → pricePerNight
+ *     marked as an occasion, with a price of its own   → that day's price
+ *     marked as an occasion, and holidayPrice is set   → holidayPrice
+ *     a stay of 2+ nights, with a multi-night rate set → the multi-night rate
+ *     a weekend night, and weekendPrice is set         → weekendPrice
+ *     otherwise                                        → pricePerNight
  *
  * The occasion rate outranks the weekend rate because Eid falling on a Saturday
  * is still Eid; the other order would quietly charge the lower of the two on
- * precisely the nights demand is highest. Each tier requires its own rate to be
- * greater than zero — 0 means "not offered" throughout this schema, and treating
- * it as a price would make a listing that never set a holiday rate suddenly
- * free on the marked days.
+ * precisely the nights demand is highest. For the same reason it outranks the
+ * multi-night rate: a guest staying New Year's Eve and the night after gets the
+ * long-stay rate on the second night, not on the first. The occasion night
+ * still counts towards the two.
+ *
+ * Each tier requires its own rate to be greater than zero — 0 means "not
+ * offered" throughout this schema, and treating it as a price would make a
+ * listing that never set a holiday rate suddenly free on the marked days.
+ *
+ * Which multi-night figure a night takes is `multiNightRate` below, and the
+ * tier is only ever a discount: a multi-night rate at or above the night's
+ * regular one is ignored rather than charged.
+ *
+ * `stayNights` is the length of the whole stay. It defaults to 1 — the night
+ * priced on its own — which is what the calendar shows before a range exists.
  *
  * Exported so the calendar can show a guest the per-night figure without
  * rebuilding a whole quote.
@@ -126,23 +175,92 @@ export function nightRate(
     pricePerNight: number;
     weekendPrice?: number | null;
     holidayPrice?: number | null;
+    multiNightPrice?: number | null;
+    multiNightWeekendPrice?: number | null;
     weekendMode: WeekendMode;
   },
   date: ISODate,
-  specialDays?: ReadonlyMap<ISODate, string>,
-): { amount: number; weekend: boolean; special?: string } {
+  specialDays?: SpecialDays,
+  stayNights = 1,
+): { amount: number; weekend: boolean; special?: string; multiNight?: boolean } {
   const weekend = isWeekend(date, listing.weekendMode);
   const occasion = specialDays?.get(date);
-  const holiday = listing.holidayPrice ?? 0;
 
-  if (occasion !== undefined && holiday > 0) {
-    return { amount: holiday, weekend, special: occasion };
+  if (occasion !== undefined) {
+    const own = occasion.price ?? 0;
+    const rate = own > 0 ? own : (listing.holidayPrice ?? 0);
+    if (rate > 0) return { amount: rate, weekend, special: occasion.label };
   }
 
   const weekendRate = listing.weekendPrice ?? 0;
-  if (weekend && weekendRate > 0) return { amount: weekendRate, weekend };
+  const regular = weekend && weekendRate > 0 ? weekendRate : listing.pricePerNight;
 
-  return { amount: listing.pricePerNight, weekend };
+  if (stayNights >= MULTI_NIGHT_MIN_NIGHTS) {
+    const long = multiNightRate(listing, weekend);
+    if (long > 0 && long < regular) return { amount: long, weekend, multiNight: true };
+  }
+
+  return { amount: regular, weekend };
+}
+
+/**
+ * The multi-night figure for one night, or 0 when this night has none.
+ *
+ *     weekday night                                    → multiNightPrice
+ *     weekend night, multiNightWeekendPrice set        → multiNightWeekendPrice
+ *     weekend night, listing has its own weekend rate  → 0 — no discount
+ *     weekend night, weekend priced as a weekday       → multiNightPrice
+ *
+ * The third line is the one that matters. An owner charging 1,400 at the
+ * weekend who sets only an 800 weekday long-stay rate has said nothing about
+ * weekends, and falling back to 800 there would hand out a 600-dirham discount
+ * on the busiest nights. The fourth line is the same rule from the other side:
+ * a listing with no weekend rate prices a Saturday as a Tuesday, so it gets the
+ * Tuesday long-stay rate too.
+ *
+ * Exported so the listing editor's hint and the page's offer line can say
+ * which weekend figure a guest will actually be charged.
+ */
+export function multiNightRate(
+  listing: {
+    weekendPrice?: number | null;
+    multiNightPrice?: number | null;
+    multiNightWeekendPrice?: number | null;
+  },
+  weekend: boolean,
+): number {
+  const weekday = listing.multiNightPrice ?? 0;
+  if (!weekend) return weekday;
+
+  const weekendLong = listing.multiNightWeekendPrice ?? 0;
+  if (weekendLong > 0) return weekendLong;
+
+  return (listing.weekendPrice ?? 0) > 0 ? 0 : weekday;
+}
+
+/**
+ * The long-stay rates a guest will actually be charged, for advertising the
+ * offer on the listing page — weekday and weekend, 0 where a night gets none.
+ * null when the listing offers neither, so the page renders nothing.
+ *
+ * Built from `multiNightRate` and the same "only ever a discount" test as
+ * `nightRate`, so the figure advertised is never one the quote then declines
+ * to charge.
+ */
+export function multiNightOffer(listing: {
+  pricePerNight: number;
+  weekendPrice?: number | null;
+  multiNightPrice?: number | null;
+  multiNightWeekendPrice?: number | null;
+}): { weekday: number; weekend: number } | null {
+  const weekendRegular =
+    (listing.weekendPrice ?? 0) > 0 ? listing.weekendPrice! : listing.pricePerNight;
+  const weekdayLong = multiNightRate(listing, false);
+  const weekendLong = multiNightRate(listing, true);
+
+  const weekday = weekdayLong > 0 && weekdayLong < listing.pricePerNight ? weekdayLong : 0;
+  const weekend = weekendLong > 0 && weekendLong < weekendRegular ? weekendLong : 0;
+  return weekday > 0 || weekend > 0 ? { weekday, weekend } : null;
 }
 
 /**
@@ -231,10 +349,22 @@ export function quote(input: QuoteInput): Quote {
     weekendPrice,
     weekendMode,
     holidayPrice,
+    multiNightPrice,
+    multiNightWeekendPrice,
     specialDays,
     serviceFeePercent,
     depositPercent,
   } = input;
+
+  const rates = {
+    pricePerNight,
+    weekendPrice,
+    holidayPrice,
+    multiNightPrice,
+    multiNightWeekendPrice,
+    weekendMode,
+  };
+  const nights = input.dayUse ? [] : nightsInRange(checkIn, checkOut);
 
   // ─── Day use: one day, no nights ─────────────────────────────────────────
   //
@@ -250,7 +380,7 @@ export function quote(input: QuoteInput): Quote {
   // returns the quote — the caller decides what to do about it — but
   // `createBookingRequest` refuses such a request outright rather than writing
   // a booking worth nothing. See the guard there.
-  const breakdown = input.dayUse
+  const breakdown: Quote["breakdown"] = input.dayUse
     ? [
         {
           date: checkIn,
@@ -265,16 +395,23 @@ export function quote(input: QuoteInput): Quote {
           ),
         },
       ]
-    : nightsInRange(checkIn, checkOut).map((date) => ({
+    : nights.map((date) => ({
         date,
-        ...nightRate(
-          { pricePerNight, weekendPrice, holidayPrice, weekendMode },
-          date,
-          specialDays,
-        ),
+        ...nightRate(rates, date, specialDays, nights.length),
       }));
 
   const subtotal = breakdown.reduce((sum, n) => sum + n.amount, 0);
+
+  // Measured against the same nights priced one at a time, so the figure is
+  // exactly what the rate saved — a weekend night with no long-stay rate of its
+  // own contributes nothing, because it was not discounted.
+  const multiNightSavings = breakdown.reduce(
+    (sum, n) =>
+      n.multiNight
+        ? sum + nightRate(rates, n.date, specialDays).amount - n.amount
+        : sum,
+    0,
+  );
   const serviceFee = Math.round((subtotal * serviceFeePercent) / 100);
   const total = subtotal + serviceFee;
 
@@ -300,6 +437,7 @@ export function quote(input: QuoteInput): Quote {
     depositDue,
     depositPercent: safePercent,
     dayUse: Boolean(input.dayUse),
+    multiNightSavings,
     breakdown,
   };
 }

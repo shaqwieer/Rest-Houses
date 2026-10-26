@@ -16,6 +16,7 @@ import { activeOwnerWhere, publicOwnerFields } from "./owners";
 import { resolveDayUseCheckOut } from "./policies";
 import type { ISODate } from "./dates";
 import type { ListingFilters } from "./search";
+import type { SpecialDayInfo } from "./pricing";
 import { nightsInRange, occupiedDays, todayISO } from "./dates";
 
 /**
@@ -626,7 +627,9 @@ function isAvailabilityStatus(value: string): value is AvailabilityStatus {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The nights this listing charges its occasion rate for, as date → occasion name.
+ * The nights this listing charges its occasion rate for, as date → the
+ * occasion's name and that night's own rate (null → the listing's
+ * `holidayPrice`).
  *
  * A Map rather than a Set so the price breakdown can name the occasion instead
  * of showing an unexplained higher figure — see `nightRate` in src/lib/pricing.ts.
@@ -644,7 +647,7 @@ export async function getSpecialDays(
   listingId: string,
   from: ISODate = todayISO(),
   to?: ISODate,
-): Promise<Map<ISODate, string>> {
+): Promise<Map<ISODate, SpecialDayInfo>> {
   const rows = await prisma.specialDay.findMany({
     where: {
       listingId,
@@ -652,11 +655,11 @@ export async function getSpecialDays(
       // the rest of this codebase's date handling relies on.
       date: to ? { gte: from, lt: to } : { gte: from },
     },
-    select: { date: true, label: true },
+    select: { date: true, label: true, price: true },
     orderBy: { date: "asc" },
   });
 
-  return new Map(rows.map((r) => [r.date, r.label]));
+  return new Map(rows.map((r) => [r.date, { label: r.label, price: r.price }]));
 }
 
 /**

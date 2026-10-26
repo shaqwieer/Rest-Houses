@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useOptimistic, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Icon } from "@/components/ui/icon";
+import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { Select, TextInput } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -11,9 +13,11 @@ import {
   setRangeSpecial,
   toggleBlockedDate,
   toggleSpecialDate,
+  updateSpecialDate,
 } from "@/app/actions/availability";
 import { dayNamesShort } from "@/lib/constants";
 import {
+  arDayMonth,
   arMonthLabel,
   buildMonthGrid,
   shiftMonth,
@@ -56,6 +60,21 @@ export type AvailabilityEntry = {
  */
 export type CalendarMode = "block" | "special";
 
+/** One marked occasion night. `price` null → the listing's `holidayPrice`. */
+type SpecialEntry = { label: string; price: number | null };
+
+/**
+ * A price box's text as a day price: null for blank, undefined for anything
+ * that is not a whole number of dirhams. The server checks again — this only
+ * stops an obvious typo from costing a round trip.
+ */
+function parseDayPrice(raw: string): number | null | undefined {
+  const text = raw.trim();
+  if (text === "") return null;
+  const n = Number(text);
+  return Number.isInteger(n) && n >= 0 ? n || null : undefined;
+}
+
 export function AvailabilityEditor({
   listings,
   selectedId,
@@ -67,8 +86,11 @@ export function AvailabilityEditor({
   listings: { id: string; name: string; weekendMode: string; holidayPrice: number }[];
   selectedId: string;
   entries: AvailabilityEntry[];
-  /** date → occasion name, for the days charged at the holiday rate. */
-  specialDays: { date: ISODate; label: string }[];
+  /**
+   * The days charged at an occasion rate: the occasion's name, and the day's
+   * own price (null → the listing's `holidayPrice`).
+   */
+  specialDays: { date: ISODate; label: string; price: number | null }[];
   /**
    * Where the listing `<select>` navigates. "/admin/calendar" or
    * "/owner/calendar" — the same component serves both dashboards, and the
@@ -83,6 +105,14 @@ export function AvailabilityEditor({
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<CalendarMode>("block");
   const [occasion, setOccasion] = useState("");
+  // The price a tap marks a new day with, as typed. Blank = the listing's rate.
+  const [occasionPriceText, setOccasionPriceText] = useState("");
+  // The marked day open in the edit dialog, with its fields as typed.
+  const [editing, setEditing] = useState<{
+    date: ISODate;
+    label: string;
+    price: string;
+  } | null>(null);
 
   const today = todayISO();
   const [view, setView] = useState(() => {
@@ -110,14 +140,18 @@ export function AvailabilityEditor({
     },
   );
 
-  // Marked occasion nights, with the same optimistic treatment: tapping in
-  // "special" mode flips the cell immediately and reconciles on refresh.
+  // Marked occasion nights, with the same optimistic treatment: marking,
+  // editing or unmarking shows on the cell immediately and reconciles on
+  // refresh. `entry` null removes the day.
   const [optimisticSpecial, applyOptimisticSpecial] = useOptimistic(
-    new Map(specialDays.map((d) => [d.date, d.label] as const)),
-    (current: Map<string, string>, entry: { date: string; label: string }) => {
+    new Map(specialDays.map((d) => [d.date, { label: d.label, price: d.price }] as const)),
+    (
+      current: Map<string, SpecialEntry>,
+      change: { date: string; entry: SpecialEntry | null },
+    ) => {
       const next = new Map(current);
-      if (next.has(entry.date)) next.delete(entry.date);
-      else next.set(entry.date, entry.label);
+      if (change.entry) next.set(change.date, change.entry);
+      else next.delete(change.date);
       return next;
     },
   );
@@ -134,6 +168,18 @@ export function AvailabilityEditor({
   // than letting them mark a month and wonder why the price never moved.
   const holidayPrice = selected?.holidayPrice ?? 0;
   const cells = buildMonthGrid(view.year, view.month, unavailable, today, locale, weekendMode);
+
+  /** What a marked day charges: its own price, else the listing's rate, else nothing. */
+  const effectivePrice = (entry: SpecialEntry): number | null =>
+    entry.price ?? (holidayPrice > 0 ? holidayPrice : null);
+
+  /** "رأس السنة — ٨٬٠٠٠ د.إ", for a cell's title and its screen-reader label. */
+  const describeSpecial = (entry: SpecialEntry): string => {
+    const price = effectivePrice(entry);
+    return `${entry.label || t.calendar.specialDay}${
+      price ? ` — ${arNum(price, locale)} ${t.common.aed}` : ""
+    }`;
+  };
 
   const statuses = [...optimistic.values()].map((e) => e.status);
   const blockedCount = statuses.filter((s) => s === "BLOCKED").length;
@@ -152,10 +198,29 @@ export function AvailabilityEditor({
   }
 
   function onToggle(date: ISODate) {
+    // A day already marked opens for editing rather than unmarking on the
+    // spot. Its price is now something the owner may have set by hand, and one
+    // stray tap should not throw New Year's Eve's 8,000 away.
+    const marked = mode === "special" ? optimisticSpecial.get(date) : undefined;
+    if (marked) {
+      setEditing({
+        date,
+        label: marked.label,
+        price: marked.price === null ? "" : String(marked.price),
+      });
+      return;
+    }
+
+    const price = mode === "special" ? parseDayPrice(occasionPriceText) : null;
+    if (price === undefined) {
+      toast(t.validation.occasionPriceInvalid, "error");
+      return;
+    }
+
     startTransition(async () => {
       if (mode === "special") {
-        applyOptimisticSpecial({ date, label: occasion });
-        const result = await toggleSpecialDate(selectedId, date, occasion);
+        applyOptimisticSpecial({ date, entry: { label: occasion, price } });
+        const result = await toggleSpecialDate(selectedId, date, occasion, price);
         if (!result.ok) toast(result.error, "error");
       } else {
         applyOptimistic(date);
@@ -177,14 +242,55 @@ export function AvailabilityEditor({
     };
   }
 
+  /** Save the edit dialog — a new name or price for a day already marked. */
+  function onSaveEdit() {
+    if (!editing) return;
+    const { date, label } = editing;
+    const price = parseDayPrice(editing.price);
+    if (price === undefined) {
+      toast(t.validation.occasionPriceInvalid, "error");
+      return;
+    }
+
+    setEditing(null);
+    startTransition(async () => {
+      applyOptimisticSpecial({ date, entry: { label, price } });
+      const result = await updateSpecialDate(selectedId, date, label, price);
+      toast(
+        result.ok ? (result.message ?? t.common.saved) : result.error,
+        result.ok ? "ok" : "error",
+      );
+      router.refresh();
+    });
+  }
+
+  /** Unmark the day open in the edit dialog. */
+  function onRemoveEdit() {
+    if (!editing) return;
+    const { date } = editing;
+
+    setEditing(null);
+    startTransition(async () => {
+      applyOptimisticSpecial({ date, entry: null });
+      const result = await toggleSpecialDate(selectedId, date);
+      if (!result.ok) toast(result.error, "error");
+      router.refresh();
+    });
+  }
+
   /** Apply the current mode to the rest of the visible month in one go. */
   function onBulk(on: boolean) {
     const { from, to } = visibleMonthRange();
+    const price = mode === "special" && on ? parseDayPrice(occasionPriceText) : null;
+    if (price === undefined) {
+      toast(t.validation.occasionPriceInvalid, "error");
+      return;
+    }
 
     startTransition(async () => {
       const result =
         mode === "special"
-          ? await setRangeSpecial(selectedId, from, to, on, occasion)
+          ? await setRangeSpecial(selectedId, from, to, on, occasion, price)
           : await setRangeBlocked(selectedId, from, to, on);
       toast(
         result.ok ? (result.message ?? t.common.saved) : result.error,
@@ -258,11 +364,37 @@ export function AvailabilityEditor({
               disabled={pending}
             />
           </label>
-          <p className="m-0 text-[12px] leading-relaxed text-bronze">
-            {holidayPrice > 0
-              ? t.calendar.holidayRateActive(arNum(holidayPrice, locale))
-              : t.calendar.holidayRateMissing}
-          </p>
+          {/* The price a tap marks a new day with. Blank keeps the listing's
+              occasion rate, which is what every day marked before this box
+              existed charges. */}
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[12.5px] font-bold text-bronze">
+              {t.calendar.occasionPrice}
+            </span>
+            <TextInput
+              value={occasionPriceText}
+              onChange={(e) => setOccasionPriceText(e.target.value)}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              placeholder={holidayPrice > 0 ? String(holidayPrice) : ""}
+              disabled={pending}
+              className="font-bold"
+            />
+            <span className="text-[11.5px] leading-relaxed text-muted">
+              {holidayPrice > 0
+                ? t.calendar.occasionPriceFallback(arNum(holidayPrice, locale))
+                : t.calendar.occasionPriceNoFallback}
+            </span>
+          </label>
+          {/* The listing's own rate is named in the hint above; this only
+              speaks up when there is none, since a marked day then costs more
+              only if it is given a price of its own. */}
+          {holidayPrice <= 0 && (
+            <p className="m-0 text-[12px] leading-relaxed text-bronze">
+              {t.calendar.holidayRateMissing}
+            </p>
+          )}
         </div>
       )}
 
@@ -310,8 +442,9 @@ export function AvailabilityEditor({
             const isBooked = status === "BOOKED";
             const isBlocked = status === "BLOCKED";
             const isExternal = status === "EXTERNAL";
-            const specialLabel = optimisticSpecial.get(cell.iso);
-            const isSpecial = specialLabel !== undefined;
+            const special = optimisticSpecial.get(cell.iso);
+            const isSpecial = special !== undefined;
+            const specialPrice = special ? effectivePrice(special) : null;
 
             // In "special" mode a booked or imported day is still markable: what
             // it costs and whether it is free to book are unrelated questions,
@@ -340,21 +473,11 @@ export function AvailabilityEditor({
                 }${
                   // Appended rather than replacing: an occasion night can also
                   // be booked or blocked, and a screen reader needs both facts.
-                  isSpecial
-                    ? ` — ${specialLabel || t.calendar.specialDay}${
-                        holidayPrice > 0
-                          ? ` (${arNum(holidayPrice, locale)} ${t.common.aed})`
-                          : ""
-                      }`
-                    : ""
+                  special ? ` — ${describeSpecial(special)}` : ""
                 }`}
                 title={
-                  isSpecial
-                    ? `${specialLabel || t.calendar.specialDay}${
-                        holidayPrice > 0
-                          ? ` — ${arNum(holidayPrice, locale)} ${t.common.aed}`
-                          : ""
-                      }`
+                  special
+                    ? describeSpecial(special)
                     : isExternal
                       ? t.calendar.dayHeldBy(entry?.source || t.calendar.externalPlatform)
                       : undefined
@@ -391,10 +514,23 @@ export function AvailabilityEditor({
                 )}
               >
                 <span>{cell.label}</span>
-                {cell.hijri && (
-                  <span className="mt-0.5 text-[8.5px] font-medium opacity-50">{cell.hijri}</span>
+                {/* A marked day shows what it charges in place of the Hijri date,
+                    so a month of occasions — 5,000 here, 8,000 on New Year's
+                    Eve — can be checked at a glance rather than one tooltip at
+                    a time. */}
+                {isSpecial && !cell.isPast && specialPrice ? (
+                  <span
+                    aria-hidden
+                    className="mt-0.5 text-[8.5px] font-extrabold leading-none text-gold-600"
+                  >
+                    ★{arNum(specialPrice, locale)}
+                  </span>
+                ) : (
+                  cell.hijri && (
+                    <span className="mt-0.5 text-[8.5px] font-medium opacity-50">{cell.hijri}</span>
+                  )
                 )}
-                {isSpecial && !cell.isPast && (
+                {isSpecial && !cell.isPast && !specialPrice && (
                   <span
                     aria-hidden
                     className="absolute bottom-0.5 text-[8px] leading-none text-gold-600"
@@ -465,6 +601,73 @@ export function AvailabilityEditor({
           — {selectedName}
         </span>
       </div>
+
+      {/* Editing a day that is already marked: its name, its own price, or
+          unmarking it. A dialog rather than a second tap meaning "unmark",
+          because the price is now worth protecting from a stray tap. */}
+      <Dialog
+        open={editing !== null}
+        onClose={() => setEditing(null)}
+        label={editing ? t.calendar.editOccasionTitle(arDayMonth(editing.date, locale)) : undefined}
+      >
+        {editing && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSaveEdit();
+            }}
+            className="flex flex-col gap-3"
+          >
+            <h2 className="m-0 font-display text-[17px] font-extrabold text-ink">
+              {t.calendar.editOccasionTitle(arDayMonth(editing.date, locale))}
+            </h2>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12.5px] font-bold text-bronze">
+                {t.calendar.occasionName}
+              </span>
+              <TextInput
+                value={editing.label}
+                onChange={(e) => setEditing({ ...editing, label: e.target.value })}
+                placeholder={t.calendar.occasionPlaceholder}
+                maxLength={60}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[12.5px] font-bold text-bronze">
+                {t.calendar.occasionPrice}
+              </span>
+              <TextInput
+                value={editing.price}
+                onChange={(e) => setEditing({ ...editing, price: e.target.value })}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                placeholder={holidayPrice > 0 ? String(holidayPrice) : ""}
+                className="font-bold"
+              />
+              <span className="text-[11.5px] leading-relaxed text-muted">
+                {holidayPrice > 0
+                  ? t.calendar.occasionPriceFallback(arNum(holidayPrice, locale))
+                  : t.calendar.occasionPriceNoFallback}
+              </span>
+            </label>
+
+            <div className="mt-1 flex flex-wrap gap-2.5">
+              <Button type="submit" className="flex-1">
+                {t.common.save}
+              </Button>
+              <Button type="button" variant="danger" onClick={onRemoveEdit}>
+                {t.calendar.removeOccasion}
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>
+                {t.common.cancel}
+              </Button>
+            </div>
+          </form>
+        )}
+      </Dialog>
     </div>
   );
 }

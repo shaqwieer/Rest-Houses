@@ -665,6 +665,41 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
     sessionUser.current = { id: user.id };
   }
 
+  it("saves the two-nights-or-more rates", async () => {
+    await signedInOwner();
+
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+    const result = await saveOwnerListing(
+      listingForm({ multiNightPrice: "800", multiNightWeekendPrice: "1200" }),
+    );
+    expect(result.ok).toBe(true);
+
+    const row = await prisma.listing.findFirstOrThrow({ where: { name: "Sharjah Rest House" } });
+    expect(row.multiNightPrice).toBe(800);
+    expect(row.multiNightWeekendPrice).toBe(1200);
+  });
+
+  /**
+   * The weekend check above catches a rate typed BELOW the one it uplifts;
+   * this is the same typo the other way round, because a long-stay rate is a
+   * discount. The weekend figure is measured against the weekend rate (1500
+   * here), so 1200 — above the 1000 weekday rate — is still a discount.
+   */
+  it("refuses a two-nights-or-more rate above the rate it discounts", async () => {
+    await signedInOwner();
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+
+    const weekday = await saveOwnerListing(listingForm({ multiNightPrice: "1800" }));
+    expect(weekday.ok).toBe(false);
+    expect(!weekday.ok && weekday.fieldErrors?.multiNightPrice).toBeTruthy();
+
+    const weekend = await saveOwnerListing(listingForm({ multiNightWeekendPrice: "1600" }));
+    expect(weekend.ok).toBe(false);
+    expect(!weekend.ok && weekend.fieldErrors?.multiNightWeekendPrice).toBeTruthy();
+
+    expect(await prisma.listing.findFirst({ where: { name: "Sharjah Rest House" } })).toBeNull();
+  });
+
   it("saves the long weekend and the owner's own hours", async () => {
     await signedInOwner();
 

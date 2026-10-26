@@ -46,6 +46,8 @@ export default async function EditListingPage({
         pricePerNight: listing.pricePerNight,
         weekendPrice: listing.weekendPrice,
         holidayPrice: listing.holidayPrice,
+        multiNightPrice: listing.multiNightPrice,
+        multiNightWeekendPrice: listing.multiNightWeekendPrice,
         weekendMode: toWeekendMode(listing.weekendMode),
         checkInHour: listing.checkInHour,
         checkOutHour: listing.checkOutHour,

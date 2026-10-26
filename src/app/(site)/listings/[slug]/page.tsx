@@ -302,6 +302,10 @@ export default async function ListingDetailPage({
       // of 0 change nothing, which is what every listing that never set one
       // resolves to.
       holidayPrice={listing.holidayPrice}
+      // The two-nights-or-more rates. 0 = not offered, and a listing that sets
+      // neither quotes exactly as it always did.
+      multiNightPrice={listing.multiNightPrice}
+      multiNightWeekendPrice={listing.multiNightWeekendPrice}
       specialDays={[...specialDays]}
       // The day rates decide whether the "no overnight" option is offered at
       // all: 0 means the owner does not do day bookings. See the note on

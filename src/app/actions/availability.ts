@@ -8,6 +8,7 @@ import { isISODate, nightsInRange, todayISO, type ISODate } from "@/lib/dates";
 import { LOCAL_SOURCE_KEY } from "@/lib/constants";
 import type { ActionResult } from "./listings";
 import { getI18n } from "@/lib/i18n/server";
+import type { Dictionary } from "@/lib/i18n/ar";
 
 /**
  * Availability editing — the calendar, for both an operator and an owner.
@@ -244,13 +245,55 @@ export async function setRangeBlocked(
  * Which days these are cannot be computed: Eid moves with the Hijri year and is
  * fixed by moon sighting a day or two ahead, and "big occasion" also covers
  * things no table knows. So the owner marks them, here.
+ *
+ * ─── A day may carry its own price ──────────────────────────────────────────
+ * `SpecialDay.price` overrides `Listing.holidayPrice` for that one night — New
+ * Year's Eve at 8,000 while the other public holidays stay at 5,000. null is
+ * "use the listing's occasion rate", and it is what a blank price box sends.
  */
 
-/** Mark or unmark one day as a big occasion. */
+/**
+ * A day price as the calendar sends it: a whole number of dirhams, or null for
+ * "no price of its own". 0 and blank both normalise to null — a marked night is
+ * never free, and "no rate of its own" already has a spelling.
+ *
+ * The floor is the listing's weekday rate, for the reason `holidayPrice` has
+ * one in `weekendRateProblem` (src/app/actions/listings.ts): an occasion night
+ * outranks every other tier in `nightRate`, so a typo below the weekday rate
+ * would make Eid the cheapest night of the year.
+ */
+async function occasionPrice(
+  listingId: string,
+  raw: number | null | undefined,
+  t: Dictionary,
+): Promise<{ ok: true; price: number | null } | { ok: false; error: string }> {
+  if (raw === null || raw === undefined || raw === 0) return { ok: true, price: null };
+  if (!Number.isInteger(raw) || raw < 0 || raw > 1_000_000) {
+    return { ok: false, error: t.validation.occasionPriceInvalid };
+  }
+
+  const listing = await prisma.listing.findUniqueOrThrow({
+    where: { id: listingId },
+    select: { pricePerNight: true },
+  });
+  if (raw < listing.pricePerNight) return { ok: false, error: t.validation.holidayBelowWeekday };
+
+  return { ok: true, price: raw };
+}
+
+/**
+ * Mark or unmark one day as a big occasion.
+ *
+ * `price` applies only when marking; unmarking removes the row and its price
+ * with it. Changing the price of a day that is already marked is
+ * `updateSpecialDate` below — a toggle that sometimes edited instead of
+ * unmarking would make one tap mean two different things.
+ */
 export async function toggleSpecialDate(
   listingId: string,
   date: ISODate,
   label = "",
+  price: number | null = null,
 ): Promise<ActionResult> {
   const { t } = await getI18n();
 
@@ -290,9 +333,14 @@ export async function toggleSpecialDate(
       }),
     ]);
   } else {
+    const priced = await occasionPrice(listingId, price, t);
+    if (!priced.ok) return priced;
+
     const clean = label.trim().slice(0, 60);
     await prisma.$transaction([
-      prisma.specialDay.create({ data: { listingId, date, label: clean } }),
+      prisma.specialDay.create({
+        data: { listingId, date, label: clean, price: priced.price },
+      }),
       prisma.auditLog.create({
         data: auditData({
           actor,
@@ -300,7 +348,7 @@ export async function toggleSpecialDate(
           entityType: "Listing",
           entityId: listingId,
           summary: listing.name,
-          metadata: { date, label: clean },
+          metadata: { date, label: clean, price: priced.price },
         }),
       }),
     ]);
@@ -308,6 +356,77 @@ export async function toggleSpecialDate(
 
   revalidateCalendar(listing.slug);
   return { ok: true };
+}
+
+/**
+ * Rename a marked day, or give it a price of its own — the owner who wants New
+ * Year's Eve at 8,000 when the platform marked it at their 5,000 rate.
+ *
+ * ─── An edited copy of a public holiday becomes the owner's ─────────────────
+ * `publicHolidayId` is cleared, so the row stops being a copy of the
+ * platform-wide holiday. Otherwise the operator unmarking that holiday on
+ * /admin/holidays would cascade-delete it, and the 8,000 the owner set would go
+ * with it. Clearing it is what an owner re-marking the day by hand already got
+ * — see `SpecialDay.publicHolidayId` in prisma/schema.prisma.
+ */
+export async function updateSpecialDate(
+  listingId: string,
+  date: ISODate,
+  label: string,
+  price: number | null,
+): Promise<ActionResult> {
+  const { t } = await getI18n();
+
+  const access = await authorizeListing(listingId, t);
+  if (!access.ok) return { ok: false, error: access.error };
+  const { listing, actor } = access;
+
+  if (!isISODate(date)) return { ok: false, error: t.validation.invalidDate };
+  if (date < todayISO()) return { ok: false, error: t.validation.dateNotEditable };
+
+  const priced = await occasionPrice(listingId, price, t);
+  if (!priced.ok) return priced;
+
+  const existing = await prisma.specialDay.findUnique({
+    where: { listingId_date: { listingId, date } },
+    select: { id: true, label: true, price: true, publicHolidayId: true },
+  });
+  // Unmarked in another tab since this calendar loaded. Editing it back into
+  // existence would undo that, so refuse and let the refresh show the truth.
+  if (!existing) return { ok: false, error: t.validation.invalidDate };
+
+  const clean = label.trim().slice(0, 60);
+  // Nothing changed: no write and no log line, the rule this file keeps for
+  // every action.
+  if (clean === existing.label && priced.price === existing.price) {
+    return { ok: true, message: t.calendar.occasionSaved };
+  }
+
+  await prisma.$transaction([
+    prisma.specialDay.update({
+      where: { id: existing.id },
+      data: { label: clean, price: priced.price, publicHolidayId: null },
+    }),
+    prisma.auditLog.create({
+      data: auditData({
+        actor,
+        action: "SPECIAL_DAY_UPDATED",
+        entityType: "Listing",
+        entityId: listingId,
+        summary: listing.name,
+        metadata: {
+          date,
+          label: clean,
+          price: priced.price,
+          previous: { label: existing.label, price: existing.price },
+          publicHoliday: existing.publicHolidayId !== null,
+        },
+      }),
+    }),
+  ]);
+
+  revalidateCalendar(listing.slug);
+  return { ok: true, message: t.calendar.occasionSaved };
 }
 
 /**
@@ -322,6 +441,7 @@ export async function setRangeSpecial(
   to: ISODate,
   special: boolean,
   label = "",
+  price: number | null = null,
 ): Promise<ActionResult> {
   const { t } = await getI18n();
 
@@ -339,6 +459,12 @@ export async function setRangeSpecial(
   if (dates.length > 400) return { ok: false, error: t.validation.rangeTooLong };
 
   const clean = label.trim().slice(0, 60);
+
+  // Checked before anything is written, and only when marking — unmarking a
+  // range takes no price.
+  const priced = special ? await occasionPrice(listingId, price, t) : null;
+  if (priced && !priced.ok) return priced;
+  const dayPrice = priced?.ok ? priced.price : null;
 
   // The nights acted on, for the same reason as in `setRangeBlocked`.
   const rangeLog = (
@@ -358,7 +484,9 @@ export async function setRangeSpecial(
   if (special) {
     // Read first, then insert the gaps — the same shape as `setRangeBlocked`
     // above, and for the same reason: one extra indexed SELECT at ≤400 rows,
-    // and re-marking a day must not overwrite the label already on it.
+    // and re-marking a day must not overwrite the label already on it — nor
+    // its price, so marking the rest of December at 5,000 leaves New Year's
+    // Eve at the 8,000 already set on it.
     const existing = await prisma.specialDay.findMany({
       where: { listingId, date: { in: dates } },
       select: { date: true },
@@ -369,10 +497,13 @@ export async function setRangeSpecial(
     if (missing.length > 0) {
       await prisma.$transaction([
         prisma.specialDay.createMany({
-          data: missing.map((date) => ({ listingId, date, label: clean })),
+          data: missing.map((date) => ({ listingId, date, label: clean, price: dayPrice })),
         }),
         prisma.auditLog.create({
-          data: rangeLog("SPECIAL_DAYS_MARKED", missing.length, { label: clean }),
+          data: rangeLog("SPECIAL_DAYS_MARKED", missing.length, {
+            label: clean,
+            price: dayPrice,
+          }),
         }),
       ]);
     }
