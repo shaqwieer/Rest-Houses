@@ -1964,7 +1964,7 @@ export const ar = {
 
   /* -------------------------------------------------------------- whatsapp */
   whatsapp: {
-    greeting: "السلام عليكم 👋",
+    greeting: "مرحبا الساع 👋",
     bookingIntro: (listing: string) => `أرغب بحجز *${listing}*`,
     reference: (ref: string) => `📋 رقم الطلب: ${ref}`,
     checkIn: (date: string) => `📅 الوصول: ${date}`,
@@ -1980,15 +1980,19 @@ export const ar = {
     name: (name: string) => `👤 الاسم: ${name}`,
     phone: (phone: string) => `📱 الجوال: ${phone}`,
     notes: (notes: string) => `📝 ملاحظات: ${notes}`,
-    sentVia: (site: string) => `أرسلت عبر ${site}`,
+    sentVia: "أرسلت عبر",
     enquiryIntro: "أبحث عن استراحة مناسبة.",
     enquiryDate: "التاريخ المطلوب:",
     enquiryGuests: "عدد الضيوف:",
     enquiryBudget: "الميزانية التقريبية:",
-    enquiryFrom: (site: string) => `(من موقع ${site})`,
-    ownerReplyGreeting: (name: string) => `أهلًا ${name} 👋`,
-    ownerReplyIntro: (ref: string, listing: string) =>
-      `بخصوص طلبك رقم ${ref} على *${listing}*:`,
+    ownerReplyGreeting: (name: string) => `مرحبا الساع ${name} 👋`,
+    ownerReplyIntro: (ref: string, listing: string, date: string) =>
+      `بخصوص طلبك رقم ${ref} على *${listing}* بتاريخ ${date}:`,
+    paymentLinkIntro: (ref: string, listing: string) =>
+      `رابط الدفع لطلبك رقم ${ref} على *${listing}*:`,
+    reviewInviteIntro: (listing: string) => `شاركنا رأيك في *${listing}*`,
+    /** The last line of every message: «رحلة؛ tryrihla.com». */
+    signature: (site: string, host: string) => (host ? `${site}؛ ${host}` : site),
   },
 
   /* ------------------------------------------------------- content pages */

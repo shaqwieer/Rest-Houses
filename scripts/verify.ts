@@ -213,6 +213,7 @@ async function main() {
 
   const message = bookingRequestMessage({
     siteName: "استراحات الرمال",
+    siteUrl: "https://example.ae",
     reference: "RQ-2420",
     listingName: "استراحة الرمال الذهبية",
     listingArea: "لهباب – دبي",

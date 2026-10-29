@@ -6,7 +6,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { WhatsappAutoSend } from "@/components/booking/whatsapp-auto-send";
 import { TrackEvent } from "@/components/site/track-event";
 import { prisma } from "@/lib/prisma";
-import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { getSettings, absoluteUrl, localizeSettings, siteUrl } from "@/lib/settings";
 import { bookingRequestMessage, resolveListingWhatsapp, whatsappLink } from "@/lib/whatsapp";
 import { DAY_USE_SELECT, localizeListing } from "@/lib/listings";
 import { publicOwnerFields } from "@/lib/owners";
@@ -63,6 +63,8 @@ export default async function BookingConfirmationPage({
           name: true,
           nameEn: true,
           slug: true,
+          // For the link in the WhatsApp message — see `listingUrl` below.
+          shortId: true,
           area: true,
           areaEn: true,
           city: true,
@@ -104,10 +106,15 @@ export default async function BookingConfirmationPage({
 
   const message = bookingRequestMessage({
     siteName: s.siteName,
+    siteUrl: siteUrl(),
     reference: booking.reference,
     listingName: l.name,
     listingArea: l.area,
-    listingUrl: absoluteUrl(`/listings/${encodeURIComponent(booking.listing.slug)}`),
+    // The short /r/ link, not the canonical one. The canonical URL is the
+    // Arabic slug, which WhatsApp shows percent-encoded — a line of %D8%A7…
+    // the operator asked to be rid of. /r/ redirects to the same page; see
+    // src/app/r/[code]/route.ts.
+    listingUrl: absoluteUrl(`/r/${booking.listing.shortId}`),
     checkIn: booking.checkIn,
     checkOut: booking.checkOut,
     nights: booking.nights,

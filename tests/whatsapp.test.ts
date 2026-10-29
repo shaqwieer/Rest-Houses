@@ -6,6 +6,10 @@ import {
   resolveListingWhatsapp,
   whatsappLink,
   bookingRequestMessage,
+  generalEnquiryMessage,
+  ownerReplyMessage,
+  paymentLinkMessage,
+  reviewInviteMessage,
 } from "@/lib/whatsapp";
 
 describe("normalizeWhatsapp", () => {
@@ -236,6 +240,7 @@ describe("resolveListingWhatsapp", () => {
 describe("bookingRequestMessage", () => {
   const base = {
     siteName: "Sands",
+    siteUrl: "https://tryrihla.com",
     reference: "RQ-2420",
     listingName: "Golden Sands",
     listingArea: "Lahbab",
@@ -282,9 +287,9 @@ describe("bookingRequestMessage", () => {
   it("writes the message in the visitor's language", () => {
     const arabic = bookingRequestMessage({ ...base, locale: "ar" });
     const english = bookingRequestMessage({ ...base, locale: "en" });
-    expect(arabic).toContain("السلام عليكم");
+    expect(arabic).toContain("مرحبا الساع");
     expect(english).toContain("Hello");
-    expect(english).not.toContain("السلام عليكم");
+    expect(english).not.toContain("مرحبا الساع");
   });
 
   /**
@@ -335,5 +340,94 @@ describe("bookingRequestMessage", () => {
     expect(decodeURIComponent(encoded)).toBe(message);
     expect(encoded).toContain("%F0%9F%91%8B"); // 👋
     expect(encoded).not.toContain("%EF%BF%BD"); // U+FFFD
+  });
+});
+
+/**
+ * The operator's house style, on every message that leaves the site: «مرحبا
+ * الساع» to open, and «رحلة؛ tryrihla.com» as the last line. Lines are compared
+ * with the RIGHT-TO-LEFT MARK stripped, which every Arabic line carries.
+ */
+describe("the house style", () => {
+  const RLM = /\u200f/g;
+  const lines = (message: string) => message.replace(RLM, "").split("\n");
+  const site = { siteName: "رحلة", siteUrl: "https://tryrihla.com" };
+
+  const request = bookingRequestMessage({
+    ...site,
+    reference: "RQ-2506",
+    listingName: "استراحة لازورد",
+    listingUrl: "https://tryrihla.com/r/1a33feb12d",
+    checkIn: "2026-11-21",
+    checkOut: "2026-11-23",
+    nights: 2,
+    guests: 18,
+    customerName: "ام حنين",
+    customerPhone: "971581123270",
+    total: 4000,
+    locale: "ar",
+  });
+  const enquiry = generalEnquiryMessage(site.siteName, site.siteUrl, "ar");
+  const reply = ownerReplyMessage({
+    ...site,
+    customerName: "Ali",
+    reference: "RQ-2490",
+    listingName: "لونار اسكيب",
+    checkIn: "2026-11-21",
+    locale: "ar",
+  });
+  const payment = paymentLinkMessage({
+    siteName: "رحلة",
+    reference: "RQ-2490",
+    listingName: "لونار اسكيب",
+    url: "https://tryrihla.com/pay/abc",
+    locale: "ar",
+  });
+  const review = reviewInviteMessage({
+    siteName: "رحلة",
+    listingName: "لونار اسكيب",
+    url: "https://tryrihla.com/review/abc",
+    locale: "ar",
+  });
+
+  it("opens every message with «مرحبا الساع» and never with the old greetings", () => {
+    for (const message of [request, enquiry, reply, payment, review]) {
+      expect(lines(message)[0].startsWith("مرحبا الساع")).toBe(true);
+      expect(message).not.toContain("السلام عليكم");
+      expect(message).not.toContain("أهلًا");
+    }
+  });
+
+  it("ends every message on «رحلة؛ tryrihla.com»", () => {
+    for (const message of [request, enquiry, reply, payment, review]) {
+      expect(lines(message).at(-1)).toBe("رحلة؛ tryrihla.com");
+    }
+  });
+
+  it("puts «أرسلت عبر» on its own line above the signature in a booking request", () => {
+    expect(lines(request).slice(-2)).toEqual(["أرسلت عبر", "رحلة؛ tryrihla.com"]);
+  });
+
+  it("names the day the stay starts in a reply to a request", () => {
+    expect(lines(reply)).toEqual([
+      "مرحبا الساع Ali 👋",
+      "بخصوص طلبك رقم RQ-2490 على *لونار اسكيب* بتاريخ ٢١ نوفمبر ٢٠٢٦:",
+      "",
+      "رحلة؛ tryrihla.com",
+    ]);
+  });
+
+  it("carries the link a guest is sent, on a line of its own", () => {
+    expect(lines(payment)).toContain("https://tryrihla.com/pay/abc");
+    expect(lines(review)).toContain("https://tryrihla.com/review/abc");
+  });
+
+  it("signs with the deployment's own domain, without www", () => {
+    const other = generalEnquiryMessage("Sands", "https://www.rest.example.net", "en");
+    expect(lines(other).at(-1)).toBe("Sands; rest.example.net");
+  });
+
+  it("signs with the name alone when there is no usable origin", () => {
+    expect(lines(generalEnquiryMessage("رحلة", "", "ar")).at(-1)).toBe("رحلة");
   });
 });

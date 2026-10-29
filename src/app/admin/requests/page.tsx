@@ -3,7 +3,7 @@ import { RequestCard } from "@/components/admin/request-card";
 import { Icon } from "@/components/ui/icon";
 import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
-import { bankDetails, getSettings } from "@/lib/settings";
+import { bankDetails, getSettings, siteUrl } from "@/lib/settings";
 import { platformPaymentModes } from "@/lib/payments";
 import { ownerReplyMessage, whatsappLink } from "@/lib/whatsapp";
 import { BOOKING_FILTERS, isBookingFilter } from "@/lib/constants";
@@ -185,6 +185,7 @@ export default async function AdminRequestsPage({
               key={r.id}
               reviewInviteDays={settings.reviewInviteDays}
               bank={bankDetails(settings)}
+              siteName={settings.siteName}
               // Whether Rihla can issue a payment link at all. Resolved
               // here because it depends on gateway credentials, which the
               // browser must not be told about — what crosses is the
@@ -218,9 +219,11 @@ export default async function AdminRequestsPage({
                   r.customerPhone,
                   ownerReplyMessage({
                     siteName: settings.siteName,
+                    siteUrl: siteUrl(),
                     customerName: r.customerName,
                     reference: r.reference,
                     listingName: r.listing.name,
+                    checkIn: r.checkIn,
                     locale,
                   }),
                 ),

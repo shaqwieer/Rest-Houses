@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
-import { getSettings, localizeSettings } from "@/lib/settings";
+import { getSettings, localizeSettings, siteUrl } from "@/lib/settings";
 import { getPublicListingStats } from "@/lib/listings";
 import { prisma } from "@/lib/prisma";
 import { arNum } from "@/lib/format";
@@ -45,7 +45,7 @@ export default async function AboutPage() {
   const s = localizeSettings(settings, locale);
   const waHref = whatsappLink(
     settings.whatsappNumber,
-    generalEnquiryMessage(s.siteName, locale),
+    generalEnquiryMessage(s.siteName, siteUrl(), locale),
   );
 
   return (

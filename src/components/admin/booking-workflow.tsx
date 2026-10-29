@@ -25,7 +25,7 @@ import {
 import { arDayMonth, formatInstant } from "@/lib/dates";
 import { arNum } from "@/lib/format";
 import { useLocale } from "@/lib/i18n/provider";
-import { whatsappLink } from "@/lib/whatsapp";
+import { paymentLinkMessage, reviewInviteMessage, whatsappLink } from "@/lib/whatsapp";
 
 /**
  * The booking handover, drawn as the flow it is.
@@ -121,11 +121,14 @@ export function BookingWorkflow({
   reviewInviteDays,
   bank,
   canIssuePaymentLink = false,
+  siteName,
 }: {
   booking: WorkflowBooking;
   scope: "admin" | "owner";
   /** From site settings, so step 7 states the real validity rather than "15". */
   reviewInviteDays: number;
+  /** From site settings, to sign the WhatsApp messages the link boxes send. */
+  siteName: string;
   /**
    * The platform's bank account, also from site settings, so step 6 can tell
    * the owner where to send the commission it is asking them to transfer.
@@ -347,7 +350,7 @@ export function BookingWorkflow({
                       has to send it — so it stays on screen for as long as it is
                       valid rather than vanishing at the moment it is created. */}
                   {done && step === "REVIEW" && reviewUrl && (
-                    <ReviewLinkBox url={reviewUrl} booking={booking} />
+                    <ReviewLinkBox url={reviewUrl} booking={booking} siteName={siteName} />
                   )}
 
                   {current && (
@@ -362,6 +365,7 @@ export function BookingWorkflow({
                       percent={percent}
                       reviewUrl={reviewUrl}
                       canIssuePaymentLink={canIssuePaymentLink}
+                      siteName={siteName}
                       onSubmit={submit}
                       onConfirmCommission={onConfirmCommission}
                     />
@@ -405,6 +409,7 @@ function StepPanel({
   percent,
   reviewUrl,
   canIssuePaymentLink,
+  siteName,
   onSubmit,
   onConfirmCommission,
 }: {
@@ -418,6 +423,7 @@ function StepPanel({
   percent: (n: number) => string;
   reviewUrl: string | null;
   canIssuePaymentLink: boolean;
+  siteName: string;
   onSubmit: (input: StageSubmission) => void;
   onConfirmCommission: () => void;
 }) {
@@ -504,7 +510,7 @@ function StepPanel({
 
             Renders nothing unless the platform can actually issue one, so on
             every deployment today this step looks exactly as it did. */}
-        {canIssuePaymentLink && <PaymentLinkBox booking={booking} />}
+        {canIssuePaymentLink && <PaymentLinkBox booking={booking} siteName={siteName} />}
 
         <StepButton
           pending={pending}
@@ -669,7 +675,7 @@ function StepPanel({
     <div className="mt-1.5">
       {body(t.workflow.reviewBody(arNum(reviewInviteDays, locale)))}
       {reviewUrl ? (
-        <ReviewLinkBox url={reviewUrl} booking={booking} />
+        <ReviewLinkBox url={reviewUrl} booking={booking} siteName={siteName} />
       ) : (
         <StepButton
           pending={pending}
@@ -699,13 +705,19 @@ function StepPanel({
  * owed from the booking row, and the link the guest opens reads it back from
  * the `PaymentLink` row; this component never sees a figure it could get wrong.
  */
-function PaymentLinkBox({ booking }: { booking: WorkflowBooking }) {
-  const { t } = useLocale();
+function PaymentLinkBox({ booking, siteName }: { booking: WorkflowBooking; siteName: string }) {
+  const { t, locale } = useLocale();
   const { toast } = useToast();
   const [pending, startTransition] = useTransition();
   const [url, setUrl] = useState<string | null>(null);
 
-  const message = `${booking.listingName} — ${booking.reference}\n${url ?? ""}`;
+  const message = paymentLinkMessage({
+    siteName,
+    reference: booking.reference,
+    listingName: booking.listingName,
+    url: url ?? "",
+    locale,
+  });
 
   if (!url) {
     return (
@@ -774,11 +786,24 @@ function PaymentLinkBox({ booking }: { booking: WorkflowBooking }) {
   );
 }
 
-function ReviewLinkBox({ url, booking }: { url: string; booking: WorkflowBooking }) {
+function ReviewLinkBox({
+  url,
+  booking,
+  siteName,
+}: {
+  url: string;
+  booking: WorkflowBooking;
+  siteName: string;
+}) {
   const { t, locale } = useLocale();
   const { toast } = useToast();
 
-  const message = `${t.review.subtitle(booking.listingName)}\n${url}`;
+  const message = reviewInviteMessage({
+    siteName,
+    listingName: booking.listingName,
+    url,
+    locale,
+  });
 
   return (
     <div className="mt-2 min-w-0 rounded-xl border border-gold-500 bg-gold-100 p-2.5">

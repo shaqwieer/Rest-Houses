@@ -71,6 +71,7 @@ export function RequestCard({
   reviewInviteDays = 15,
   bank,
   canIssuePaymentLink = false,
+  siteName,
 }: {
   request: RequestCardData;
   readOnly?: boolean;
@@ -82,6 +83,8 @@ export function RequestCard({
   canIssuePaymentLink?: boolean;
   /** Passed to the stepper so step 6 shows where to send the commission. */
   bank?: BankDetails | null;
+  /** Passed to the stepper to sign the payment and review messages. */
+  siteName: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -225,6 +228,7 @@ export function RequestCard({
           reviewInviteDays={reviewInviteDays}
           bank={bank}
           canIssuePaymentLink={canIssuePaymentLink}
+          siteName={siteName}
         />
       )}
 

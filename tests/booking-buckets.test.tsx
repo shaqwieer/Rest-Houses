@@ -363,7 +363,12 @@ const workflowBooking = (over: Partial<WorkflowBooking> = {}): WorkflowBooking =
 
 const render = (over: Partial<WorkflowBooking> = {}) =>
   renderToStaticMarkup(
-    <BookingWorkflow booking={workflowBooking(over)} scope="admin" reviewInviteDays={15} />,
+    <BookingWorkflow
+      booking={workflowBooking(over)}
+      scope="admin"
+      reviewInviteDays={15}
+      siteName="رحلة"
+    />,
   );
 
 describe("the stepper folds", () => {

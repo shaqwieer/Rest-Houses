@@ -1810,14 +1810,17 @@ export const en: Dictionary = {
     name: (name) => `👤 Name: ${name}`,
     phone: (phone) => `📱 Mobile: ${phone}`,
     notes: (notes) => `📝 Notes: ${notes}`,
-    sentVia: (site) => `Sent via ${site}`,
+    sentVia: "Sent via",
     enquiryIntro: "I'm looking for a suitable rest house.",
     enquiryDate: "Dates:",
     enquiryGuests: "Guests:",
     enquiryBudget: "Approximate budget:",
-    enquiryFrom: (site) => `(from ${site})`,
     ownerReplyGreeting: (name) => `Hello ${name} 👋`,
-    ownerReplyIntro: (ref, listing) => `About your request ${ref} for *${listing}*:`,
+    ownerReplyIntro: (ref, listing, date) =>
+      `About your request ${ref} for *${listing}* on ${date}:`,
+    paymentLinkIntro: (ref, listing) => `Your payment link for request ${ref} at *${listing}*:`,
+    reviewInviteIntro: (listing) => `Tell us how *${listing}* was`,
+    signature: (site, host) => (host ? `${site}; ${host}` : site),
   },
 
   /* ------------------------------------------------------- content pages */

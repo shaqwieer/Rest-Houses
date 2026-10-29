@@ -8,7 +8,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { getPublicListingStats, getRandomListings } from "@/lib/listings";
 import { getPopularSearches } from "@/lib/popular-searches";
-import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { getSettings, absoluteUrl, localizeSettings, siteUrl } from "@/lib/settings";
 import { CATEGORIES, DEFAULT_PHOTO_URL, label } from "@/lib/constants";
 import { arNum } from "@/lib/format";
 import { getI18n } from "@/lib/i18n/server";
@@ -97,7 +97,7 @@ export default async function HomePage() {
   const heroImage = settings.heroImageUrl || DEFAULT_PHOTO_URL;
   const waHref = whatsappLink(
     settings.whatsappNumber,
-    generalEnquiryMessage(s.siteName, locale),
+    generalEnquiryMessage(s.siteName, siteUrl(), locale),
   );
 
   const trustPoints: { icon: IconName; title: string; body: string }[] = [

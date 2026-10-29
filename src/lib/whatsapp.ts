@@ -160,8 +160,39 @@ export function whatsappLink(number: string | null | undefined, message?: string
 /* Messages                                                                   */
 /* -------------------------------------------------------------------------- */
 
+/*
+ * ─── The house style, as the operator wrote it ──────────────────────────────
+ * Every message opens with «مرحبا الساع» — the dictionary's `greeting` — and
+ * ends on one line naming the platform and its address, «رحلة؛ tryrihla.com».
+ * The operator set both for every message that leaves the site, so each lives
+ * in one place: the greeting in the dictionary, the last line in `signature`.
+ */
+
+/**
+ * The line every message ends on: «رحلة؛ tryrihla.com».
+ *
+ * The address is the host of the site's own origin rather than a literal, so a
+ * second deployment of this code signs with its own domain instead of sending
+ * its guests to this one. Without a usable origin the line is just the name,
+ * which is what every message ended on before.
+ */
+function signature(siteName: string, siteUrl: string, locale: Locale): string {
+  return getDictionary(locale).whatsapp.signature(siteName, siteHost(siteUrl));
+}
+
+/** "tryrihla.com" from "https://www.tryrihla.com/anything", or "". */
+function siteHost(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
 export type BookingMessageInput = {
   siteName: string;
+  /** The site's origin, for the signature line. */
+  siteUrl: string;
   reference: string;
   listingName: string;
   listingArea?: string | null;
@@ -259,7 +290,11 @@ export function bookingRequestMessage(input: BookingMessageInput): string {
     lines.push("", `${mark}🔗 ${input.listingUrl}`);
   }
 
-  lines.push("", `${mark}${t.sentVia(input.siteName)}`);
+  lines.push(
+    "",
+    `${mark}${t.sentVia}`,
+    `${mark}${signature(input.siteName, input.siteUrl, locale)}`,
+  );
 
   return lines.join("\n");
 }
@@ -267,6 +302,7 @@ export function bookingRequestMessage(input: BookingMessageInput): string {
 /** Shorter message for the "ask us anything" CTA on the home page. */
 export function generalEnquiryMessage(
   siteName: string,
+  siteUrl: string,
   locale: Locale = DEFAULT_LOCALE,
 ): string {
   const t = getDictionary(locale).whatsapp;
@@ -278,25 +314,79 @@ export function generalEnquiryMessage(
     `${mark}${t.enquiryGuests}`,
     `${mark}${t.enquiryBudget}`,
     "",
-    `${mark}${t.enquiryFrom(siteName)}`,
+    `${mark}${signature(siteName, siteUrl, locale)}`,
   ].join("\n");
 }
 
-/** Owner-side message: replying to a specific request from the dashboard. */
+/**
+ * Owner-side message: replying to a specific request from the dashboard.
+ *
+ * Names the day the stay starts, because a guest with two requests open — or
+ * an owner answering a dozen — needs more than a reference number to know
+ * which one this is about.
+ */
 export function ownerReplyMessage(input: {
   siteName: string;
+  siteUrl: string;
   customerName: string;
   reference: string;
   listingName: string;
+  checkIn: ISODate;
+  locale?: Locale;
+}): string {
+  const locale = input.locale ?? DEFAULT_LOCALE;
+  const t = getDictionary(locale).whatsapp;
+  const mark = locale === "ar" ? "‏" : "";
+  const date = arFullDate(input.checkIn, locale);
+  return [
+    `${mark}${t.ownerReplyGreeting(input.customerName)}`,
+    `${mark}${t.ownerReplyIntro(input.reference, input.listingName, date)}`,
+    "",
+    `${mark}${signature(input.siteName, input.siteUrl, locale)}`,
+  ].join("\n");
+}
+
+/**
+ * Sending a guest their payment link from the booking workflow.
+ *
+ * `url` is the link itself, already absolute, and doubles as the origin for
+ * the signature: this is built in the browser, which cannot read the server's
+ * site URL.
+ */
+export function paymentLinkMessage(input: {
+  siteName: string;
+  reference: string;
+  listingName: string;
+  url: string;
   locale?: Locale;
 }): string {
   const locale = input.locale ?? DEFAULT_LOCALE;
   const t = getDictionary(locale).whatsapp;
   const mark = locale === "ar" ? "‏" : "";
   return [
-    `${mark}${t.ownerReplyGreeting(input.customerName)}`,
-    `${mark}${t.ownerReplyIntro(input.reference, input.listingName)}`,
+    `${mark}${t.greeting}`,
+    `${mark}${t.paymentLinkIntro(input.reference, input.listingName)}`,
+    input.url,
     "",
-    `${mark}${input.siteName}`,
+    `${mark}${signature(input.siteName, input.url, locale)}`,
+  ].join("\n");
+}
+
+/** Asking a guest for a review after their stay. `url` as above. */
+export function reviewInviteMessage(input: {
+  siteName: string;
+  listingName: string;
+  url: string;
+  locale?: Locale;
+}): string {
+  const locale = input.locale ?? DEFAULT_LOCALE;
+  const t = getDictionary(locale).whatsapp;
+  const mark = locale === "ar" ? "‏" : "";
+  return [
+    `${mark}${t.greeting}`,
+    `${mark}${t.reviewInviteIntro(input.listingName)}`,
+    input.url,
+    "",
+    `${mark}${signature(input.siteName, input.url, locale)}`,
   ].join("\n");
 }

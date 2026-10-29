@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Icon } from "@/components/ui/icon";
 import { ButtonLink } from "@/components/ui/button";
 import { PageHeader } from "@/components/site/page-shell";
-import { getSettings, absoluteUrl, localizeSettings } from "@/lib/settings";
+import { getSettings, absoluteUrl, localizeSettings, siteUrl } from "@/lib/settings";
 import { arNum } from "@/lib/format";
 import { generalEnquiryMessage, whatsappLink } from "@/lib/whatsapp";
 import { getI18n } from "@/lib/i18n/server";
@@ -62,7 +62,7 @@ export default async function FaqPage() {
 
   const waHref = whatsappLink(
     settings.whatsappNumber,
-    generalEnquiryMessage(s.siteName, locale),
+    generalEnquiryMessage(s.siteName, siteUrl(), locale),
   );
 
   return (
