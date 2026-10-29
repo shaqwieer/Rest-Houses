@@ -704,6 +704,7 @@ export const ar = {
     bookings: "الحجوزات",
     payments: "المدفوعات",
     auditLog: "سجل النشاط",
+    monthlyRecord: "السجل الشهري",
     account: "حسابي",
     accountIntro: "بيانات حسابك في لوحة التحكم وكلمة المرور الخاصة بك.",
     accountDetails: "بيانات الحساب",
@@ -770,6 +771,17 @@ export const ar = {
     statTopRevenueSub: (amount: string, month: string) => `${amount} د.إ · ${month}`,
     statTopBookingsSub: (count: string, month: string) => `${count} حجز · ${month}`,
     statNoData: "لا بيانات بعد",
+
+    // ---- the monthly record (/admin/monthly) ----
+    monthlyRecordSubtitle:
+      "حجوزات كل شهر وإيراده كما في النظرة العامة: الحجوزات المؤكدة عبر المنصة، حسب شهر الوصول.",
+    monthlyRecordNote:
+      "يُحفظ كل شهر نهائيًا بعد مرور شهر كامل على نهايته، ولا يتغيّر بعدها حتى لو حُذفت استراحة. وقبل ذلك يتحدّث مع كل حجز يُؤكَّد أو يُلغى.",
+    monthCol: "الشهر",
+    monthBookingsCol: "الحجوزات",
+    monthRevenueCol: "الإيراد (د.إ)",
+    /** Beside a month whose figures can still change. */
+    monthStillOpen: "يتحدّث",
 
     latestRequests: "أحدث الطلبات",
     noRequestsYet: "لا توجد طلبات بعد.",

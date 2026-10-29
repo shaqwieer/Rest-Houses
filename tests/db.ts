@@ -47,6 +47,9 @@ export async function resetDatabase(): Promise<void> {
   await prisma.paymentLink.deleteMany();
   await prisma.payment.deleteMany();
   await prisma.bookingRequest.deleteMany();
+  // Frozen months stand alone — no foreign key — but would otherwise carry one
+  // test's record into the next.
+  await prisma.monthlyFigure.deleteMany();
   await prisma.availability.deleteMany();
   await prisma.specialDay.deleteMany();
   await prisma.calendarFeed.deleteMany();

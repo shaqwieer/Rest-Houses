@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminPage } from "@/lib/auth";
 import {
   confirmedBookingCounts,
+  freezeClosedMonths,
   hiddenByOwnerStateCount,
   monthPerformance,
   ownerCounts,
@@ -58,6 +59,11 @@ import type { Dictionary } from "@/lib/i18n";
  * خارجي»), at the operator's request — `PLATFORM_BOOKINGS` in admin-queries.
  * Tile 1 needs no such rule: a recorded booking is created already confirmed,
  * so it is never a new request.
+ *
+ * ─── The months these tiles leave behind ─────────────────────────────────────
+ * Tiles 10 and 12 open «السجل الشهري» (/admin/monthly), which keeps the same two
+ * figures for every month once this page has moved past it. Loading this page
+ * is also what files a settled month there — see `freezeClosedMonths`.
  */
 
 /** What one tile needs to render. */
@@ -131,6 +137,9 @@ export default async function AdminOverviewPage() {
     hiddenByOwnerStateCount(),
     monthPerformance(thisMonth),
     monthPerformance(nextMonth),
+    // Nothing to render: files any month that has settled into the monthly
+    // record. Here because this is the page opened every day.
+    freezeClosedMonths(today),
   ]);
 
   const thisMonthLabel = arMonthLabel(thisMonth.year, thisMonth.month, locale);
@@ -230,12 +239,14 @@ export default async function AdminOverviewPage() {
 
     /* ---- 10–13 · this month and the next -------------------------------- */
     {
-      // No link, for the same reason as tile 7: the requests page has no view
-      // filtered to one month's check-ins, so nothing it opens shows this number.
+      // To the monthly record rather than the requests page, which has no view
+      // filtered to one month's check-ins: the record's row for this month is
+      // this exact number, by the same predicate.
       label: t.admin.statBookingsThisMonth,
       value: arNum(current.bookings, locale),
       sub: t.admin.statBookingsMonthSub(thisMonthLabel),
       icon: "event_available",
+      href: "/admin/monthly",
     },
     {
       label: t.admin.statRevenueThisMonth,
@@ -249,6 +260,7 @@ export default async function AdminOverviewPage() {
       value: arNum(ahead.bookings, locale),
       sub: t.admin.statBookingsMonthSub(nextMonthLabel),
       icon: "event_available",
+      href: "/admin/monthly",
     },
     {
       label: t.admin.statRevenueNextMonth,

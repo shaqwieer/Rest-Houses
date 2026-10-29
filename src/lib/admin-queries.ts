@@ -3,7 +3,7 @@ import { prisma } from "./prisma";
 import { normalizePhone } from "./phone";
 import { isOwnerActive } from "./owners";
 import { bookingFilterWhere } from "./booking-view";
-import type { MonthRange } from "./dates";
+import { monthRange, todayISO, type ISODate, type MonthRange } from "./dates";
 
 /**
  * Read queries for the admin dashboard.
@@ -371,6 +371,16 @@ export async function revenueTotals() {
 const PLATFORM_BOOKINGS = { source: "RIHLA" } satisfies Prisma.BookingRequestWhereInput;
 
 /**
+ * The bookings a month's figures are made of: confirmed, and made on this
+ * platform. Shared by the overview's month tiles and the monthly record, so
+ * October on one can never read differently from October on the other.
+ */
+const COUNTED_BOOKINGS = {
+  status: "CONFIRMED",
+  ...PLATFORM_BOOKINGS,
+} satisfies Prisma.BookingRequestWhereInput;
+
+/**
  * Tiles 7 and 9 of the overview: every confirmed platform booking whatever
  * stage it has reached, and the subset still being worked.
  *
@@ -443,11 +453,7 @@ export async function monthPerformance(range: MonthRange): Promise<MonthPerforma
   // input rather than one owner's slice of it.
   const byListing = await prisma.bookingRequest.groupBy({
     by: ["listingId"],
-    where: {
-      status: "CONFIRMED",
-      ...PLATFORM_BOOKINGS,
-      checkIn: { gte: range.from, lt: range.to },
-    },
+    where: { ...COUNTED_BOOKINGS, checkIn: { gte: range.from, lt: range.to } },
     _sum: { total: true },
     _count: { _all: true },
   });
@@ -505,6 +511,152 @@ function pickTop<T>(rows: T[], score: (row: T) => number): T | null {
     if (best === null || score(row) > score(best)) best = row;
   }
   return best;
+}
+
+/* -------------------------------------------------------------------------- */
+/* The monthly record — every month's bookings and revenue, kept              */
+/* -------------------------------------------------------------------------- */
+
+export type MonthRecord = {
+  range: MonthRange;
+  bookings: number;
+  revenue: number;
+  /**
+   * True once the month has been copied into `MonthlyFigure` and can no longer
+   * change. False for last month, this month and every month ahead.
+   */
+  frozen: boolean;
+};
+
+type MonthFigures = { bookings: number; revenue: number };
+
+/**
+ * Every month's booking count and revenue, newest first — «السجل الشهري».
+ *
+ * The same two figures as tiles 10–13 on the overview, by the same predicate,
+ * for every month from the platform's first booking through next month, and on
+ * to the furthest month anything is already booked into.
+ *
+ * Settled months are read from `MonthlyFigure`; the rest are counted from the
+ * bookings as they stand. `freezeClosedMonths` is where the line falls.
+ */
+export async function monthlyRecord(today: ISODate = todayISO()): Promise<MonthRecord[]> {
+  await freezeClosedMonths(today);
+
+  const liveFrom = monthRange(today, -1);
+  const [frozen, live] = await Promise.all([
+    prisma.monthlyFigure.findMany({ where: { month: { lt: monthKey(liveFrom) } } }),
+    figuresByMonth({ gte: liveFrom.from }),
+  ]);
+
+  const records: MonthRecord[] = frozen.map((row) => ({
+    range: monthRange(`${row.month}-01`),
+    bookings: row.bookings,
+    revenue: row.revenue,
+    frozen: true,
+  }));
+
+  // Last month, this one and the next are always listed, at zero if need be:
+  // they are the months the overview's tiles talk about. Beyond those, only a
+  // month something is already booked into.
+  let lastKey = monthKey(monthRange(today, 1));
+  for (const key of live.keys()) if (key > lastKey) lastKey = key;
+
+  for (let range = liveFrom; monthKey(range) <= lastKey; range = monthRange(range.from, 1)) {
+    const figures = live.get(monthKey(range)) ?? { bookings: 0, revenue: 0 };
+    records.push({ range, ...figures, frozen: false });
+  }
+
+  return records.sort((a, b) => b.range.from.localeCompare(a.range.from));
+}
+
+/**
+ * Copy every settled month into `MonthlyFigure`, once.
+ *
+ * ─── When a month has settled ────────────────────────────────────────────────
+ * Not the day it ends. A request for the 31st is often confirmed — or a stay
+ * cancelled — in the first days of the month after, and a month frozen on the
+ * 1st would never see it. So last month stays live beside this one, and a
+ * month freezes on the first day of the month after next: October's figures
+ * are fixed on 1 December.
+ *
+ * A month with no bookings is frozen at zero rather than skipped, so the record
+ * has no holes and a later visit has nothing left to look for.
+ *
+ * ─── Written on read, and safe to race ───────────────────────────────────────
+ * The app has no scheduler, so the overview calls this on every load. That is
+ * the page the operator opens daily, so a month freezes on the day it is due,
+ * not whenever the record is next opened — with a rest house deleted in
+ * between. On a day there is nothing to freeze it costs one read by primary
+ * key. Two renders racing insert the same rows, and `skipDuplicates` keeps
+ * whichever landed first.
+ */
+export async function freezeClosedMonths(today: ISODate = todayISO()): Promise<void> {
+  const liveFrom = monthRange(today, -1);
+
+  const latest = await prisma.monthlyFigure.findFirst({
+    orderBy: { month: "desc" },
+    select: { month: true },
+  });
+  const freezeFrom = latest ? monthRange(`${latest.month}-01`, 1) : null;
+  if (freezeFrom && freezeFrom.from >= liveFrom.from) return;
+
+  const settled = await figuresByMonth({
+    ...(freezeFrom ? { gte: freezeFrom.from } : {}),
+    lt: liveFrom.from,
+  });
+
+  // The very first freeze starts at the platform's first booking rather than
+  // at some fixed date, so the record does not open on a run of empty months.
+  const firstKey = freezeFrom ? monthKey(freezeFrom) : [...settled.keys()].sort()[0];
+  if (!firstKey) return; // nothing booked before last month yet
+
+  const rows: { month: string; bookings: number; revenue: number }[] = [];
+  for (
+    let range = monthRange(`${firstKey}-01`);
+    range.from < liveFrom.from;
+    range = monthRange(range.from, 1)
+  ) {
+    const figures = settled.get(monthKey(range)) ?? { bookings: 0, revenue: 0 };
+    rows.push({ month: monthKey(range), ...figures });
+  }
+
+  await prisma.monthlyFigure.createMany({ data: rows, skipDuplicates: true });
+}
+
+/**
+ * Booking count and revenue for each month, over the stays starting in
+ * `checkIn`.
+ *
+ * Grouped by day in SQL and rolled up into months here: Prisma cannot group on
+ * part of a column, and a day is the coarsest key that still adds up into a
+ * month — at most thirty-one rows a month, however busy it was.
+ */
+async function figuresByMonth(checkIn: {
+  gte?: ISODate;
+  lt?: ISODate;
+}): Promise<Map<string, MonthFigures>> {
+  const byDay = await prisma.bookingRequest.groupBy({
+    by: ["checkIn"],
+    where: { ...COUNTED_BOOKINGS, checkIn },
+    _sum: { total: true },
+    _count: { _all: true },
+  });
+
+  const byMonth = new Map<string, MonthFigures>();
+  for (const day of byDay) {
+    const key = day.checkIn.slice(0, 7);
+    const month = byMonth.get(key) ?? { bookings: 0, revenue: 0 };
+    month.bookings += day._count._all;
+    month.revenue += day._sum.total ?? 0;
+    byMonth.set(key, month);
+  }
+  return byMonth;
+}
+
+/** "2026-10" — how `MonthlyFigure` names a month. */
+function monthKey(range: MonthRange): string {
+  return range.from.slice(0, 7);
 }
 
 /* -------------------------------------------------------------------------- */

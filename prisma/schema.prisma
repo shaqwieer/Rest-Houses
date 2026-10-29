@@ -1394,6 +1394,28 @@ model BookingRequest {
 }
 
 // ---------------------------------------------------------------------------
+// MonthlyFigure — one closed month of the platform's bookings, frozen for
+// «السجل الشهري» (/admin/monthly).
+//
+// The operator asked for each month's booking count and revenue to stay on
+// record once the overview moves on to the next month. Computing them from the
+// bookings is not enough for that: a `BookingRequest` cascades away with its
+// listing, and an owner can delete their own rest house, which would quietly
+// rewrite every month that rest house ever had a booking in.
+//
+// So a month is copied here once it is far enough behind to have settled, and
+// never changed after — see `freezeClosedMonths` in src/lib/admin-queries.ts.
+// The months before that stay computed live, so a confirmation or cancellation
+// still reaches them.
+// ---------------------------------------------------------------------------
+model MonthlyFigure {
+  month    String   @id // "YYYY-MM" — the month the stays start in
+  bookings Int
+  revenue  Int // whole dirhams, gross booking value — `BookingRequest.total`
+  frozenAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
 // Payment — one attempt to move money for one booking.
 //
 // ─── Why a table and not two more columns on BookingRequest ─────────────────

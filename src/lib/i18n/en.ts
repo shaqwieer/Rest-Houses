@@ -590,6 +590,7 @@ export const en: Dictionary = {
     bookings: "Bookings",
     payments: "Payments",
     auditLog: "Activity log",
+    monthlyRecord: "Monthly record",
     account: "My account",
     accountIntro: "Your dashboard account details and your password.",
     accountDetails: "Account details",
@@ -656,6 +657,17 @@ export const en: Dictionary = {
     statTopRevenueSub: (amount, month) => `${amount} AED · ${month}`,
     statTopBookingsSub: (count, month) => `${count} bookings · ${month}`,
     statNoData: "No data yet",
+
+    // ---- the monthly record (/admin/monthly) ----
+    monthlyRecordSubtitle:
+      "Each month's bookings and revenue, as on the overview: confirmed bookings made on the platform, by the month the stay starts.",
+    monthlyRecordNote:
+      "A month is saved for good once a full month has passed since it ended, and does not change after that — even if a rest house is deleted. Until then it updates with every booking confirmed or cancelled.",
+    monthCol: "Month",
+    monthBookingsCol: "Bookings",
+    monthRevenueCol: "Revenue (AED)",
+    /** Beside a month whose figures can still change. */
+    monthStillOpen: "Updating",
 
     latestRequests: "Latest requests",
     noRequestsYet: "No requests yet.",

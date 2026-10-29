@@ -54,6 +54,7 @@ type AdminTabKey =
   | "ownerRequests"
   | "customers"
   | "payments"
+  | "monthlyRecord"
   | "reviews"
   | "insights"
   | "auditLog"
@@ -78,6 +79,8 @@ const TABS: {
   { href: "/admin/holidays", labelKey: "holidays", icon: "celebration" },
   { href: "/admin/customers", labelKey: "customers", icon: "contact_phone" },
   { href: "/admin/payments", labelKey: "payments", icon: "payments" },
+  // Each month's bookings and revenue, kept after the overview moves on.
+  { href: "/admin/monthly", labelKey: "monthlyRecord", icon: "calendar_today" },
   { href: "/admin/reviews", labelKey: "reviews", icon: "rate_review" },
   // Not `primary`: the phone bar's four slots are the daily queue, and this is
   // a page an operator opens on purpose rather than one they live in. It sits
