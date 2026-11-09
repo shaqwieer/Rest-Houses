@@ -32,9 +32,63 @@ import {
  *   • clicking a day at or before the current check-in restarts the selection
  *   • a range containing any unavailable night is rejected (you can't book
  *     around a booked night)
+ *   • an unavailable day can still END a stay — see `canCheckOutOn`
  */
 
 export type DateRange = { checkIn: ISODate | null; checkOut: ISODate | null };
+
+/**
+ * Can a stay that began on `checkIn` end on `iso`?
+ *
+ * True when every night in between is free. The check-out day itself is NOT
+ * one of those nights (see `nightsInRange`), so it does not matter whether it
+ * is free. That is the whole point. An owner who blocks the 14th has closed
+ * the night of the 14th, check-in 14 / check-out 15, and nothing stops a guest
+ * staying the 13th and leaving on the morning of the 14th. The server has
+ * always agreed (`isRangeAvailable` walks the same nights). It was only the
+ * calendar that disabled the 14th's cell, so the guest could never click it.
+ */
+export function canCheckOutOn(
+  checkIn: ISODate,
+  iso: ISODate,
+  unavailable: ReadonlySet<ISODate>,
+): boolean {
+  return iso > checkIn && !nightsInRange(checkIn, iso).some((d) => unavailable.has(d));
+}
+
+/**
+ * What one tap on `iso` does to the overnight selection. Returns null when the
+ * tap should be ignored.
+ *
+ * Kept pure, outside the component, so the rules can be tested without a DOM.
+ *
+ *   • an unavailable day is only ever a check-out, never a check-in: it
+ *     completes the range when it can (`canCheckOutOn`), and is otherwise
+ *     ignored — including a second tap on it once the range is complete, which
+ *     would otherwise fall into "start over" and put the check-in on a closed
+ *     night
+ *   • no selection yet, or a complete range → start over from this day
+ *   • a tap at or before the check-in restarts rather than inverting the range
+ *   • a range that would span an unavailable night restarts from this day
+ */
+export function nextRange(
+  value: DateRange,
+  iso: ISODate,
+  unavailable: ReadonlySet<ISODate>,
+): DateRange | null {
+  const { checkIn, checkOut } = value;
+
+  if (unavailable.has(iso)) {
+    return checkIn && canCheckOutOn(checkIn, iso, unavailable)
+      ? { checkIn, checkOut: iso }
+      : null;
+  }
+
+  if (!checkIn || checkOut) return { checkIn: iso, checkOut: null };
+  if (iso <= checkIn) return { checkIn: iso, checkOut: null };
+  if (!canCheckOutOn(checkIn, iso, unavailable)) return { checkIn: iso, checkOut: null };
+  return { checkIn, checkOut: iso };
+}
 
 export function AvailabilityCalendar({
   unavailableDates,
@@ -106,14 +160,7 @@ export function AvailabilityCalendar({
     [view, months, unavailable, today, locale, weekendMode],
   );
 
-  /** True if any night in [start, end) is blocked. */
-  function rangeHasClash(start: ISODate, end: ISODate): boolean {
-    return nightsInRange(start, end).some((d) => unavailable.has(d));
-  }
-
   function pick(iso: ISODate) {
-    const { checkIn, checkOut } = value;
-
     // A day booking is one click. The day is both ends of the stay, which is
     // what the server requires of a day-use request (`checkOut === checkIn`).
     if (singleDay) {
@@ -121,25 +168,8 @@ export function AvailabilityCalendar({
       return;
     }
 
-    // No selection yet, or a complete range → start over from this day.
-    if (!checkIn || checkOut) {
-      onChange({ checkIn: iso, checkOut: null });
-      return;
-    }
-
-    // Clicking backwards restarts rather than inverting the range.
-    if (iso <= checkIn) {
-      onChange({ checkIn: iso, checkOut: null });
-      return;
-    }
-
-    // Completing the range: refuse if it would span a blocked night.
-    if (rangeHasClash(checkIn, iso)) {
-      onChange({ checkIn: iso, checkOut: null });
-      return;
-    }
-
-    onChange({ checkIn, checkOut: iso });
+    const next = nextRange(value, iso, unavailable);
+    if (next) onChange(next);
   }
 
   // Can't page back before the current month.
@@ -236,7 +266,21 @@ export function AvailabilityCalendar({
                   !cell.isPast &&
                   !cell.isUnavailable &&
                   price <= 0;
-                const disabled = cell.isPast || cell.isUnavailable || notOffered;
+                // A closed day that can end the stay being picked: the night
+                // that BEGINS on it is taken, but the guest only leaves that
+                // morning. Overnight mode only — a day booking occupies the
+                // day itself. Still true for the chosen check-out once the
+                // range is complete, or the cell would fall back to disabled
+                // and lose its selected look.
+                const checkOutOnly =
+                  !singleDay &&
+                  !cell.isPast &&
+                  cell.isUnavailable &&
+                  value.checkIn !== null &&
+                  (value.checkOut === null || value.checkOut === cell.iso) &&
+                  canCheckOutOn(value.checkIn, cell.iso, unavailable);
+                const isBusy = cell.isUnavailable && !checkOutOnly;
+                const disabled = cell.isPast || isBusy || notOffered;
 
                 return (
                   <button
@@ -245,16 +289,22 @@ export function AvailabilityCalendar({
                     onClick={() => pick(cell.iso)}
                     disabled={disabled}
                     aria-label={`${cell.dayNumber}${
-                  cell.isUnavailable ? ` — ${t.listing.dayBooked}` : ""
+                  checkOutOnly
+                    ? ` — ${t.listing.checkOutOnly}`
+                    : cell.isUnavailable
+                      ? ` — ${t.listing.dayBooked}`
+                      : ""
                 }${notOffered ? ` — ${t.listing.dayUseNotOffered}` : ""}${
                   isSpecial ? ` — ${occasion || t.listing.occasionNight}` : ""
                 }`}
                     title={
                       notOffered
                         ? t.listing.dayUseNotOffered
-                        : isSpecial
-                          ? occasion || t.listing.occasionNight
-                          : undefined
+                        : checkOutOnly
+                          ? t.listing.checkOutOnly
+                          : isSpecial
+                            ? occasion || t.listing.occasionNight
+                            : undefined
                     }
                     aria-pressed={isStart || isEnd}
                     className={clsx(
@@ -264,7 +314,7 @@ export function AvailabilityCalendar({
                       (cell.isPast || notOffered) &&
                         "cursor-not-allowed border-transparent bg-transparent text-off",
                       !cell.isPast &&
-                        cell.isUnavailable &&
+                        isBusy &&
                         "cursor-not-allowed border-busy bg-busy-bg text-busy line-through decoration-[1.5px]",
                       !disabled &&
                         (isStart || isEnd) &&
@@ -291,6 +341,13 @@ export function AvailabilityCalendar({
                     {price > 0 && (
                       <span className="mt-1 whitespace-nowrap text-[9.5px] font-semibold tracking-tight opacity-70">
                         {arNum(price, locale)}
+                      </span>
+                    )}
+                    {/* No price on a check-out-only day — its night is not for
+                        sale — so say why it is suddenly tappable instead. */}
+                    {checkOutOnly && (
+                      <span className="mt-1 whitespace-nowrap text-[9.5px] font-semibold tracking-tight opacity-70">
+                        {t.listing.checkOutOnlyShort}
                       </span>
                     )}
                     {/* A dot rather than a colour, so the occasion marker can

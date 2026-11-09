@@ -312,6 +312,8 @@ export const en: Dictionary = {
     nextMonth: "Next month",
     occasionNight: "Occasion night — special rate",
     dayBooked: "Booked",
+    checkOutOnly: "Booked — available for check-out only",
+    checkOutOnlyShort: "Out",
     dayAvailable: "Available",
     weekendHigher: "Weekend — higher rate",
     yourSelection: "Your selection",

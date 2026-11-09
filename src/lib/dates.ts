@@ -122,15 +122,17 @@ export function nightsInRange(checkIn: ISODate, checkOut: ISODate): ISODate[] {
  * exactly one question — which days are occupied — and every call site that
  * writes, reads or deletes an `Availability` row uses it.
  *
- * ─── The over-block, stated plainly ──────────────────────────────────────────
- * A day-use booking blocks its whole day, which also stops an overnight guest
- * *checking out* that morning — something that would in reality be fine, since
- * one leaves at noon and the other arrives in the afternoon. Modelling that
- * needs a second availability semantic (half-days, or a distinction between
- * "arriving" and "departing" on the same date) threaded through the calendar,
- * the clash check and the owner's blocking tool. That is a much larger change
- * than "let people book a day", and the error here is in the safe direction: an
- * occasional lost booking rather than two guests turning up at once.
+ * ─── What a blocked day does NOT stop ────────────────────────────────────────
+ * A day-use booking blocks its whole day, written as one `Availability` row
+ * exactly like an owner's block. An overnight stay never occupies its check-out
+ * day, so an overnight guest may still *leave* on the morning of a blocked day.
+ * That is true whatever closed the day, a day-use booking included: one guest
+ * leaves at noon and the other arrives in the afternoon. The server has always
+ * allowed it, and the guest calendar offers it too (`canCheckOutOn` in
+ * src/components/listing/availability-calendar.tsx). Telling a day-use day
+ * apart from a night the owner closed would need a second availability
+ * semantic (half-days, or "arriving" vs "departing" on one date), and nothing
+ * here needs that distinction today.
  */
 export function occupiedDays(
   checkIn: ISODate,

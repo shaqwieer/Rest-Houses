@@ -396,6 +396,10 @@ export const ar = {
     nextMonth: "الشهر التالي",
     occasionNight: "ليلة مناسبة — بسعر خاص",
     dayBooked: "محجوز",
+    // A closed day offered only as the morning a stay ends: its own night is
+    // taken, but a guest staying the night before can leave on it.
+    checkOutOnly: "محجوز — متاح للمغادرة فقط",
+    checkOutOnlyShort: "خروج",
     dayAvailable: "متاح",
     weekendHigher: "نهاية الأسبوع — سعر مرتفع",
     yourSelection: "اختيارك",
