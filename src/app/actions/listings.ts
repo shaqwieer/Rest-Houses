@@ -209,6 +209,8 @@ function listingSchema(t: Dictionary) {
       .optional()
       .transform((v) => (v && v.length > 0 ? v : null)),
     capacity: z.coerce.number().int().min(1, t.validation.capacityRequired).max(5000),
+    // 0 = "not stated" and hides it everywhere; a blank field coerces to 0.
+    bedrooms: z.coerce.number().int().min(0).max(200).default(0),
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
     /**
@@ -383,6 +385,7 @@ function readListingForm(
     securityDeposit: formData.get("securityDeposit") ?? 0,
     instagram: formData.get("instagram") ?? "",
     capacity: formData.get("capacity"),
+    bedrooms: formData.get("bedrooms") ?? 0,
     lat: formData.get("lat") || 24.7614,
     lng: formData.get("lng") || 55.334,
     depositPercent: formData.get("depositPercent"),
@@ -628,6 +631,8 @@ function listingColumns(
     // decision, so an owner sets it on their own listing.
     instagram: data.instagram,
     capacity: data.capacity,
+    // In `common` like capacity: a fact about the owner's own rest house.
+    bedrooms: data.bedrooms,
     lat: data.lat,
     lng: data.lng,
     depositPercent: data.depositPercent,

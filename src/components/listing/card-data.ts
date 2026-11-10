@@ -36,6 +36,8 @@ export type ListingCardData = {
   weekendPrice: number;
   holidayPrice: number;
   capacity: number;
+  /** 0 = not stated, and the card then shows no bedroom line at all. */
+  bedrooms: number;
   rating: number;
   reviewsCount: number;
   verified: boolean;
@@ -56,6 +58,7 @@ export function toCardData(listing: ListingCardData): ListingCardData {
     weekendPrice: listing.weekendPrice,
     holidayPrice: listing.holidayPrice,
     capacity: listing.capacity,
+    bedrooms: listing.bedrooms,
     rating: listing.rating,
     reviewsCount: listing.reviewsCount,
     verified: listing.verified,

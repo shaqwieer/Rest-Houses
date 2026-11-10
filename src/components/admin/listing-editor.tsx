@@ -104,6 +104,8 @@ export type ListingDraft = {
   /** Full profile URL, or "" for a rest house with no Instagram. */
   instagram: string;
   capacity: number;
+  /** 0 = not stated; the card and the page then show nothing for it. */
+  bedrooms: number;
   lat: number;
   lng: number;
   /** null = "use the platform default" — distinct from 0, "no deposit". */
@@ -552,6 +554,21 @@ export function ListingEditor({
               defaultValue={draft.capacity}
               required
               invalid={Boolean(errors.capacity)}
+              className="font-bold"
+            />
+          </Field>
+
+          <Field
+            label={t.admin.bedroomsLabel}
+            hint={t.admin.bedroomsHint}
+            error={errors.bedrooms}
+          >
+            <TextInput
+              name="bedrooms"
+              type="number"
+              min={0}
+              defaultValue={draft.bedrooms}
+              invalid={Boolean(errors.bedrooms)}
               className="font-bold"
             />
           </Field>

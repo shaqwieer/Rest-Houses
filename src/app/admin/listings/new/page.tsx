@@ -64,6 +64,7 @@ export default async function NewListingPage() {
         securityDeposit: 0,
         instagram: "",
         capacity: 40,
+        bedrooms: 0,
         lat: settings.mapLat,
         lng: settings.mapLng,
         // null, not the platform default: leaving it unset means the listing

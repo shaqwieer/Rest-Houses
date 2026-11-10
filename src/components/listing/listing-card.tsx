@@ -148,6 +148,18 @@ export function ListingCard({
             <Icon name="group" size={15} />
             {t.common.upToGuests(arNum(listing.capacity, locale), listing.capacity)}
           </span>
+          {/* The separator travels inside the same item as the bedroom count,
+              so when the row wraps on a phone the dot wraps with it rather
+              than being left dangling at the end of the first line. */}
+          {listing.bedrooms > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="opacity-40">·</span>
+              <span className="flex items-center gap-1">
+                <Icon name="bed" size={15} />
+                {t.common.bedrooms(arNum(listing.bedrooms, locale), listing.bedrooms)}
+              </span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-1.5">

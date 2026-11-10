@@ -680,6 +680,26 @@ describe("saveOwnerListing stores the weekend and the policy", () => {
   });
 
   /**
+   * The bedroom count is set by the owner on their own listing, so it has to
+   * survive the owner's save path — not only the admin's. A blank field is
+   * "not stated" and stores 0, which the card and the page render as nothing.
+   */
+  it("saves the bedroom count, and a blank field as 0", async () => {
+    await signedInOwner();
+    const { saveOwnerListing } = await import("@/app/actions/listings");
+
+    expect((await saveOwnerListing(listingForm({ bedrooms: "4" }))).ok).toBe(true);
+    const row = await prisma.listing.findFirstOrThrow({ where: { name: "Sharjah Rest House" } });
+    expect(row.bedrooms).toBe(4);
+
+    expect(
+      (await saveOwnerListing(listingForm({ name: "Blank Bedrooms", bedrooms: "" }))).ok,
+    ).toBe(true);
+    const blank = await prisma.listing.findFirstOrThrow({ where: { name: "Blank Bedrooms" } });
+    expect(blank.bedrooms).toBe(0);
+  });
+
+  /**
    * The weekend check above catches a rate typed BELOW the one it uplifts;
    * this is the same typo the other way round, because a long-stay rate is a
    * discount. The weekend figure is measured against the weekend rate (1500

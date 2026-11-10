@@ -62,6 +62,7 @@ export default async function EditListingPage({
         securityDeposit: listing.securityDeposit,
         instagram: listing.instagram ?? "",
         capacity: listing.capacity,
+        bedrooms: listing.bedrooms,
         lat: listing.lat,
         lng: listing.lng,
         depositPercent: listing.depositPercent,

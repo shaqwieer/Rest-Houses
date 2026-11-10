@@ -87,6 +87,7 @@ export default async function ListingsPage({
       area: l.area,
       price: listing.pricePerNight,
       capacity: listing.capacity,
+      bedrooms: listing.bedrooms,
       href: `/listings/${encodeURIComponent(listing.slug)}`,
     };
   });

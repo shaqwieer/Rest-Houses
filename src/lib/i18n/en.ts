@@ -22,6 +22,8 @@ export const en: Dictionary = {
     guest: "guest",
     upToGuests: (n, count) =>
       `Up to ${n} ${plural("en", count, { one: "guest", other: "guests" })}`,
+    bedrooms: (n, count) =>
+      `${n} ${plural("en", count, { one: "bedroom", other: "bedrooms" })}`,
     viewAll: "View all",
     copy: "Copy",
     copied: "Copied",
@@ -291,6 +293,7 @@ export const en: Dictionary = {
       `${n} ${plural("en", count, { one: "review", other: "reviews" })}`,
     pastBookings: (n) => `${n} previous bookings`,
     maxCapacity: "Maximum capacity",
+    bedroomsLabel: "Bedrooms",
     checkInOutLabel: "Check-in / check-out",
     depositLabel: "Deposit",
     depositOnConfirm: (pct) => `${pct}% on confirmation`,
@@ -859,6 +862,8 @@ export const en: Dictionary = {
     dayUseCheckOutLabel: "Leave by",
     dayUseCheckOutHint: "The time the guest has to be out",
     capacityLabel: "Capacity (guests)",
+    bedroomsLabel: "Number of bedrooms",
+    bedroomsHint: "Leave at zero to hide it",
     descriptionLabel: "Description",
     listingPaymentModes: "Payment methods for this rest house",
     listingPaymentModesHint: "You cannot enable a method the platform has not connected. Unticking everything means arranging it on WhatsApp.",

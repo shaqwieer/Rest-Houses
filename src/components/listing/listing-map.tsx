@@ -66,6 +66,8 @@ export type MapPoint = {
   /** Shown in the marker pill. 0 → a pin glyph instead of a price. */
   price?: number;
   capacity?: number;
+  /** 0 / absent = not stated, and the popup leaves it out. */
+  bedrooms?: number;
   href?: string;
 };
 
@@ -267,6 +269,7 @@ function entryHtml(p: MapPoint, t: Dictionary, locale: Locale, withPrice: boolea
   const detail = [
     p.area,
     p.capacity ? t.common.upToGuests(arNum(p.capacity, locale), p.capacity) : null,
+    p.bedrooms ? t.common.bedrooms(arNum(p.bedrooms, locale), p.bedrooms) : null,
   ]
     .filter(Boolean)
     .join(" · ");

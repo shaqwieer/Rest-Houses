@@ -64,6 +64,7 @@ export default async function NewOwnerListingPage() {
         securityDeposit: 0,
         instagram: "",
         capacity: 40,
+        bedrooms: 0,
         lat: settings.mapLat,
         lng: settings.mapLng,
         depositPercent: null,

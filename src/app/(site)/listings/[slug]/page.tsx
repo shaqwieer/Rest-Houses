@@ -454,12 +454,30 @@ export default async function ListingDetailPage({
                 {l.description}
               </p>
 
-              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Four facts sit in one row of four. A stated bedroom count
+                  makes five, which would leave one tile alone on a second
+                  row — so five go three-across instead, and whichever tile
+                  ends up last on an odd count stretches over two columns to
+                  close the row (the same rule closes the two-column tablet
+                  layout). With four tiles the last one is even and nothing
+                  changes. */}
+              <div
+                className={`grid gap-2.5 sm:grid-cols-2 sm:[&>*:last-child:nth-child(odd)]:col-span-2 ${
+                  listing.bedrooms > 0 ? "lg:grid-cols-3" : "lg:grid-cols-4"
+                }`}
+              >
                 <Fact
                   icon="group"
                   label={t.listing.maxCapacity}
                   value={t.common.upToGuests(arNum(listing.capacity, locale), listing.capacity)}
                 />
+                {listing.bedrooms > 0 && (
+                  <Fact
+                    icon="bed"
+                    label={t.listing.bedroomsLabel}
+                    value={t.common.bedrooms(arNum(listing.bedrooms, locale), listing.bedrooms)}
+                  />
+                )}
                 <Fact
                   icon="schedule"
                   label={t.listing.checkInOutLabel}

@@ -41,6 +41,19 @@ export const ar = {
         many: "ضيفًا",
         other: "ضيف",
       })}`,
+    /**
+     * A bedroom count, the number included. One and two are said without a
+     * digit in Arabic («غرفة نوم واحدة», «غرفتا نوم»), the way a person would
+     * say them; 3–10 take the plural and 11+ the singular, as with every count.
+     */
+    bedrooms: (n: string, count: number) =>
+      plural("ar", count, {
+        one: "غرفة نوم واحدة",
+        two: "غرفتا نوم",
+        few: `${n} غرف نوم`,
+        many: `${n} غرفة نوم`,
+        other: `${n} غرفة نوم`,
+      }),
     viewAll: "عرض الكل",
     copy: "نسخ",
     copied: "تم النسخ",
@@ -371,6 +384,7 @@ export const ar = {
       })}`,
     pastBookings: (n: string) => `${n} حجز سابق`,
     maxCapacity: "السعة القصوى",
+    bedroomsLabel: "غرف النوم",
     checkInOutLabel: "الدخول / الخروج",
     depositLabel: "العربون",
     depositOnConfirm: (pct: string) => `${pct}٪ عند التأكيد`,
@@ -990,6 +1004,8 @@ export const ar = {
     dayUseCheckOutLabel: "وقت الخروج",
     dayUseCheckOutHint: "الوقت الذي يغادر فيه الضيف",
     capacityLabel: "السعة (ضيف)",
+    bedroomsLabel: "عدد غرف النوم",
+    bedroomsHint: "اتركه صفرًا لإخفائه",
     descriptionLabel: "الوصف",
     listingPaymentModes: "طرق الدفع المتاحة لهذه الاستراحة",
     listingPaymentModesHint: "لا يمكن تفعيل طريقة لم تفعّلها المنصة. إلغاء الكل يعني الاتفاق مع الضيف عبر الواتساب.",

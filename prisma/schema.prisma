@@ -647,6 +647,17 @@ model Listing {
   capacity Int @default(20)
 
   // ---------------------------------------------------------------------
+  // How many bedrooms (غرف النوم) the rest house has — shown beside the guest
+  // count on the card and as its own fact on the detail page. Display only: it
+  // feeds no price, filter or booking rule.
+  //
+  // 0 means "not stated" and renders nothing at all, and 0 is deliberately the
+  // default: Postgres backfills existing rows with the literal, so any other
+  // number would publish a made-up bedroom count on every live listing the
+  // moment this deployed.
+  bedrooms Int @default(0)
+
+  // ---------------------------------------------------------------------
   // Which days `weekendPrice` applies to. "short" | "long" — see the block
   // comment above `isWeekend` in src/lib/dates.ts for the full reasoning.
   //

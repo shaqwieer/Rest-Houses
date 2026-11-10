@@ -407,7 +407,7 @@ const body = IBM_Plex_Sans_Arabic({
 
 ### Adding an icon
 
-Icons are inlined SVG paths in `src/components/ui/icon-paths.ts` (107 icons,
+Icons are inlined SVG paths in `src/components/ui/icon-paths.ts` (108 icons,
 ~12 KB gzipped — versus 407 KB for the full Material Symbols font). To add one,
 append the name to the list in the generator and re-run it:
 
