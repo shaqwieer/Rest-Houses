@@ -8,6 +8,7 @@ import { Icon, type IconName } from "@/components/ui/icon";
 import { logoutAction } from "@/app/actions/auth";
 import { ToastProvider } from "@/components/ui/toast";
 import { LanguageSwitcher } from "@/components/site/language-switcher";
+import { BrandMark } from "@/components/site/brand";
 import { useLocale } from "@/lib/i18n/provider";
 import { arFullDate } from "@/lib/dates";
 
@@ -59,6 +60,7 @@ type TabLabels = {
 export function OwnerShell({
   siteName,
   logoGlyph,
+  logoUrl,
   ownerName,
   newRequestCount,
   membershipExpiresAt = null,
@@ -67,6 +69,8 @@ export function OwnerShell({
 }: {
   siteName: string;
   logoGlyph: string;
+  /** The logo uploaded on /admin/settings; null falls back to the glyph tile. */
+  logoUrl: string | null;
   ownerName: string;
   newRequestCount: number;
   /** ISO "YYYY-MM-DD", or null for an open-ended membership. */
@@ -95,13 +99,10 @@ export function OwnerShell({
       <div className="flex min-h-screen flex-col bg-sand-100">
         {/* ---- header ---- */}
         <header className="sticky top-0 z-120 flex items-center gap-3 bg-night-900 px-4 py-3 text-sand-50">
-          <div
-            className="grid size-9 shrink-0 place-items-center rounded-[11px] font-display text-[17px] font-extrabold text-night-900"
-            style={{ background: "linear-gradient(150deg, var(--gold-500), var(--bronze))" }}
-            aria-hidden
-          >
-            {logoGlyph}
-          </div>
+          {/* Only the mark changes with a logo: the title beside it is the
+              owner's own business name, which the platform's wordmark does not
+              repeat. */}
+          <BrandMark logoUrl={logoUrl} glyph={logoGlyph} alt={siteName} />
 
           <div className="min-w-0 flex-1">
             <div className="truncate font-display text-[15px] font-extrabold leading-tight">

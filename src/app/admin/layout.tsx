@@ -55,6 +55,7 @@ export default async function AdminLayout({
     <AdminShell
       siteName={settings.siteName}
       logoGlyph={settings.logoGlyph || "و"}
+      logoUrl={settings.logoUrl}
       newRequestCount={newRequestCount}
       pendingOwnerCount={pendingOwnerCount}
     >

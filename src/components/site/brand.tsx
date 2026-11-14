@@ -157,3 +157,54 @@ export function Brand({
     </Link>
   );
 }
+
+/**
+ * The mark alone, for the admin and owner dashboard headers.
+ *
+ * Those headers are night-900 and lay out their own text beside the mark, so
+ * they cannot take the whole `Brand` lockup. They used to draw the glyph tile
+ * unconditionally, which left the dashboards showing «ر» while every public page
+ * showed the uploaded logo. This applies the same rule as `Brand`: the logo when
+ * there is one, set on a light chip because the header is dark, and the glyph
+ * tile only as the fallback.
+ *
+ * It is 36px tall either way, so the header row does not change height when an
+ * operator uploads or removes a logo.
+ */
+export function BrandMark({
+  logoUrl,
+  glyph,
+  alt,
+}: {
+  logoUrl: string | null;
+  glyph: string;
+  /** What a screen reader announces for the logo: the site name. */
+  alt: string;
+}) {
+  if (logoUrl) {
+    return (
+      <span className="inline-flex shrink-0 items-center rounded-[11px] bg-sand-50 px-2 py-1">
+        <Image
+          src={logoUrl}
+          alt={alt}
+          width={120}
+          height={28}
+          className="w-auto object-contain"
+          style={{ height: 28, maxWidth: 120 }}
+          quality={100}
+          priority
+        />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="grid size-9 shrink-0 place-items-center rounded-[11px] font-display text-[17px] font-extrabold text-night-900"
+      style={{ background: "linear-gradient(150deg, var(--gold-500), var(--bronze))" }}
+      aria-hidden
+    >
+      {glyph}
+    </span>
+  );
+}

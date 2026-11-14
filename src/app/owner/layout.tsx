@@ -66,6 +66,7 @@ export default async function OwnerLayout({
       <OwnerShell
         siteName={settings.siteName}
         logoGlyph={settings.logoGlyph || "و"}
+        logoUrl={settings.logoUrl}
         ownerName={account.ownerProfile.fullName}
         newRequestCount={0}
         // Navigation is hidden entirely rather than shown-and-disabled: every
@@ -113,6 +114,7 @@ export default async function OwnerLayout({
       <OwnerShell
         siteName={settings.siteName}
         logoGlyph={settings.logoGlyph || "و"}
+        logoUrl={settings.logoUrl}
         ownerName={account.ownerProfile.businessName || account.ownerProfile.fullName}
         newRequestCount={newRequestCount}
         // A plain ISO string, not a Date: props to a client component are
