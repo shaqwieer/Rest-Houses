@@ -635,6 +635,8 @@ export const en: Dictionary = {
     // Still being worked (9).
     statConfirmed: "Confirmed bookings",
     statConfirmedSub: "still in progress",
+    // Worded so it needs no plural: `count` is already formatted, "+1".
+    statRecordedNote: (count) => `${count} from outside the platform`,
 
     // The two months (10–13), and how they compare (14–15).
     statOccupancy: "Occupancy",

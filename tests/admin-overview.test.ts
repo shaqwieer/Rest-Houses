@@ -8,6 +8,7 @@ import {
   type MonthRecord,
 } from "@/lib/admin-queries";
 import { addDays, monthRange, todayISO } from "@/lib/dates";
+import { bookingFilterWhere } from "@/lib/booking-view";
 
 /**
  * The admin overview's booking figures: tiles 7 and 9 (confirmed bookings, and
@@ -78,7 +79,11 @@ describe("confirmedBookingCounts", () => {
     await booking(listing.id, { checkIn: thisMonth.from, total: 1_000 });
     await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, stage: "DONE" });
 
-    expect(await confirmedBookingCounts()).toEqual({ all: 2, inProgress: 1 });
+    expect(await confirmedBookingCounts()).toEqual({
+      all: 2,
+      inProgress: 1,
+      recorded: { all: 0, inProgress: 0 },
+    });
   });
 
   it("leaves every booking recorded from outside the platform out of both", async () => {
@@ -92,7 +97,35 @@ describe("confirmedBookingCounts", () => {
       await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source, stage: "DONE" });
     }
 
-    expect(await confirmedBookingCounts()).toEqual({ all: 1, inProgress: 1 });
+    expect(await confirmedBookingCounts()).toMatchObject({ all: 1, inProgress: 1 });
+  });
+
+  it("reports the recorded bookings it left out, so the tiles add up to the chips", async () => {
+    const listing = await createListing();
+
+    // Platform: 2 in progress, 1 done.
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000 });
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000 });
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, stage: "DONE" });
+    // Recorded: 1 in progress and 1 done from each source — 4 and 4.
+    for (const source of ["DIRECT", "AIRBNB", "BOOKING", "OTHER"]) {
+      await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source });
+      await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source, stage: "DONE" });
+    }
+    // Neither side counts an unconfirmed booking.
+    await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, source: "DIRECT", status: "CANCELLED" });
+
+    const counts = await confirmedBookingCounts();
+    expect(counts).toEqual({ all: 3, inProgress: 2, recorded: { all: 8, inProgress: 4 } });
+
+    // The operator's check: tile 7 + its note = «مؤكد» + «مكتمل», and tile 9 +
+    // its note = «مؤكد», which count every source.
+    const [chipConfirmed, chipCompleted] = await Promise.all([
+      prisma.bookingRequest.count({ where: bookingFilterWhere("CONFIRMED") }),
+      prisma.bookingRequest.count({ where: bookingFilterWhere("COMPLETED") }),
+    ]);
+    expect(counts.all + counts.recorded.all).toBe(chipConfirmed + chipCompleted);
+    expect(counts.inProgress + counts.recorded.inProgress).toBe(chipConfirmed);
   });
 
   it("counts only confirmed bookings", async () => {
@@ -102,7 +135,11 @@ describe("confirmedBookingCounts", () => {
       await booking(listing.id, { checkIn: thisMonth.from, total: 1_000, status });
     }
 
-    expect(await confirmedBookingCounts()).toEqual({ all: 0, inProgress: 0 });
+    expect(await confirmedBookingCounts()).toEqual({
+      all: 0,
+      inProgress: 0,
+      recorded: { all: 0, inProgress: 0 },
+    });
   });
 });
 

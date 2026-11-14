@@ -762,6 +762,9 @@ export const ar = {
     // Still being worked (9).
     statConfirmed: "حجوزات مؤكدة",
     statConfirmedSub: "قيد المتابعة",
+    // Under 7 and 9: the «حجز خارجي» bookings the figure leaves out, so the
+    // tile adds up to the chips on the requests page. `count` arrives signed.
+    statRecordedNote: (count: string) => `${count} حجز خارجي`,
 
     // The two months (10–13), and how they compare (14–15).
     statOccupancy: "نسبة الإشغال",

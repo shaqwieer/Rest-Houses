@@ -381,21 +381,48 @@ const COUNTED_BOOKINGS = {
 } satisfies Prisma.BookingRequestWhereInput;
 
 /**
+ * Everything `PLATFORM_BOOKINGS` leaves out: the «حجز خارجي» rows. `source` is
+ * a non-null column, so the two together cover every booking exactly once.
+ */
+const RECORDED_BOOKINGS = {
+  source: { not: PLATFORM_BOOKINGS.source },
+} satisfies Prisma.BookingRequestWhereInput;
+
+export type ConfirmedBookingCounts = {
+  /** Tile 7: confirmed platform bookings, whatever stage they have reached. */
+  all: number;
+  /** Tile 9: the subset still being worked. */
+  inProgress: number;
+  /** The recorded («حجز خارجي») bookings each figure leaves out. */
+  recorded: { all: number; inProgress: number };
+};
+
+/**
  * Tiles 7 and 9 of the overview: every confirmed platform booking whatever
  * stage it has reached, and the subset still being worked.
  *
  * `inProgress` is the "مؤكد" chip's predicate narrowed to platform bookings, so
  * it is no longer the number that chip shows — the requests page lists
  * recorded bookings too. That is why the tile does not link there.
+ *
+ * ─── Why the recorded counts come back too ───────────────────────────────────
+ * The operator compared tile 7 with the «مؤكد» + «مكتمل» chips, and tile 9
+ * with «مؤكد», and the totals differed by exactly the recorded bookings with
+ * nothing on screen to say so. Each tile now prints the bookings it left out
+ * beside its own figure, so the tile and the chips add up on screen: platform
+ * + recorded = the chips. The main figure is still platform-only, as asked.
  */
-export async function confirmedBookingCounts(): Promise<{ all: number; inProgress: number }> {
-  const [all, inProgress] = await Promise.all([
-    prisma.bookingRequest.count({ where: { status: "CONFIRMED", ...PLATFORM_BOOKINGS } }),
-    prisma.bookingRequest.count({
-      where: { ...bookingFilterWhere("CONFIRMED"), ...PLATFORM_BOOKINGS },
-    }),
+export async function confirmedBookingCounts(): Promise<ConfirmedBookingCounts> {
+  const confirmedAll = { status: "CONFIRMED" } satisfies Prisma.BookingRequestWhereInput;
+  const confirmedInProgress = bookingFilterWhere("CONFIRMED");
+
+  const [all, inProgress, recordedAll, recordedInProgress] = await Promise.all([
+    prisma.bookingRequest.count({ where: { ...confirmedAll, ...PLATFORM_BOOKINGS } }),
+    prisma.bookingRequest.count({ where: { ...confirmedInProgress, ...PLATFORM_BOOKINGS } }),
+    prisma.bookingRequest.count({ where: { ...confirmedAll, ...RECORDED_BOOKINGS } }),
+    prisma.bookingRequest.count({ where: { ...confirmedInProgress, ...RECORDED_BOOKINGS } }),
   ]);
-  return { all, inProgress };
+  return { all, inProgress, recorded: { all: recordedAll, inProgress: recordedInProgress } };
 }
 
 /* -------------------------------------------------------------------------- */

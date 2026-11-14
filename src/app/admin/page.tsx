@@ -58,7 +58,10 @@ import type { Dictionary } from "@/lib/i18n";
  * Tiles 7, 9 and 10–17 leave out the bookings owners record by hand («حجز
  * خارجي»), at the operator's request — `PLATFORM_BOOKINGS` in admin-queries.
  * Tile 1 needs no such rule: a recorded booking is created already confirmed,
- * so it is never a new request.
+ * so it is never a new request. Tiles 7 and 9 still say how many they left out,
+ * on a line of their own («+N حجز خارجي»): the operator reads them against
+ * the chips on the requests page, which count everything, and a figure that
+ * silently disagrees with the chips reads as a bug.
  *
  * ─── The months these tiles leave behind ─────────────────────────────────────
  * Tiles 10 and 12 open «السجل الشهري» (/admin/monthly), which keeps the same two
@@ -71,6 +74,8 @@ type Tile = {
   label: string;
   value: string;
   sub: string;
+  /** A second line under `sub`, for a figure the value deliberately leaves out. */
+  note?: string;
   icon: IconName;
   href?: string;
   /**
@@ -159,6 +164,10 @@ export default async function AdminOverviewPage() {
 
   const listingName = (top: TopListing) => localized(top.name, top.nameEn, locale);
 
+  // Nothing at zero: «+٠ حجز خارجي» is a line that says nothing.
+  const recordedNote = (count: number) =>
+    count > 0 ? t.admin.statRecordedNote(arDelta(count, locale)) : undefined;
+
   const tiles: Tile[] = [
     /* ---- 1–4 · waiting on this desk ------------------------------------- */
     {
@@ -216,6 +225,7 @@ export default async function AdminOverviewPage() {
       label: t.admin.statConfirmedAll,
       value: arNum(confirmed.all, locale),
       sub: t.admin.statConfirmedAllSub,
+      note: recordedNote(confirmed.recorded.all),
       icon: "task_alt",
     },
     {
@@ -234,6 +244,7 @@ export default async function AdminOverviewPage() {
       label: t.admin.statConfirmed,
       value: arNum(confirmed.inProgress, locale),
       sub: t.admin.statConfirmedSub,
+      note: recordedNote(confirmed.recorded.inProgress),
       icon: "schedule",
     },
 
@@ -476,6 +487,9 @@ function StatTile({ tile }: { tile: Tile }) {
         {tile.value}
       </div>
       <div className="mt-1 text-[11.5px] text-muted">{tile.sub}</div>
+      {tile.note && (
+        <div className="mt-0.5 text-[11.5px] font-semibold text-bronze">{tile.note}</div>
+      )}
 
       {tile.attention && (
         <span
